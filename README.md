@@ -4,7 +4,7 @@ End-to-end SDLC orchestration kit for Claude Code and Codex. The plugin packages
 
 For a visual walkthrough, open the static guide:
 
-- [Usage guide](docs/usage.html) - workflow diagram, entry tracks, design flows, FE/BE framework tracks, QA/deployment tracks, and artifact ownership.
+- [Usage guide](https://evolplus.github.io/talos/usage.html) - workflow diagram, entry tracks, design flows, FE/BE framework tracks, QA/deployment tracks, and artifact ownership.
 
 ## Token Usage Notice
 
