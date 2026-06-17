@@ -1,0 +1,4 @@
+interface:
+  display_name: "Visual Spec Author"
+  short_description: "Generate UI visual specs"
+  default_prompt: "Use this skill in QA-Author by-task mode to turn a confirmed design handoff into docs/uiux/visual-specs/<task-id>.md."

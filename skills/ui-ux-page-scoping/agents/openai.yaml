@@ -1,0 +1,4 @@
+interface:
+  display_name: "UI/UX Page Scoping"
+  short_description: "Resolve the single Figma page root for UI/UX work"
+  default_prompt: "Use this skill as Step 0 for any UI/UX Designer mode before reading or writing Figma. Resolve the page Node ID, update only the allowed SRS page fields when needed, and scope all later Figma operations to that page."

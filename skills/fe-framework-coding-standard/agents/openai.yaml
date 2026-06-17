@@ -1,0 +1,4 @@
+interface:
+  display_name: "FE Framework Coding Standard"
+  short_description: "Use the SRS-declared FE framework standard"
+  default_prompt: "Use this skill to read docs/SRS.md Frontend-Framework, select the matching frontend reference, and implement FE work with the devkit's framework-specific standards."

@@ -1,0 +1,4 @@
+interface:
+  display_name: "BE Framework Coding Standard"
+  short_description: "Use the SRS-declared backend track and framework"
+  default_prompt: "Use this skill to read docs/SRS.md Backend-Track and Backend-Framework, select the matching backend reference, and implement BE work with the devkit's framework-specific standards."

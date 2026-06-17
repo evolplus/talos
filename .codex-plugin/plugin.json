@@ -1,0 +1,45 @@
+{
+  "name": "talos",
+  "version": "0.1.0",
+  "description": "End-to-end SDLC governance kit for Codex, including on-demand skills, role workflow guidance, artifacts, guardrails, and usage documentation.",
+  "author": {
+    "name": "evolplus",
+    "email": "evolplus@gmail.com",
+    "url": "https://github.com/evolplus"
+  },
+  "homepage": "https://github.com/evolplus/talos",
+  "repository": "https://github.com/evolplus/talos",
+  "license": "Apache-2.0",
+  "keywords": [
+    "sdlc",
+    "governance",
+    "agents",
+    "skills",
+    "orchestration",
+    "qa",
+    "requirements"
+  ],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "evo-talos Devkit",
+    "shortDescription": "Governed SDLC workflow kit for Codex",
+    "longDescription": "evo-talos helps Codex coordinate requirements, architecture, design, implementation, deployment, QA evidence, and iteration through explicit artifacts and on-demand SDLC skills. It is optimized for governance and project traceability, so it may consume more tokens than direct coding prompts.",
+    "developerName": "evolplus",
+    "category": "Engineering",
+    "capabilities": [
+      "Interactive",
+      "Read",
+      "Write"
+    ],
+    "websiteURL": "https://github.com/evolplus/talos",
+    "privacyPolicyURL": "https://github.com/evolplus/talos",
+    "termsOfServiceURL": "https://github.com/evolplus/talos",
+    "defaultPrompt": [
+      "Start a governed SDLC project",
+      "Plan this brownfield onboarding",
+      "Review SDLC artifacts and gaps"
+    ],
+    "brandColor": "#1C5D99",
+    "screenshots": []
+  }
+}

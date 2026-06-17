@@ -1,0 +1,4 @@
+interface:
+  display_name: "SA Brownfield Extract"
+  short_description: "Extract as-built architecture"
+  default_prompt: "Use this skill when SA is in extract mode to produce provisional extracted architecture from archaeology reports and code evidence."

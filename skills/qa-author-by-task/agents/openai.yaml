@@ -1,0 +1,4 @@
+interface:
+  display_name: "QA Author By-Task"
+  short_description: "Author task-scoped tests"
+  default_prompt: "Use this skill when QA-Author is in by-task mode to produce task-scoped API, E2E, functional, and structural tests."

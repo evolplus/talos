@@ -1,0 +1,4 @@
+interface:
+  display_name: "SA Architecture Design"
+  short_description: "Design-mode architecture workflow"
+  default_prompt: "Use this skill when SA is in design mode to produce docs/architecture.md, ADRs, instrumentation contract, and architecture data contracts from the signed-off SRS."

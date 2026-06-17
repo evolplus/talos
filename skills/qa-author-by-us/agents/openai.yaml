@@ -1,0 +1,4 @@
+interface:
+  display_name: "QA Author By-US"
+  short_description: "Author US-scoped tests"
+  default_prompt: "Use this skill when QA-Author is in by-us mode to create functional TCs and executable specs, including selector TODO/backfill passes."

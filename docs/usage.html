@@ -1,0 +1,888 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>evo-talos Devkit Usage Guide</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --ink: #1f2933;
+      --muted: #5b6673;
+      --line: #ccd6e0;
+      --bg: #f7f9fb;
+      --panel: #ffffff;
+      --blue: #1c5d99;
+      --teal: #0f7b73;
+      --green: #3f7f4f;
+      --gold: #946b1f;
+      --red: #a13d3d;
+      --violet: #6650a4;
+      --shadow: 0 18px 45px rgba(31, 41, 51, 0.10);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--ink);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      line-height: 1.55;
+    }
+
+    a {
+      color: var(--blue);
+      text-decoration-thickness: 1px;
+      text-underline-offset: 3px;
+    }
+
+    .shell {
+      width: min(1180px, calc(100% - 32px));
+      margin: 0 auto;
+      padding: 28px 0 56px;
+    }
+
+    header {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 24px;
+      align-items: end;
+      padding: 34px 0 24px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    h1,
+    h2,
+    h3 {
+      margin: 0;
+      line-height: 1.18;
+      letter-spacing: 0;
+    }
+
+    h1 {
+      font-size: clamp(2rem, 4vw, 3.8rem);
+      max-width: 820px;
+    }
+
+    h2 {
+      font-size: 1.45rem;
+      margin-bottom: 16px;
+    }
+
+    h3 {
+      font-size: 1rem;
+      margin-bottom: 8px;
+    }
+
+    p {
+      margin: 0 0 12px;
+      color: var(--muted);
+    }
+
+    code {
+      background: #edf2f7;
+      border: 1px solid #d8e2ec;
+      border-radius: 5px;
+      padding: 0.08rem 0.28rem;
+      font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+      font-size: 0.92em;
+      color: #243b53;
+    }
+
+    .eyebrow {
+      color: var(--blue);
+      font-weight: 750;
+      text-transform: uppercase;
+      font-size: 0.78rem;
+      letter-spacing: 0.08em;
+      margin-bottom: 8px;
+    }
+
+    .summary {
+      max-width: 760px;
+      font-size: 1.08rem;
+    }
+
+    .license {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 12px 14px;
+      min-width: 220px;
+      box-shadow: var(--shadow);
+    }
+
+    main {
+      display: grid;
+      gap: 24px;
+      margin-top: 24px;
+    }
+
+    section,
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 22px;
+      box-shadow: var(--shadow);
+    }
+
+    .two-col {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 18px;
+    }
+
+    .three-col {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 14px;
+    }
+
+    .steps {
+      counter-reset: step;
+      display: grid;
+      gap: 12px;
+      margin-top: 14px;
+    }
+
+    .step {
+      position: relative;
+      padding: 14px 14px 14px 54px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fbfdff;
+      min-height: 70px;
+    }
+
+    .step::before {
+      counter-increment: step;
+      content: counter(step);
+      position: absolute;
+      left: 14px;
+      top: 14px;
+      display: grid;
+      place-items: center;
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      background: var(--blue);
+      color: #fff;
+      font-weight: 750;
+    }
+
+    .workflow {
+      overflow-x: auto;
+      padding-bottom: 4px;
+    }
+
+    .flow-grid {
+      min-width: 980px;
+      display: grid;
+      grid-template-columns: 170px 42px 170px 42px 170px 42px 170px 42px 170px;
+      grid-template-rows: auto auto auto;
+      gap: 12px 0;
+      align-items: center;
+    }
+
+    .node {
+      min-height: 98px;
+      border: 2px solid var(--line);
+      border-radius: 8px;
+      background: #fff;
+      padding: 13px;
+    }
+
+    .node strong {
+      display: block;
+      margin-bottom: 5px;
+      font-size: 0.94rem;
+    }
+
+    .node span {
+      display: block;
+      color: var(--muted);
+      font-size: 0.82rem;
+      line-height: 1.35;
+    }
+
+    .node.ba { border-color: var(--blue); }
+    .node.design { border-color: var(--violet); }
+    .node.sa { border-color: var(--teal); }
+    .node.tl { border-color: var(--gold); }
+    .node.dev { border-color: var(--green); }
+    .node.qa { border-color: var(--red); }
+
+    .arrow {
+      color: var(--muted);
+      font-weight: 800;
+      text-align: center;
+      font-size: 1.4rem;
+    }
+
+    .branch {
+      grid-column: 1 / -1;
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 12px;
+      margin-top: 4px;
+    }
+
+    .branch-card {
+      border: 1px dashed var(--line);
+      border-radius: 8px;
+      padding: 12px;
+      background: #fbfdff;
+    }
+
+    .branch-card strong {
+      display: block;
+      margin-bottom: 5px;
+    }
+
+    .track-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 16px;
+    }
+
+    .track {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 16px;
+      background: #fbfdff;
+    }
+
+    .track ul,
+    .compact-list {
+      margin: 8px 0 0;
+      padding-left: 19px;
+      color: var(--muted);
+    }
+
+    .track li,
+    .compact-list li {
+      margin: 4px 0;
+    }
+
+    .tag-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 7px;
+      margin-top: 10px;
+    }
+
+    .tag {
+      display: inline-flex;
+      align-items: center;
+      min-height: 26px;
+      border: 1px solid #c8d6e5;
+      border-radius: 999px;
+      background: #f1f6fb;
+      color: #294d70;
+      padding: 3px 9px;
+      font-size: 0.82rem;
+      font-weight: 650;
+      white-space: nowrap;
+    }
+
+    .table-wrap {
+      overflow-x: auto;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      min-width: 760px;
+      background: #fff;
+    }
+
+    th,
+    td {
+      padding: 11px 12px;
+      border-bottom: 1px solid var(--line);
+      text-align: left;
+      vertical-align: top;
+    }
+
+    th {
+      background: #edf4fb;
+      color: #243b53;
+      font-size: 0.86rem;
+    }
+
+    td {
+      color: var(--muted);
+      font-size: 0.92rem;
+    }
+
+    tr:last-child td {
+      border-bottom: 0;
+    }
+
+    .callout {
+      border-left: 4px solid var(--blue);
+      background: #eef6ff;
+      padding: 14px 16px;
+      border-radius: 0 8px 8px 0;
+    }
+
+    .recipe-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 16px;
+    }
+
+    .recipe {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fbfdff;
+      padding: 16px;
+    }
+
+    .recipe ol {
+      margin: 10px 0 0;
+      padding-left: 22px;
+      color: var(--muted);
+    }
+
+    .recipe li {
+      margin: 7px 0;
+    }
+
+    .command-block {
+      display: block;
+      margin: 8px 0;
+      padding: 10px 12px;
+      border: 1px solid #d8e2ec;
+      border-radius: 8px;
+      background: #edf2f7;
+      color: #243b53;
+      overflow-x: auto;
+      white-space: pre;
+    }
+
+    .footer-note {
+      margin-top: 24px;
+      color: var(--muted);
+      font-size: 0.9rem;
+    }
+
+    @media (max-width: 840px) {
+      header,
+      .two-col,
+      .three-col,
+      .track-grid,
+      .recipe-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .license {
+        min-width: 0;
+      }
+
+      section,
+      .panel {
+        padding: 18px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <header>
+      <div>
+        <div class="eyebrow">Claude Code SDLC plugin</div>
+        <h1>evo-talos Devkit Usage Guide</h1>
+        <p class="summary">
+          Use this kit to turn product intent, existing code, or design artifacts into a controlled SDLC flow with role agents, on-demand skills, guarded permissions, and QA evidence before work is marked done.
+        </p>
+      </div>
+      <aside class="license" aria-label="Project metadata">
+        <h3>Plugin</h3>
+        <p><strong>Package:</strong> <code>talos</code></p>
+        <p><strong>License:</strong> <code>Apache-2.0</code></p>
+        <p><strong>Entry commands:</strong> <code>/sdlc-init</code>, <code>/sdlc-loop</code></p>
+      </aside>
+    </header>
+
+    <main>
+      <section>
+        <h2>Big Picture Workflow</h2>
+        <p>
+          The kit is organized as a gated pipeline. Each role owns a narrow artifact set, and detailed behavior is loaded through skills only when that mode is needed.
+        </p>
+
+        <div class="workflow" role="img" aria-label="Workflow diagram from init to BA, design, architecture, planning, development, deployment, QA, and iteration.">
+          <div class="flow-grid">
+            <div class="node ba">
+              <strong>1. Initialize</strong>
+              <span>Run <code>/sdlc-init</code> to inject kit rules and safer project settings.</span>
+            </div>
+            <div class="arrow">-&gt;</div>
+            <div class="node ba">
+              <strong>2. Requirements</strong>
+              <span>BA ingests PRD, SRS, external docs, folders, augmentations, or brownfield evidence.</span>
+            </div>
+            <div class="arrow">-&gt;</div>
+            <div class="node design">
+              <strong>3. Design path</strong>
+              <span>Figma is extracted, mapped, created, imported, revised, or incorporated.</span>
+            </div>
+            <div class="arrow">-&gt;</div>
+            <div class="node sa">
+              <strong>4. Architecture</strong>
+              <span>SA designs or extracts architecture, ADRs, APIs, data contracts, and instrumentation.</span>
+            </div>
+            <div class="arrow">-&gt;</div>
+            <div class="node tl">
+              <strong>5. Plan</strong>
+              <span>TL creates task breakdown, tracks, dependencies, and done criteria.</span>
+            </div>
+
+            <div class="branch">
+              <div class="branch-card">
+                <strong>Frontend track</strong>
+                <span>React Native, ReactJS, Flutter, Vue.js, Angular, Next.js.</span>
+              </div>
+              <div class="branch-card">
+                <strong>Backend web track</strong>
+                <span>Express, NestJS, FastAPI, Spring Boot, .NET Core C#, Gin, Fiber, Echo.</span>
+              </div>
+              <div class="branch-card">
+                <strong>Backend service track</strong>
+                <span>Microservice architecture with Go, Java Core, Kratos, event/queue/API contracts.</span>
+              </div>
+              <div class="branch-card">
+                <strong>QA track</strong>
+                <span>By-US cases, by-task cases, executable specs, runtime evidence, reports.</span>
+              </div>
+            </div>
+
+            <div class="node dev">
+              <strong>6. Implement</strong>
+              <span>BE/FE Devs choose coding-standard skills from SRS framework headers or detected brownfield stack.</span>
+            </div>
+            <div class="arrow">-&gt;</div>
+            <div class="node dev">
+              <strong>7. Deploy locally</strong>
+              <span>DevOps creates a test environment and deploy report with URLs, fixtures, and reset commands.</span>
+            </div>
+            <div class="arrow">-&gt;</div>
+            <div class="node qa">
+              <strong>8. Execute QA</strong>
+              <span>QA-Exec runs tests, validates UI tiers, captures artifacts, and routes failures.</span>
+            </div>
+            <div class="arrow">-&gt;</div>
+            <div class="node ba">
+              <strong>9. Iterate</strong>
+              <span>Changes return through BA/SA/TL synchronization instead of ad-hoc edits.</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section>
+        <h2>Basic Usage</h2>
+        <div class="steps">
+          <div class="step">
+            <h3>Install or enable the plugin</h3>
+            <p>Make the kit available to Claude Code as a plugin. The plugin contributes commands, agents, skills, rules, settings, and hooks.</p>
+          </div>
+          <div class="step">
+            <h3>Run <code>/sdlc-init</code> inside the target project</h3>
+            <p>The command injects the plugin guidance into project <code>AGENTS.md</code> by default for Codex, warns about conflicts, and skips Claude-specific <code>.claude</code> settings/hooks unless <code>--target claude</code> or <code>--target both</code> is supplied.</p>
+          </div>
+          <div class="step">
+            <h3>Provide the starting source</h3>
+            <p>Use a PRD, an existing SRS, a requirements folder, an external source, a Figma URL, or an existing codebase. The BA route depends on what exists.</p>
+          </div>
+          <div class="step">
+            <h3>Run <code>/sdlc-loop</code></h3>
+            <p>The Orchestrator dispatches the right role agents, checks gates, and moves tasks through planning, implementation, deployment, and QA.</p>
+          </div>
+          <div class="step">
+            <h3>Review gates and answer only blocking questions</h3>
+            <p>The kit halts for explicit approvals such as dependency choices, design confirmation, unresolved SRS questions, or missing external integration details.</p>
+          </div>
+        </div>
+      </section>
+
+      <section>
+        <h2>Operating Recipes</h2>
+        <p>
+          These are practical starting paths for common project states. The short prompts are intentionally plain; the kit reads the project artifacts and routes to the right BA, design, architecture, planning, development, deployment, and QA modes.
+        </p>
+
+        <div class="recipe-grid">
+          <article class="recipe">
+            <h3>Greenfield from requirement materials</h3>
+            <p>Use this when you are starting a new project from PRDs, feature notes, screenshots, exported docs, spreadsheets, or design links.</p>
+            <ol>
+              <li>Open the target project in Codex or Claude Code.</li>
+              <li>Run the initializer:
+                <code class="command-block">/sdlc-init</code>
+              </li>
+              <li>Create or use <code>docs/requirements/</code> in the target project.</li>
+              <li>Copy all requirement materials into <code>docs/requirements/</code>. Good file names are explicit, for example <code>product-brief.md</code>, <code>payment-flow.md</code>, <code>admin-dashboard-notes.md</code>, or <code>figma-links.md</code>.</li>
+              <li>Prompt Claude Code:
+                <code class="command-block">start project</code>
+              </li>
+              <li>The kit should route to BA requirements-folder synthesis, ask only for missing blocking context, draft the SRS/user stories/FRs, then move through sign-off, architecture, planning, implementation, deployment, and QA.</li>
+            </ol>
+          </article>
+
+          <article class="recipe">
+            <h3>Greenfield with existing Figma</h3>
+            <p>Use this when Figma is already part of the product source and should influence the SRS instead of being treated as a later handoff.</p>
+            <ol>
+              <li>Run <code>/sdlc-init</code>.</li>
+              <li>Put the PRD and a Figma URL/page note into <code>docs/requirements/</code>.</li>
+              <li>Prompt:
+                <code class="command-block">start project</code>
+              </li>
+              <li>The kit should use Design-Flow A: extract confirmed Figma details before BA synthesis, then map Figma frames to SRS surfaces before sign-off.</li>
+              <li>If the Figma page is ambiguous, answer the page-scope question with the project design page name or Node ID.</li>
+            </ol>
+          </article>
+
+          <article class="recipe">
+            <h3>Existing SRS migration</h3>
+            <p>Use this when the project already has an SRS, user stories, or functional requirement documents and you want the kit to normalize them.</p>
+            <ol>
+              <li>Run <code>/sdlc-init</code>.</li>
+              <li>Place the SRS and related documents under <code>docs/requirements/</code>, or keep existing kit-shaped files under <code>docs/SRS.md</code>, <code>docs/user-stories/</code>, and <code>docs/frs/</code>.</li>
+              <li>Prompt:
+                <code class="command-block">continue SDLC from existing SRS</code>
+              </li>
+              <li>The kit should detect the existing structure, surface gaps or orphaned files, and continue from the earliest unsafe gate instead of regenerating everything blindly.</li>
+            </ol>
+          </article>
+
+          <article class="recipe">
+            <h3>Brownfield codebase onboarding</h3>
+            <p>Use this when source code exists but reliable requirements and architecture documentation are missing or outdated.</p>
+            <ol>
+              <li>Run <code>/sdlc-init</code>.</li>
+              <li>Keep the codebase in place. Add any known product notes to <code>docs/requirements/</code>.</li>
+              <li>Prompt:
+                <code class="command-block">start brownfield onboarding</code>
+              </li>
+              <li>The kit should run codebase archaeology, SA extract mode, and BA reverse-engineering. Extracted facts are tagged with confidence and confirmation questions before downstream work depends on them.</li>
+            </ol>
+          </article>
+
+          <article class="recipe">
+            <h3>New feature or scope change</h3>
+            <p>Use this after a project is already under the kit and a stakeholder adds scope or changes behavior.</p>
+            <ol>
+              <li>Add the new request under <code>docs/requirements/conversational-additions/</code> or provide it directly in the chat.</li>
+              <li>Prompt:
+                <code class="command-block">add this requirement to the project</code>
+              </li>
+              <li>The kit should run augmentation, produce an SRS diff, identify impacted architecture/design/tests, and ask for sign-off before implementation.</li>
+            </ol>
+          </article>
+
+          <article class="recipe">
+            <h3>Resume an interrupted run</h3>
+            <p>Use this when Claude Code stopped mid-flow, the machine restarted, or a previous run halted on a gate.</p>
+            <ol>
+              <li>Open the project again with the plugin enabled.</li>
+              <li>Prompt:
+                <code class="command-block">continue SDLC</code>
+              </li>
+              <li>The kit should inspect SRS status, open issues, master plan, task statuses, deploy reports, and QA reports, then choose the next safe action.</li>
+            </ol>
+          </article>
+        </div>
+      </section>
+
+      <section>
+        <h2>Use Cases By Entry Track</h2>
+        <div class="track-grid">
+          <article class="track">
+            <h3>Greenfield from one product document</h3>
+            <p>Use when the team has a PRD or raw requirement document but no structured kit artifacts yet.</p>
+            <ul>
+              <li>BA Mode A turns the document into SRS, user stories, and FR files.</li>
+              <li>SA creates architecture after sign-off.</li>
+              <li>TL creates the master plan and task files.</li>
+            </ul>
+          </article>
+
+          <article class="track">
+            <h3>Greenfield from a requirements folder</h3>
+            <p>Use when the source is already split across markdown docs, spreadsheets exported to text, or topic files.</p>
+            <ul>
+              <li>BA Mode F reads <code>docs/requirements/</code>.</li>
+              <li>Source coverage is preserved so requirements remain auditable.</li>
+              <li>Missing or conflicting fragments become open questions.</li>
+            </ul>
+          </article>
+
+          <article class="track">
+            <h3>Existing SRS with separate US/FR files</h3>
+            <p>Use when a project already has structured analysis artifacts and needs kit normalization.</p>
+            <ul>
+              <li>BA Mode B pairs the SRS with per-story and per-FR files.</li>
+              <li>Orphans, duplicate IDs, and incomplete anchors are surfaced.</li>
+              <li>Downstream agents consume the normalized artifact layout.</li>
+            </ul>
+          </article>
+
+          <article class="track">
+            <h3>External source ingestion</h3>
+            <p>Use when requirements live in Confluence, Notion, Jira, SharePoint, or another connected system.</p>
+            <ul>
+              <li>BA Mode C imports content through the available connector or documented source export.</li>
+              <li>Source provenance is recorded for auditability.</li>
+              <li>Re-ingestion supports controlled updates later.</li>
+            </ul>
+          </article>
+
+          <article class="track">
+            <h3>Brownfield reverse engineering</h3>
+            <p>Use when the codebase exists but reliable product and architecture documents do not.</p>
+            <ul>
+              <li>Codebase Archaeologist first produces reports from source and history.</li>
+              <li>SA extract mode creates provisional architecture with confidence tags.</li>
+              <li>BA Mode E derives SRS from confirmed code evidence and open questions.</li>
+            </ul>
+          </article>
+
+          <article class="track">
+            <h3>Augment an existing signed-off scope</h3>
+            <p>Use for change requests, iteration planning, or scope additions after initial sign-off.</p>
+            <ul>
+              <li>BA Mode D captures new requirements verbatim before synthesis.</li>
+              <li>Change synchronization decides which artifacts must be updated.</li>
+              <li>TL plans only the delta instead of redoing the whole project.</li>
+            </ul>
+          </article>
+        </div>
+      </section>
+
+      <section>
+        <h2>Design Tracks</h2>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Track</th>
+                <th>When to use</th>
+                <th>What the kit does</th>
+                <th>Primary artifacts</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>Design-Flow A: Figma already exists</strong></td>
+                <td>Product source includes Figma before SRS sign-off.</td>
+                <td>Extracts design requirements pre-BA, maps frames to SRS surfaces pre-sign-off, and skips post-sign-off design work when mapping is qualified.</td>
+                <td><code>docs/requirements/design-extracted/</code>, <code>docs/uiux/figma-mappings/</code>, SRS Design References.</td>
+              </tr>
+              <tr>
+                <td><strong>Design-Flow B: agent creates designs</strong></td>
+                <td>No existing Figma is available and the user approves agent-authored design.</td>
+                <td>Creates Foundation tokens/components, draws screens, runs canvas lint, and emits handoff artifacts for BA review.</td>
+                <td><code>docs/uiux/handoffs/</code>, <code>docs/uiux/refs/</code>, SRS Node IDs.</td>
+              </tr>
+              <tr>
+                <td><strong>Design-Flow C: agent drafts, human edits</strong></td>
+                <td>The user wants a starting Figma draft but expects a human designer or approver to modify it.</td>
+                <td>Creates initial designs, waits for human edits, then incorporates the new Figma version into a refreshed handoff.</td>
+                <td>Handoff, refs, reconciliation notes, design confirmation status.</td>
+              </tr>
+              <tr>
+                <td><strong>Revision and import</strong></td>
+                <td>BA completeness review fails, or existing pinned nodes must be converted into kit handoff form.</td>
+                <td>Revises Figma only when allowed, or imports read-only and records gaps.</td>
+                <td>Completeness reports, updated handoffs, open issues.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section>
+        <h2>Implementation Tracks</h2>
+        <div class="two-col">
+          <article class="panel">
+            <h3>Frontend development</h3>
+            <p>FE Dev chooses a coding-standard skill from the SRS <code>Frontend-Framework</code> header. On brownfield projects, the stack is detected from source and written back into the SRS before implementation.</p>
+            <div class="tag-row" aria-label="Frontend frameworks">
+              <span class="tag">React Native</span>
+              <span class="tag">ReactJS</span>
+              <span class="tag">Flutter</span>
+              <span class="tag">Vue.js</span>
+              <span class="tag">Angular</span>
+              <span class="tag">Next.js</span>
+            </div>
+            <ul class="compact-list">
+              <li>FE work requires confirmed design artifacts for UI tasks.</li>
+              <li>Instrumentation IDs come from SA's contract, not from ad-hoc selectors.</li>
+              <li>Implementation is checked against QA executable specs and visual specs.</li>
+            </ul>
+          </article>
+
+          <article class="panel">
+            <h3>Backend development</h3>
+            <p>BE Dev chooses both a backend track and framework from SRS headers. The kit separates request/response web backends from service-oriented microservice work.</p>
+            <div class="tag-row" aria-label="Backend frameworks">
+              <span class="tag">TypeScript Express</span>
+              <span class="tag">TypeScript NestJS</span>
+              <span class="tag">Python FastAPI</span>
+              <span class="tag">Java Spring Boot</span>
+              <span class="tag">.NET Core C#</span>
+              <span class="tag">Pure Golang</span>
+              <span class="tag">Java Core</span>
+              <span class="tag">Go Gin</span>
+              <span class="tag">Go Fiber</span>
+              <span class="tag">Go Echo</span>
+              <span class="tag">Go Kratos</span>
+            </div>
+            <ul class="compact-list">
+              <li><strong>Backend web:</strong> HTTP/API surfaces, auth, validation, status codes, and API contracts.</li>
+              <li><strong>Backend service:</strong> microservice boundaries, events, queues, data ownership, retries, and observability.</li>
+              <li>Contract drift between FRs and API contracts becomes an open issue, not a silent implementation choice.</li>
+            </ul>
+          </article>
+        </div>
+      </section>
+
+      <section>
+        <h2>Architecture, QA, And Deployment Tracks</h2>
+        <div class="three-col">
+          <article class="track">
+            <h3>Solution architecture</h3>
+            <p>SA runs only after the right gate for the mode.</p>
+            <ul>
+              <li><code>design</code>: greenfield architecture from signed-off SRS.</li>
+              <li><code>extract</code>: brownfield architecture from code evidence.</li>
+              <li><code>external-integration-adequacy</code>: fill integration interface details before sign-off.</li>
+            </ul>
+          </article>
+
+          <article class="track">
+            <h3>QA authoring</h3>
+            <p>QA-Author writes the test contract before QA-Exec runs it.</p>
+            <ul>
+              <li><code>by-us</code>: functional tests per User Story.</li>
+              <li><code>by-task</code>: API, structural, e2e, and rare task-functional tests.</li>
+              <li>Visual specs are generated for UI tasks before structural tests.</li>
+            </ul>
+          </article>
+
+          <article class="track">
+            <h3>QA execution</h3>
+            <p>QA-Exec verifies a deployed build, not just code existence.</p>
+            <ul>
+              <li>Checks deploy report, executable specs, selectors, and visual-spec freshness.</li>
+              <li>Runs functional, structural/token, and visual-diff tiers as required.</li>
+              <li>Reports pass, fail, blocked, and skipped separately with evidence.</li>
+            </ul>
+          </article>
+        </div>
+
+        <div class="callout" style="margin-top: 16px;">
+          <p><strong>Operational rule:</strong> A task should not move to done because code was written. It moves to done only when the correct deployment and QA evidence exists, with failures routed back to the responsible track.</p>
+        </div>
+      </section>
+
+      <section>
+        <h2>Artifacts You Will See</h2>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Artifact</th>
+                <th>Owner</th>
+                <th>Purpose</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><code>docs/SRS.md</code>, <code>docs/user-stories/</code>, <code>docs/frs/</code></td>
+                <td>BA</td>
+                <td>Signed-off product scope, behavior, acceptance scenarios, and functional requirements.</td>
+              </tr>
+              <tr>
+                <td><code>docs/architecture.md</code>, <code>docs/decisions/</code></td>
+                <td>SA</td>
+                <td>C4 architecture, API/data/async inventories, ADRs, and dependency decisions.</td>
+              </tr>
+              <tr>
+                <td><code>docs/instrumentation-contract.md</code></td>
+                <td>SA</td>
+                <td>Stable test IDs and accessibility identifiers shared by FE Dev and QA.</td>
+              </tr>
+              <tr>
+                <td><code>docs/uiux/</code></td>
+                <td>UI/UX Designer, BA, QA-Author</td>
+                <td>Figma mappings, handoffs, references, completeness reports, and visual specs.</td>
+              </tr>
+              <tr>
+                <td><code>docs/plan/</code></td>
+                <td>TL and Orchestrator</td>
+                <td>Master plan, phases, tasks, statuses, dependencies, and track routing.</td>
+              </tr>
+              <tr>
+                <td><code>docs/test-cases/</code></td>
+                <td>QA-Author</td>
+                <td>Markdown test cases linked to US, FR, task, and executable spec paths.</td>
+              </tr>
+              <tr>
+                <td><code>docs/deploy-reports/</code></td>
+                <td>DevOps</td>
+                <td>Local test environment URL, fixtures, env vars, health status, and reset commands.</td>
+              </tr>
+              <tr>
+                <td><code>docs/qa-reports/</code></td>
+                <td>QA-Exec</td>
+                <td>Runtime evidence, screenshots, traces, logs, visual diffs, and pass/fail routing.</td>
+              </tr>
+              <tr>
+                <td><code>docs/open-issues.md</code></td>
+                <td>Shared</td>
+                <td>Blocking questions, adequacy gaps, selector gaps, drift, and deferred decisions.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section>
+        <h2>How To Choose The Right Path</h2>
+        <div class="track-grid">
+          <article class="track">
+            <h3>If you have a PRD</h3>
+            <p>Start with BA ingestion. Include any Figma URLs and external integration notes in the source input.</p>
+          </article>
+          <article class="track">
+            <h3>If you have Figma first</h3>
+            <p>Use Design-Flow A. The kit extracts design facts before BA writes the SRS, then maps frames before sign-off.</p>
+          </article>
+          <article class="track">
+            <h3>If you have code first</h3>
+            <p>Use brownfield onboarding. Archaeology and SA extraction run before BA derives confirmed requirements.</p>
+          </article>
+          <article class="track">
+            <h3>If you are adding scope</h3>
+            <p>Use augmentation and iteration planning. The kit routes the delta through BA/SA/TL and only then to Dev/QA.</p>
+          </article>
+        </div>
+      </section>
+    </main>
+
+    <p class="footer-note">
+      This file is static documentation only. It is intentionally stored under <code>plugin/docs/</code> so it does not participate in Claude Code plugin runtime loading, hooks, commands, agent generation, or skill discovery.
+    </p>
+  </div>
+</body>
+</html>

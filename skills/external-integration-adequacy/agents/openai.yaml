@@ -1,0 +1,4 @@
+interface:
+  display_name: "External Integration Adequacy"
+  short_description: "Complete integration interface specs"
+  default_prompt: "Use this skill when SA validates external integration placeholders before SRS sign-off."

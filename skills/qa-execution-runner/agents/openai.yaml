@@ -1,0 +1,4 @@
+interface:
+  display_name: "QA Execution Runner"
+  short_description: "Run QA against deployed build"
+  default_prompt: "Use this skill when QA-Exec runs authored test cases against a deployed task and writes QA reports/artifacts."

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Figma Design Handoff"
+  short_description: "Create/import/revise/incorporate Figma designs and handoff artifacts"
+  default_prompt: "Use this skill for UI/UX Designer create, import, revise, and incorporate modes. Produce the Figma handoff, refs, SRS Design References updates, and plan-update while preserving page scoping, Foundation token use, and design lifecycle gates."
