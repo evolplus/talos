@@ -2,7 +2,7 @@
   "$schema": "https://anthropic.com/claude-code/plugin.schema.json",
   "name": "talos",
   "displayName": "evo-talos Devkit",
-  "version": "0.1",
+  "version": "0.2",
   "description": "End-to-end SDLC orchestration kit for Claude Code, including role agents, slash commands, skills, rules, and runtime hooks.",
   "author": {
     "name": "evolplus",

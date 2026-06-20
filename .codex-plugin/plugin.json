@@ -1,6 +1,6 @@
 {
   "name": "talos",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "End-to-end SDLC governance kit for Codex, including on-demand skills, role workflow guidance, artifacts, guardrails, and usage documentation.",
   "author": {
     "name": "evolplus",

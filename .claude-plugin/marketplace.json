@@ -11,7 +11,7 @@
       "name": "talos",
       "displayName": "evo-talos Devkit",
       "description": "End-to-end SDLC orchestration kit for Claude Code, including role agents, slash commands, skills, rules, and runtime hooks.",
-      "version": "0.1",
+      "version": "0.2",
       "source": "./"
     }
   ]
