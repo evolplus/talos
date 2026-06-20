@@ -6,6 +6,10 @@
 //   - docs/uiux/refs/<task-id>.md           (FE Dev's per-task design contract)
 //   - docs/uiux/visual-specs/<task-id>.md   (QA-Author by-task's UI spec)
 //   - docs/test-cases/by-task/<task-id>/    (QA-Author by-task's TC pack)
+// The refs and visual-spec files must also contain the implementation-level
+// design sections that prevent Figma field/item omission:
+//   - refs:        ## Design Element Manifest + ## Implementation Trace Matrix
+//   - visual spec: ## Design Element Assertions
 //
 // Motivation (per the 2026-06-04 FR-022 batch-UI silent-drop incident):
 //   The kit defines a multi-gate chain between `design-confirmed` and Phase
@@ -151,12 +155,14 @@ function checkArtifacts(projectRoot, worktreeRoot, taskId) {
       relPaths: ['docs/uiux/refs/' + taskId + '.md'],
       kind: 'file',
       doc: 'FE Dev produces this per task. parallel-execution.md §4 Step 5.',
+      requiredHeadings: ['Design Element Manifest', 'Implementation Trace Matrix'],
     },
     {
       label: 'QA-Author visual spec',
       relPaths: ['docs/uiux/visual-specs/' + taskId + '.md'],
       kind: 'file',
       doc: 'QA-Author by-task produces this. sub-agent-registry.md §3.4.',
+      requiredHeadings: ['Design Element Assertions'],
     },
     {
       label: 'QA-Author by-task TC pack',
@@ -167,6 +173,7 @@ function checkArtifacts(projectRoot, worktreeRoot, taskId) {
   ];
 
   const missing = [];
+  const incomplete = [];
   const found = [];
   for (const c of checks) {
     let hit = null;
@@ -194,10 +201,21 @@ function checkArtifacts(projectRoot, worktreeRoot, taskId) {
       }
       if (hit) break;
     }
-    if (hit) found.push({ ...c, hit });
-    else missing.push(c);
+    if (hit) {
+      const missingHeadings = [];
+      if (c.requiredHeadings && c.requiredHeadings.length && c.kind === 'file') {
+        let content = '';
+        try { content = fs.readFileSync(hit, 'utf8'); } catch { content = ''; }
+        for (const heading of c.requiredHeadings) {
+          const re = new RegExp('^#{2,6}\\s+' + heading.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\s*$', 'im');
+          if (!re.test(content)) missingHeadings.push(heading);
+        }
+      }
+      if (missingHeadings.length) incomplete.push({ ...c, hit, missingHeadings });
+      else found.push({ ...c, hit });
+    } else missing.push(c);
   }
-  return { missing, found };
+  return { missing, incomplete, found };
 }
 
 async function main() {
@@ -271,25 +289,33 @@ async function main() {
   if (!isUITask(meta)) process.exit(0);
 
   // UI task — verify the three artifacts.
-  const { missing } = checkArtifacts(projectRoot, worktreeRoot, taskId);
-  if (missing.length === 0) process.exit(0);
+  const { missing, incomplete } = checkArtifacts(projectRoot, worktreeRoot, taskId);
+  if (missing.length === 0 && incomplete.length === 0) process.exit(0);
 
   const role = (proposed.agent || '').toString().trim();
   const role_disp = role || 'fe-dev';
 
   process.stderr.write(
     'ui-task-readiness-guard: BLOCKED — plan-update.json proposing ' +
-    '`to_status: ready-for-deploy` for UI task ' + taskId + ' but mandatory closure artifacts are missing.\n\n' +
+    '`to_status: ready-for-deploy` for UI task ' + taskId + ' but mandatory closure artifacts are missing or incomplete.\n\n' +
     '  Missing artifacts (' + missing.length + '/3):\n' +
     missing.map(c =>
       '    - ' + c.label + '\n' +
       '        Expected: ' + c.relPaths.join(' OR ') + '\n' +
       '        Owner: ' + c.doc
     ).join('\n') + '\n\n' +
+    '  Incomplete artifacts (' + incomplete.length + '):\n' +
+    incomplete.map(c =>
+      '    - ' + c.label + '\n' +
+      '        Found: ' + c.hit + '\n' +
+      '        Missing sections: ' + c.missingHeadings.map(h => '## ' + h).join(', ')
+    ).join('\n') + '\n\n' +
     '  Per CLAUDE.md §10 Hard Rule "Design-implementation symmetry":\n' +
     '    For UI-bearing tasks, the absence of any of these artifacts is a\n' +
-    '    closure-blocker, NOT a vacuous pass. The kit cannot vacuously satisfy\n' +
-    '    discipline by skipping the dispatches that produce the gating artifacts.\n\n' +
+    '    closure-blocker, NOT a vacuous pass. The same applies to refs/visual\n' +
+    '    specs that exist but lack Design Element Manifest / Assertions sections.\n' +
+    '    The kit cannot satisfy discipline by skipping the field/item-level\n' +
+    '    contract that FE Dev must implement.\n\n' +
     '  Background — 2026-06-04 FR-022 batch-UI incident:\n' +
     '    T-168 closed `done` with zero of these artifacts on disk. FE Dev shipped\n' +
     '    3 of 4 DoD scopes; the 4th (batch UI) was silently dropped. Phase 22\n' +
@@ -298,7 +324,7 @@ async function main() {
     '    1. Halt the `ready-for-deploy` proposal.\n' +
     '    2. Surface the missing-artifact set in the Orchestrator return.\n' +
     '    3. Orchestrator dispatches the owning agent(s) to produce the artifact(s):\n' +
-    '         FE design contract → re-dispatch fe-dev (with Frozen step)\n' +
+    '         FE design contract → re-dispatch fe-dev (with Frozen step and manifest trace)\n' +
     '         Visual spec / by-task TC pack → dispatch qa-author in `by-task` mode\n' +
     '    4. Once the artifact set is complete, re-emit plan-update.json.\n\n' +
     '  Escape hatch (operator-explicit only): export CLAUDE_SKIP_UI_READINESS_CHECK=1\n' +

@@ -27,7 +27,7 @@ This phase mirrors Phase 3 (design completeness against the handoff) but operate
 
 #### Procedure
 
-1. **Read the design-confirmed handoff.** Open `docs/uiux/handoffs/<task-id>.md`. Build the implementation expectation list: every screen, every component, every state, every interaction, every confirm-dialog / toast / modal the handoff names.
+1. **Read the design-confirmed handoff and FE refs.** Open `docs/uiux/handoffs/<task-id>.md`, `docs/uiux/refs/<task-id>.md`, and `docs/uiux/visual-specs/<task-id>.md`. Build the implementation expectation list: every screen, every component, every state, every interaction, every confirm-dialog / toast / modal the handoff names, and every row in `## Design Element Manifest` / `## Design Element Assertions`.
 
 2. **Read the task DoD.** Open `docs/plan/<phase>/tasks/<task-id>.md`. Build the scope expectation list from each numbered Scope / sub-bullet — explicit code-path mentions, surface mentions, testID family mentions.
 
@@ -35,13 +35,16 @@ This phase mirrors Phase 3 (design completeness against the handoff) but operate
 
 4. **Cross-reference each expectation against the diff.**
    - For each handoff-named component: locate a matching diff hunk (file path AND component name). Missing match = gap.
+   - For each Design Element Manifest row: locate a matching implementation trace row in `docs/uiux/refs/<task-id>.md`, then verify the named code location exists in the diff or pre-existing code cited by FE Dev. Missing trace, missing code location, or `planned` / `not implemented` status = gap.
+   - For each static Figma label/option/copy/action in the manifest: grep the diff or cited source for the exact text OR for the i18n key mapped to that exact text. Missing exact copy/key = gap.
+   - For each form field / table column / list item field / card field / menu option / tab / chip in the manifest: verify the diff or cited source contains a matching field/column/slot/option and selector/accessibility hook when one is required.
    - For each DoD-scope code-path mention: locate a matching diff hunk. Missing match = gap (unless FE Dev's `plan-update.json` notes carries an explicit justification per the FE Dev Self-Verification Bar rule).
    - For each testID family declared in `docs/instrumentation-contract.md` for the surface: grep the diff for at least one occurrence. Zero occurrences for a family = gap.
 
-5. **Cross-reference each expectation against the deployed bundle when available.** If a deploy report exists for the task at `docs/deploy-reports/<task-id>.md` referencing a built artifact, grep the artifact for the expected testIDs. (Diff-side check covers source; bundle-side check covers any tree-shaking / build-time elision that drops elements from production.)
+5. **Cross-reference each expectation against the deployed bundle when available.** If a deploy report exists for the task at `docs/deploy-reports/<task-id>.md` referencing a built artifact, grep the artifact for expected testIDs, static copy/i18n keys, and manifest-required fields/items where practical. (Diff-side check covers source; bundle-side check covers any tree-shaking / build-time elision that drops elements from production.)
 
 6. **Compose the verdict.**
-   - **`qualified`** — every handoff-named element + every DoD scope is represented in the diff (or explicitly justified). Every contract-declared testID family appears in the diff or bundle.
+   - **`qualified`** — every handoff-named element, every Design Element Manifest row, every Design Element Assertion, and every DoD scope is represented in the diff/source (or explicitly justified where allowed). Every contract-declared testID family appears in the diff or bundle.
    - **`unqualified`** — one or more gaps. Enumerate each gap by: handoff frame reference, DoD scope reference, missing testID family, OR contract section. Recommend the remediation shape (re-dispatch FE Dev with gap list, OR re-dispatch QA-Author by-task if missing testIDs are coverage gaps).
 
 #### Output
@@ -50,7 +53,7 @@ Produce `docs/uiux/post-implementation-reports/<task-id>.md`:
 
 - Summary verdict: `qualified` or `unqualified`
 - Per-expectation verdict with specifics for any gaps
-- For `unqualified`: list every gap with handoff frame reference / DoD scope reference / file-path expected vs file-path observed
+- For `unqualified`: list every gap with handoff frame reference / Manifest ID / DoD scope reference / file-path expected vs file-path observed
 - Recommended next step: `re-dispatch-fe-dev` (with gap list) or `re-dispatch-qa-author-by-task` (when missing coverage)
 - For `qualified`: explicitly note "implementation matches design-confirmed handoff" so the next reader can audit the verdict
 
@@ -62,5 +65,7 @@ Produce `docs/uiux/post-implementation-reports/<task-id>.md`:
 
 - **Never produce `qualified` against an absent handoff.** If `docs/uiux/handoffs/<task-id>.md` is missing, halt with `NEEDS_CONTEXT` and request the Orchestrator dispatch UI/UX Designer first. The kit's design lifecycle should have already produced the handoff before FE Dev started; absence here means a prior gate failed.
 - **Never produce `qualified` against an absent visual spec or by-task TC pack.** The `ui-task-readiness-guard.cjs` hook should have blocked the upstream `plan-update.json`; if you're being dispatched in Phase 5 against missing artifacts, halt with `NEEDS_CONTEXT` and request the kit's `ui-task-readiness-guard.cjs` enforcement be re-applied.
+- **Never produce `qualified` when `docs/uiux/refs/<task-id>.md` lacks `## Design Element Manifest` or `## Implementation Trace Matrix`.** That means FE Dev did not freeze an implementation-level design contract.
+- **Never collapse manifest rows into component-level acceptance.** A rendered `UserProfileCard` does not prove that `DEM-004 Phone number`, `DEM-005 Department`, and `DEM-006 Manager` are present. Verify each row.
 - **Never invent justifications for missing diff coverage.** When a Scope has zero matching diff hunks AND FE Dev's `plan-update.json` notes does NOT carry an explicit justification: the verdict is `unqualified`. Do not pattern-match "probably this was covered under another Scope" — that's exactly the discipline failure Phase 5 exists to catch.
 - **You are a fresh reviewer, not the FE Dev's editor.** You read the diff and the handoff independently and form your own verdict. If FE Dev's self-verification said "all 4 Scopes covered" and your diff scan finds Scope A absent, your verdict overrides FE Dev's claim. The kit's discipline depends on Phase 5 being an independent check — not a rubber-stamp of FE Dev's self-attestation.

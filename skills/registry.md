@@ -28,7 +28,7 @@ Skills consulted by any agent or human committing or operating in the repo, rega
 | [`ba-mode-requirements-folder`](./ba-mode-requirements-folder/SKILL.md) | Ingestion **Mode F** setup (Phase 1.F) — greenfield; synthesize SRS from docs/requirements/ fragments | active |
 | [`ba-ingestion-pipeline`](./ba-ingestion-pipeline/SKILL.md) | Every ingestion dispatch after the mode skill — Phase 1.X common + Phase 1.Z delta + Phase 2 sign-off gate | active |
 | [`ba-design-completeness`](./ba-design-completeness/SKILL.md) | Phase 3 — design completeness verification against a UI/UX Designer handoff (post-sign-off, pre-FE) | active |
-| [`ba-post-implementation`](./ba-post-implementation/SKILL.md) | Phase 5 — post-implementation completeness verification of a UI task (mode: post-implementation) | active |
+| [`ba-post-implementation`](./ba-post-implementation/SKILL.md) | Phase 5 — post-implementation completeness verification of a UI task (mode: post-implementation), including Design Element Manifest row coverage against FE diff/source | active |
 | [`ba-iteration-planning`](./ba-iteration-planning/SKILL.md) | Phase 4 — iteration dispatch planning when a sign-off follows a non-empty SRS diff | active |
 | [`user-story-author`](./user-story-author/SKILL.md) | Writing or reviewing SRS §3.2 User Stories — Pre-conditions, Main Flow, Business Rules (Invariants), Post-conditions — during Phase 1 ingestion or Phase 2 sign-off | active |
 | [`acceptance-criteria-author`](./acceptance-criteria-author/SKILL.md) | DEPRECATED — renamed to `user-story-author`; kept as stub so legacy references resolve | deprecated |
@@ -60,7 +60,7 @@ Skills consulted by any agent or human committing or operating in the repo, rega
 |---|---|---|
 | [`qa-author-by-us`](./qa-author-by-us/SKILL.md) | QA-Author `by-us` mode — US-scoped functional TCs and executable specs, with Pass 1 / Pass 2 selector timing | active |
 | [`qa-author-by-task`](./qa-author-by-task/SKILL.md) | QA-Author `by-task` mode — task-scoped structural/API/e2e/rare functional cases after TL and design confirmation where needed | active |
-| [`visual-spec-author`](./visual-spec-author/SKILL.md) | QA-Author visual-spec generation for UI tasks — derives `docs/uiux/visual-specs/<task-id>.md` from UI/UX handoff and instrumentation contract | active |
+| [`visual-spec-author`](./visual-spec-author/SKILL.md) | QA-Author visual-spec generation for UI tasks — derives `docs/uiux/visual-specs/<task-id>.md` from UI/UX handoff, Design Element Manifest, Figma nodes, and instrumentation contract | active |
 | [`test-case-author`](./test-case-author/SKILL.md) | Writing markdown test cases for an assigned task | active |
 | [`ui-test-execution`](./ui-test-execution/SKILL.md) | Authoring executable specs alongside markdown TCs — cross-runner principles (TC↔spec mapping, selectors, fixtures, determinism, visual diff) | active |
 | [`playwright-author`](./playwright-author/SKILL.md) | Writing Playwright specs for web UI surfaces (the org default per `solution-defaults`) | active |
@@ -84,7 +84,7 @@ Skills consulted by any agent or human committing or operating in the repo, rega
 | Skill | When | Status |
 |---|---|---|
 | [`ui-ux-page-scoping`](./ui-ux-page-scoping/SKILL.md) | Mandatory Step 0 for every UI/UX Designer mode — resolve one Figma page root before reading or writing Figma | active |
-| [`figma-design-handoff`](./figma-design-handoff/SKILL.md) | UI/UX Designer `create` / `import` / `revise` / `incorporate` modes — Figma-backed handoff, refs, SRS Design References updates, and reconciliation | active |
+| [`figma-design-handoff`](./figma-design-handoff/SKILL.md) | UI/UX Designer `create` / `import` / `revise` / `incorporate` modes — Figma-backed handoff with Design Element Manifest, refs, SRS Design References updates, and reconciliation | active |
 | [`figma-canvas-layout`](./figma-canvas-layout/SKILL.md) | Authoring or revising Figma content (create / revise / incorporate modes) AND as a mandatory pre-handoff lint in every mode (including import). Enforces deterministic placement + 3-segment frame naming + overlap lint via Figma MCP. Blocks `create` / `revise` / `incorporate` handoff when top-level screen frames overlap or cannot be reviewed comfortably. | active |
 | [`figma-srs-mapping`](./figma-srs-mapping/SKILL.md) | UI/UX Designer `map` mode — pre-sign-off scan of provided Figma URL; maps frames to SRS surfaces; qualifies design at sign-off (Design-Flow A) | active |
 | [`design-system-author`](./design-system-author/SKILL.md) | Every UI/UX Designer dispatch — build a Foundation Figma page (tokens: color / typography / spacing / radius / elevation / motion; components: Button / Input / Card / Modal / Nav / etc. with all variants and states) BEFORE drawing screens; consume only from Foundation in screens; supports preset slugs, `from-figma`, and `none`; pre-handoff token-compliance lint flags hardcoded values and non-component buttons. Prevents inconsistent spacing / text sizes / button styles / element alignment drift across screens. | active |
@@ -110,7 +110,7 @@ Predefined Foundation starting points. Selected by SRS header `Design-Guideline:
 
 | Skill | When | Status |
 |---|---|---|
-| [`fe-framework-coding-standard`](./fe-framework-coding-standard/SKILL.md) | Implementing or reviewing frontend tasks after SRS `Frontend-Framework:` is declared - selects the matching React Native, ReactJS, Flutter, Vue.js, Angular, or Next.js coding standard without migrating the stack | active |
+| [`fe-framework-coding-standard`](./fe-framework-coding-standard/SKILL.md) | Implementing or reviewing frontend tasks after SRS `Frontend-Framework:` is declared - selects the matching React Native, ReactJS, Flutter, Vue.js, Angular, or Next.js coding standard and requires every Design Element Manifest field/item/copy/action to be implemented | active |
 
 ## By SDLC phase
 

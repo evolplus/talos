@@ -15,8 +15,8 @@ You are FE Dev implementing or reviewing UI code after the stack is declared in 
 
 ## Inputs and outputs
 
-- **Inputs:** task assignment, `docs/SRS.md` header `Frontend-Framework:`, SRS §3.4.2 UI Introspection Profile, SRS §3.4.5 Source Layout, SRS user story / FR / NFR IDs, design handoff, instrumentation contract, architecture decisions, current frontend source tree, installed framework versions and libraries.
-- **Outputs:** framework-native UI code that follows the project's existing architecture, names stable test selectors, handles loading / error / empty states, satisfies design tokens where available, and includes the appropriate unit / component / E2E updates.
+- **Inputs:** task assignment, `docs/SRS.md` header `Frontend-Framework:`, SRS §3.4.2 UI Introspection Profile, SRS §3.4.5 Source Layout, SRS user story / FR / NFR IDs, design handoff, Design Element Manifest, visual spec assertions, instrumentation contract, architecture decisions, current frontend source tree, installed framework versions and libraries.
+- **Outputs:** framework-native UI code that follows the project's existing architecture, names stable test selectors, implements every required Figma field/item/copy/action from the Design Element Manifest, handles loading / error / empty states, satisfies design tokens where available, and includes the appropriate unit / component / E2E updates.
 
 ## Framework selection
 
@@ -46,18 +46,24 @@ Read the matching reference before editing:
 ## Universal implementation procedure
 
 1. Inspect nearby code before writing. Follow the project's existing folder structure, naming, state library, API client, design token system, formatter, lint rules, and test runner.
-2. Map every changed screen/component to the task's SRS IDs and design handoff. If the design is missing a required state, implement the required product behavior and record the design gap in the handoff or open-issues flow.
-3. Keep boundaries explicit:
+2. Map every changed screen/component to the task's SRS IDs, design handoff, Design Element Manifest, and visual spec. If the design is missing a required state, implement the required product behavior and record the design gap in the handoff or open-issues flow.
+3. Build the screen/component from the manifest, not from memory of the screenshot:
+   - render every required form field, label, placeholder, helper/error target, required marker, and disabled/read-only variant;
+   - render every fixed button/link/nav/tab/chip/menu option and preserve Figma order;
+   - render every table/list/card field, column, slot, badge, status, and counter specified by the row/card template;
+   - render modal/toast/empty/loading/error/success copy and actions exactly when static;
+   - treat decorative exclusions as non-implementation unless they affect layout or accessibility.
+4. Keep boundaries explicit:
    - screen/page/container owns route params, data loading, permissions, and orchestration;
    - presentational components own layout and interaction events;
    - services/hooks/composables/providers own reusable data access;
    - shared components must stay feature-agnostic.
-4. Implement all user-observable states: initial, loading, success, empty, validation error, recoverable error, permission denied where applicable, disabled, and optimistic rollback if optimistic UI is used.
-5. Add or update stable selectors from `docs/instrumentation-contract.md`. Do not invent selector strings when the contract is absent; file the required contract gap and use the project convention only after it is declared.
-6. Preserve accessibility: semantic roles / labels, focus order, keyboard interaction for web, screen-reader labels for mobile, minimum touch targets, color contrast, and reduced-motion behavior when animations are present.
-7. Keep data flow predictable. Prefer derived state over duplicated state. Avoid effects/listeners/subscriptions that can run repeatedly without cleanup.
-8. Test at the right layer: unit tests for logic, component/widget tests for local UI behavior, and E2E tests for critical user flows. Update existing snapshots only when the visual change is intentional and reviewable.
-9. Run the project's format, lint, typecheck/analyze, and relevant tests. If a command cannot run locally, document the blocker and the narrower checks you did run.
+5. Implement all user-observable states: initial, loading, success, empty, validation error, recoverable error, permission denied where applicable, disabled, and optimistic rollback if optimistic UI is used.
+6. Add or update stable selectors from `docs/instrumentation-contract.md` and the Design Element Manifest. Do not invent selector strings when the contract is absent; file the required contract gap and use the project convention only after it is declared.
+7. Preserve accessibility: semantic roles / labels, focus order, keyboard interaction for web, screen-reader labels for mobile, minimum touch targets, color contrast, and reduced-motion behavior when animations are present.
+8. Keep data flow predictable. Prefer derived state over duplicated state. Avoid effects/listeners/subscriptions that can run repeatedly without cleanup.
+9. Test at the right layer: unit tests for logic, component/widget tests for manifest row presence, and E2E tests for critical user flows. Update existing snapshots only when the visual change is intentional and reviewable.
+10. Run the project's format, lint, typecheck/analyze, and relevant tests. If a command cannot run locally, document the blocker and the narrower checks you did run.
 
 ## Hard rules
 
@@ -66,6 +72,7 @@ Read the matching reference before editing:
 - Do not start FE implementation while `Frontend-Framework:` is missing, `TBD`, unsupported, or `multiple` without a matching §3.4.2 / §3.4.5 row.
 - Do not rewrite established project structure to match a reference file. The reference guides decisions inside the existing architecture.
 - Do not ship UI code without loading, error, empty, and accessibility states for the changed surface.
+- Do not ship UI code that omits a Design Element Manifest row. If the implementation intentionally cannot render a row, raise an open issue and keep the task in-progress.
 - Do not hardcode API URLs, secrets, tenant IDs, locale text that belongs in i18n, or selector IDs outside the instrumentation contract.
 - Do not bypass type errors, lints, or analyzer failures with suppressions unless the suppression is tightly scoped and justified in code.
 

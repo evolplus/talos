@@ -144,6 +144,8 @@ The loop is intentionally gate-driven. It should halt for unresolved SRS questio
 - `revise` - fix BA design-completeness findings.
 - `incorporate` - absorb human edits made directly in Figma.
 
+Design handoffs include a `Design Element Manifest` so FE Dev must implement every required Figma field, item, label, option, action, and state copy instead of matching only the rough layout.
+
 ### Frontend Tracks
 
 FE Dev selects the right coding-standard skill from SRS `Frontend-Framework`, or from brownfield source detection:

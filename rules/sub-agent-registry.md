@@ -111,7 +111,7 @@ The pre-flight Step 0 (orchestrator-operating-rules.md §9 Step 0) guarantees a 
 - **Output:**
   - Test cases under `docs/test-cases/by-us/<US-NNN>/` (by-us mode, US-scoped) and `docs/test-cases/by-task/<task-id>/` (by-task mode, task-scoped), linked to SRS User Story anchors (Main Flow steps, Business Rules, Post-conditions) and FR Error Handling rows. Test cases distinguish UI-level,
     API-level, and end-to-end coverage.
-  - For UI tasks: visual spec at `docs/uiux/visual-specs/<task-id>.md`
+  - For UI tasks: visual spec at `docs/uiux/visual-specs/<task-id>.md` with `## Design Element Assertions` covering every required Figma field/item/copy/action from the handoff manifest
 
 ### 3.5 Backend Developer (BE Dev)
 
@@ -134,8 +134,8 @@ The pre-flight Step 0 (orchestrator-operating-rules.md §9 Step 0) guarantees a 
 - **Output:**
   - Implementation + self-verification (unit tests pass, lint clean, task DoD met)
   - Per-task design contract under `docs/uiux/refs/<task-id>.md` and associated reference snapshots, frozen against the
-    user-confirmed Figma file version, before any UI code is written
-- **Exit criteria:** Self-verification passes; UI matches the linked User Story's Business Rules / Post-conditions and the per-task design contract;
+    user-confirmed Figma file version, before any UI code is written. The contract includes `## Design Element Manifest` and `## Implementation Trace Matrix`.
+- **Exit criteria:** Self-verification passes; every Design Element Manifest row is implemented and traced to code/test evidence; UI matches the linked User Story's Business Rules / Post-conditions and the per-task design contract;
   proposes task status `ready-for-deploy`
 
 ### 3.7 DevOps

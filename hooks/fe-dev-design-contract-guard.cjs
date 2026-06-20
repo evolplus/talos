@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 // .claude/hooks/fe-dev-design-contract-guard.cjs
 // PreToolUse hook: refuses FE Dev source writes when `docs/uiux/refs/<task-id>.md`
-// is absent or its frontmatter does not declare `Status: Frozen`.
+// is absent, its frontmatter does not declare `Status: Frozen`, or it lacks the
+// Design Element Manifest / Implementation Trace Matrix sections.
 //
 // Motivation (per the 2026-06-04 FR-022 batch-UI silent-drop incident):
 //   FE Dev's "Design Contract Hard Rule" — "Never start UI implementation while
@@ -14,8 +15,9 @@
 //   - Detect sub-agent context via the `.worktrees/fe-dev-<task-id>/` path segment.
 //   - On Write / Edit / MultiEdit / NotebookEdit to a frontend source path,
 //     extract <task-id>, look for `docs/uiux/refs/<task-id>.md` at worktree
-//     and project root, verify it exists AND its header declares `Status: Frozen`.
-//   - Refuse the write (exit 2) with a kit-aware message if either check fails.
+//     and project root, verify it exists, its header declares `Status: Frozen`,
+//     and it contains `## Design Element Manifest` + `## Implementation Trace Matrix`.
+//   - Refuse the write (exit 2) with a kit-aware message if any check fails.
 //
 // What this hook does NOT do:
 //   - Block non-FE-Dev contexts (BE Dev, QA-Exec, Orchestrator). Those are
@@ -124,6 +126,18 @@ function readsFrozen(content) {
   return /^\s*-?\s*\**Status\**\s*:\s*Frozen\b/im.test(headerBlob);
 }
 
+function missingRequiredHeadings(content) {
+  const required = ['Design Element Manifest', 'Implementation Trace Matrix'];
+  const missing = [];
+  if (typeof content !== 'string') return required;
+  for (const heading of required) {
+    const escaped = heading.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const re = new RegExp('^#{2,6}\\s+' + escaped + '\\s*$', 'im');
+    if (!re.test(content)) missing.push(heading);
+  }
+  return missing;
+}
+
 function checkDesignContract(projectRoot, taskId, worktreeRoot) {
   const candidates = [];
   if (worktreeRoot) candidates.push(path.join(worktreeRoot, 'docs', 'uiux', 'refs', taskId + '.md'));
@@ -132,16 +146,19 @@ function checkDesignContract(projectRoot, taskId, worktreeRoot) {
 
   let foundPath = null;
   let frozen = false;
+  let missingHeadings = [];
   for (const c of candidates) {
     try {
       if (fs.existsSync(c)) {
         foundPath = c;
         const content = fs.readFileSync(c, 'utf8');
-        if (readsFrozen(content)) { frozen = true; break; }
+        frozen = readsFrozen(content);
+        missingHeadings = missingRequiredHeadings(content);
+        if (frozen && missingHeadings.length === 0) break;
       }
     } catch { /* keep looking */ }
   }
-  return { foundPath, frozen, candidates };
+  return { foundPath, frozen, missingHeadings, candidates };
 }
 
 async function main() {
@@ -180,24 +197,31 @@ async function main() {
   const feSourcePath = candidates.find(isFrontendSourcePath);
   if (!feSourcePath) process.exit(0); // fe-dev cwd but writing docs / config / non-FE — pass
 
-  const { foundPath, frozen, candidates: lookupPaths } = checkDesignContract(
+  const { foundPath, frozen, missingHeadings, candidates: lookupPaths } = checkDesignContract(
     ctx.projectRoot, ctx.taskId, ctx.worktreeRoot
   );
 
-  if (frozen) process.exit(0);
+  if (frozen && missingHeadings.length === 0) process.exit(0);
 
-  const reason = foundPath
-    ? 'Found ' + foundPath + ' but its header does not declare `Status: Frozen`.'
-    : 'Did not find docs/uiux/refs/' + ctx.taskId + '.md at any of:\n' +
+  let reason;
+  if (!foundPath) {
+    reason = 'Did not find docs/uiux/refs/' + ctx.taskId + '.md at any of:\n' +
       lookupPaths.map(c => '    ' + c).join('\n');
+  } else if (!frozen) {
+    reason = 'Found ' + foundPath + ' but its header does not declare `Status: Frozen`.';
+  } else {
+    reason = 'Found ' + foundPath + ' and it is Frozen, but it is missing required sections: ' +
+      missingHeadings.map(h => '## ' + h).join(', ') + '.';
+  }
 
   process.stderr.write(
     'fe-dev-design-contract-guard: BLOCKED — FE Dev ' + toolName + ' on ' + feSourcePath + '.\n' +
     '  Task: ' + ctx.taskId + '\n' +
-    '  Reason: per-task design contract is not Frozen.\n' +
+    '  Reason: per-task design contract is not Frozen and content-complete.\n' +
     '  ' + reason + '\n\n' +
     '  Per .claude/agents/_templates/fe-dev.md § Design Contract Hard Rules:\n' +
-    '    "Never start UI implementation while `docs/uiux/refs/<task-id>.md` is `Draft`."\n\n' +
+    '    "Never start UI implementation while `docs/uiux/refs/<task-id>.md` is `Draft`."\n' +
+    '    The Frozen refs file must also include Design Element Manifest + Implementation Trace Matrix.\n\n' +
     '  Per CLAUDE.md §10 Hard Rules:\n' +
     '    "Design-implementation symmetry — artifact absence is a closure-blocker,\n' +
     '     not a vacuous pass."\n\n' +
@@ -206,7 +230,8 @@ async function main() {
     '    2. Use the Figma MCP server (read-only) to pull pinned nodes / tokens / snapshots.\n' +
     '    3. Verify the Figma file version matches the user-confirmed version in master plan.\n' +
     '    4. Write docs/uiux/refs/' + ctx.taskId + '.md with extracted tokens + node IDs +\n' +
-    '       snapshot references; set `Status: Frozen` once all checks pass.\n' +
+    '       snapshot references + Design Element Manifest + Implementation Trace Matrix;\n' +
+    '       set `Status: Frozen` once all checks pass.\n' +
     '    5. THEN proceed to source-code implementation.\n\n' +
     '  Escape hatch (non-UI FE tasks only): export CLAUDE_SKIP_DESIGN_CONTRACT_CHECK=1\n' +
     '  Document the rationale in the task file\'s Notes section.\n'

@@ -38,7 +38,7 @@ You operate under CLAUDE.md. Key sections you must follow:
 
 1. Implementation in your worktree, under the project's **frontend source root** (`frontend/`) only. All UI, client-side state, and frontend build code lives under `frontend/`. If SRS §3.4.5 Source Layout declares a single frontend app, write directly under `frontend/` (`frontend/src/**`); if it declares multiple apps, write under the matching sub-directory (`frontend/<app-slug>/**`, slug per §3.4.5 / architecture.md C4 container). Never under a backend root or a bare `web/` / `src/` at repo root — the `source-code-write-guard.cjs` hook blocks source writes outside the declared roots.
 2. Per-task design contract at `docs/uiux/refs/<task-id>.md` with associated reference snapshots under
-   `docs/uiux/refs/<task-id>/`. Status transitions Draft → Frozen before any UI implementation begins.
+   `docs/uiux/refs/<task-id>/`. Status transitions Draft → Frozen before any UI implementation begins. The refs file includes a Design Element Manifest and implementation trace matrix for every required Figma field/item/copy/action.
 3. Self-verification:
    - Unit / component tests pass
    - Lint clean
@@ -88,7 +88,7 @@ For every UI task, before writing implementation code:
 
 1. Confirm the task's design sub-status in master plan = `design-confirmed`. If not, halt and report — the
    Orchestrator should not have dispatched you.
-2. Read `docs/uiux/handoffs/<task-id>.md` and the user-confirmed Figma file version ID.
+2. Read `docs/uiux/handoffs/<task-id>.md`, `docs/uiux/visual-specs/<task-id>.md`, and the user-confirmed Figma file version ID. If the handoff or visual spec lacks `## Design Element Manifest` / `## Design Element Assertions`, halt and request UI/UX Designer or QA-Author regeneration; do not proceed with a component-only design contract.
 3. **Read the Figma scope from SRS §3.4.1** — `Figma-File-URL`, `Figma-Design-Page-Node-ID`, `Figma-File-Version`. These three together define the EXACT subtree you may read. Frames on other pages are out of scope; consume the design guideline through the confirmed handoff/refs contract and SRS `Design-Guideline:` source.
 4. Use the Figma MCP server (read-only) to:
    - Pull the current state of each pinned node (frame + variants if applicable). **Every pinned Node ID in SRS §3.4.1 MUST descend from `Figma-Design-Page-Node-ID`** — if a Node ID belongs to a different page (e.g., the PM accidentally pinned a Foundation-page node), file a `figma-cross-page-reference` open-issue and halt. Cross-page references break the kit's scoping invariant.
@@ -99,15 +99,28 @@ For every UI task, before writing implementation code:
      Mismatches are blockers — file `figma-design-guideline-divergence` open-issue per mismatch.
    - Export a reference snapshot per platform
    - Verify the Figma file version matches the confirmed version recorded in master plan
-5. Produce `docs/uiux/refs/<task-id>.md` containing:
+5. Verify the Design Element Manifest against live Figma and the visual spec:
+   - every manifest row maps to a Figma node, repeated template, or explicitly documented source;
+   - every visible, user-observable Figma text/field/item/action is either in the manifest or in decorative exclusions;
+   - exact static labels, placeholders, options, column headers, row/card field names, buttons, tabs, menu items, chips, modal/toast copy, and state copy match the visual spec;
+   - dynamic list/table/card rows preserve the designed field set and order, even when values come from API data.
+   If any field/item is missing from the manifest or visual spec, halt and route back to UI/UX Designer or QA-Author. Do not fill the gap by guessing.
+6. Produce `docs/uiux/refs/<task-id>.md` containing:
    - Header: `Figma-File-URL`, `Figma-Design-Page-Node-ID`, `Figma-Design-Page-Name`, `Figma-File-Version` — copied verbatim from SRS §3.4.1 so the contract is self-contained.
    - The pinned node IDs from SRS `## Design References` (every ID listed MUST descend from the recorded page Node ID — re-verify before freezing)
    - Extracted design tokens with explicit `Design-Guideline: <preset | from-figma | none>` annotation. For preset sources, the contract is "tokens conform to preset XYZ unless `## Foundation Changes` says otherwise." For `from-figma`, cite the extraction artifact and handoff `## Design System Source`.
+   - `## Design Element Manifest` copied from the handoff, with decorative exclusions.
+   - `## Implementation Trace Matrix`, one row per manifest entry, initially marked `planned` before coding and updated before completion:
+     ```markdown
+     | Manifest ID | Required Figma element | Code location | Selector / a11y hook | Test / visual assertion | Status |
+     |---|---|---|---|---|---|
+     | DEM-001 | Card number input label + placeholder | frontend/src/checkout/PaymentForm.tsx | `checkout-card-number` | component test `PaymentForm renders card fields` | planned |
+     ```
    - Component inventory
    - Reference snapshots stored under `docs/uiux/refs/<task-id>/`
-6. If you discover any drift between the handoff, the visual spec, the Figma file, or the SRS: halt and raise as a
+7. If you discover any drift between the handoff, the visual spec, the Figma file, or the SRS: halt and raise as a
    blocking issue per .claude/rules/change-synchronization.md §7. Do not start coding.
-7. When all checks pass: set `Status: Frozen` on `docs/uiux/refs/<task-id>.md` and proceed to implementation.
+8. When all checks pass: set `Status: Frozen` on `docs/uiux/refs/<task-id>.md` and proceed to implementation.
 
 ### Design Contract Hard Rules
 
@@ -117,6 +130,8 @@ For every UI task, before writing implementation code:
 - Never invent UI behavior not in the Figma node, the visual spec, or the SRS. "Looks better" is not a justification.
 - Design tokens extracted from Figma are the ground truth for spacing, color, and typography. Hardcoded values that
   disagree with tokens are a self-verification failure.
+- Never omit, merge away, rename, or reorder required Design Element Manifest rows during implementation unless the SRS or handoff explicitly says the element is responsive/conditional. Component-level resemblance is not enough; each field/item/copy/action must have a trace row and implementation evidence.
+- Never treat sample data as static copy unless the manifest marks it static. For dynamic tables/lists/cards, implement the designed field/column/slot set and order against real data.
 
 ### Using the Figma MCP Server
 
@@ -166,12 +181,20 @@ If you don't produce C4 artifacts, that's the kit's default — no obligation. T
 Before proposing `ready-for-deploy`:
 
 - **DoD-scope ↔ diff coherence (mandatory for multi-scope tasks).** Parse the task file's DoD section for every numbered Scope / sub-bullet. For each Scope, list the explicit code-path mentions (file paths, component names, exported symbols) or surface mentions (page route, modal name, testID family). Run `git diff main..HEAD` in your worktree and verify each Scope is represented by at least one diff hunk against a matching code path — OR explicitly justify in your `plan-update.json` `notes:` field why no file change is needed for that Scope (e.g., "Scope D is a TypeScript-type-only change; the runtime path that consumes the type was modified under Scope B"). A Scope with zero matching diff hunks AND no explicit justification = self-verification FAILURE; do NOT propose `ready-for-deploy`. This check is the structural defense against the 2026-06-04 FR-022 batch-UI silent drop (Scope A named 5 components; the worktree diff touched none of the 5 named code locations; FE Dev's prior self-verification passed because no machine-readable DoD-scope ↔ diff check existed).
+- **Design Element Manifest coverage (mandatory for UI tasks).** For every row in `docs/uiux/refs/<task-id>.md` `## Design Element Manifest`, update the `## Implementation Trace Matrix` with a concrete code location, selector/accessibility hook when applicable, and test/visual assertion. Then verify the implementation renders it:
+  - static labels/options/copy/buttons match exact text, order, and state from the manifest;
+  - forms render every designed field, helper/error message target, placeholder/default, required marker, and disabled/read-only variant;
+  - tables/lists/cards render every designed column/item field/slot, even when values are dynamic;
+  - nav/tabs/chips/menus render every fixed option/action from Figma;
+  - modals/toasts/empty/loading/error/success states render the designed copy and actions.
+  Any manifest row without implementation evidence = self-verification FAILURE; do NOT propose `ready-for-deploy`.
 - Every SRS User Story Business Rule / Post-condition linked to this task is demonstrably met (cross-reference `Linked US-IDs` in the task file; load `docs/user-stories/<US-ID>.md` for the Business Rules / Post-conditions and `docs/frs/<FR-ID>.md` for the FR-level rules + Error Handling)
 - Tests cover the criteria, not just code paths
 - Console is clean of warnings introduced by your change
 - The change works against the actual frozen API contract, not a mock
 - Every component listed in `docs/uiux/visual-specs/<task-id>.md` is implemented per its specified properties and
   states. **If `docs/uiux/visual-specs/<task-id>.md` does NOT exist for a UI task, this bar does NOT vacuously pass — halt and raise a `promoted` open-issue requesting QA-Author `by-task` dispatch.** The kit treats absent visual spec as a closure-blocker (`ui-task-readiness-guard.cjs` enforces at `plan-update.json` time); do not proceed past Self-Verification while the spec is missing.
+- Every `Design Element Assertions` row in `docs/uiux/visual-specs/<task-id>.md` is satisfied. A passing screenshot alone does not close this check unless the assertion is explicitly degraded to pixel/OCR verification.
 
 ## Tool Scope
 
