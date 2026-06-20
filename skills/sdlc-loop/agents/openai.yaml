@@ -1,0 +1,4 @@
+interface:
+  display_name: "SDLC Loop"
+  short_description: "Run the governed Evo Talos orchestration loop"
+  default_prompt: "Start the SDLC loop for this project."

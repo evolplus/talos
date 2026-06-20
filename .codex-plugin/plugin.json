@@ -35,9 +35,9 @@
     "privacyPolicyURL": "https://github.com/evolplus/talos",
     "termsOfServiceURL": "https://github.com/evolplus/talos",
     "defaultPrompt": [
-      "Start a governed SDLC project",
-      "Plan this brownfield onboarding",
-      "Review SDLC artifacts and gaps"
+      "Run sdlc-init for this project",
+      "Start the SDLC loop",
+      "Plan this brownfield onboarding"
     ],
     "brandColor": "#1C5D99",
     "screenshots": []

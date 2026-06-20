@@ -14,10 +14,10 @@ Use it when the cost of coordination mistakes, missing requirements, weak QA, or
 
 ## What This Plugin Does
 
-evo-talos turns Claude Code from a single coding assistant into a structured SDLC coordinator. It gives Claude a project-local operating model with:
+evo-talos turns Claude Code or Codex from a single coding assistant into a structured SDLC coordinator. It gives the assistant a project-local operating model with:
 
 - Role-based agents for BA, SA, TL, UI/UX Designer, BE Dev, FE Dev, DevOps, QA-Author, QA-Exec, and support roles.
-- Slash commands for project setup and autonomous SDLC progression.
+- Claude Code slash commands and Codex command-shim skills for project setup and autonomous SDLC progression.
 - Skills that load detailed instructions only when needed, reducing runtime token overhead.
 - Hooks that guard privacy, plan consistency, SRS sign-off, source-code writes, Docker scope, QA evidence, and dependency safety.
 - Artifact ownership rules so each role writes only the documents it owns.
@@ -37,17 +37,26 @@ Use this kit when you want Claude Code to help run a disciplined software delive
 
 ## Main Workflow
 
-1. Install or enable the plugin in Claude Code.
-2. Run `/sdlc-init` inside the target project.
+1. Install or enable the plugin in Claude Code or Codex.
+2. Initialize the target project:
+   - Claude Code: run `/sdlc-init`.
+   - Codex: prompt `Run sdlc-init`.
 3. Provide the starting source: PRD, SRS, requirements folder, external source, Figma URL, or existing codebase.
-4. Run `/sdlc-loop`.
+4. Start the loop:
+   - Claude Code: run `/sdlc-loop`.
+   - Codex: prompt `Start the SDLC loop` or `Run sdlc-loop`.
 5. Answer blocking questions only when the kit halts for required human context or approval.
 6. Review generated artifacts, deployment reports, and QA reports before accepting completion.
 
 The high-level flow is:
 
 ```text
-/sdlc-init
+Initialize:
+  Claude Code: /sdlc-init
+  Codex: Run sdlc-init
+Start or continue:
+  Claude Code: /sdlc-loop
+  Codex: Start the SDLC loop
   -> BA requirements ingestion and SRS sign-off
   -> UI/UX design extraction, mapping, creation, import, revision, or incorporation
   -> SA architecture, ADRs, integration adequacy, and instrumentation contracts
@@ -58,7 +67,19 @@ The high-level flow is:
   -> iteration or done
 ```
 
-## Commands
+## Commands And Codex Skill Entrypoints
+
+Claude Code loads command files from `commands/`, so it exposes `/sdlc-init`
+and `/sdlc-loop` as slash commands.
+
+Codex plugins currently use skills and starter prompts rather than plugin
+slash-command files. For Codex, the plugin provides equivalent command-shim
+skills:
+
+- `sdlc-init` - invoke with `Run sdlc-init`, `Run sdlc-init --dry-run`, or
+  `Initialize this project with Evo Talos`.
+- `sdlc-loop` - invoke with `Run sdlc-loop`, `Start project`, or
+  `Continue the SDLC loop`.
 
 ### `/sdlc-init`
 
@@ -89,7 +110,9 @@ What it does:
 - With `--target claude`, writes `CLAUDE.md`, merges original Claude settings into the project, and mirrors hook scripts into `.claude/hooks`.
 - With `--target both`, writes both `AGENTS.md` and `CLAUDE.md`, then applies Claude settings/hooks.
 
-Run `/sdlc-init` again after plugin updates when you want the target project to receive updated kit guidance.
+Run `/sdlc-init` again in Claude Code, or prompt `Run sdlc-init` in Codex,
+after plugin updates when you want the target project to receive updated kit
+guidance.
 
 ### `/sdlc-loop`
 
@@ -114,7 +137,7 @@ The loop is intentionally gate-driven. It should halt for unresolved SRS questio
 
 ### Design Tracks
 
-- `extract` - pre-BA Figma extraction into `docs/requirements/design-extracted/`.
+- `extract` - pre-BA Figma extraction into `docs/requirements/design-extracted/`, including screens, copy, flows, and Flow A design-guideline evidence such as palette, typography, spacing, radius, and component patterns.
 - `map` - pre-sign-off Figma to SRS mapping.
 - `create` - agent-authored Figma screens for approved Design-Flow B/C work.
 - `import` - read existing pinned Figma nodes and produce kit handoff artifacts.
@@ -182,9 +205,9 @@ Each role has ownership boundaries for these artifacts. The hooks and rules are 
 
 ## Repository Contents
 
-- `commands/` - slash commands, including `/sdlc-loop` and `/sdlc-init`.
+- `commands/` - Claude Code slash commands, including `/sdlc-loop` and `/sdlc-init`.
 - `agents/` - SDLC role agents, non-SDLC helper agents, and templates.
-- `skills/` - on-demand SDLC skills and the `evo-devkit-contract` skill converted from the original `CLAUDE.md`.
+- `skills/` - on-demand SDLC skills, Codex command shims (`sdlc-init`, `sdlc-loop`), and the `evo-devkit-contract` skill converted from the original `CLAUDE.md`.
 - `hooks/` - runtime guardrails plus `hooks/hooks.json` wired with `${CLAUDE_PLUGIN_ROOT}`.
 - `rules/` - operating rules and the original `CLAUDE.md` preserved as `rules/CLAUDE.md`.
 - `settings/` - original project-local Claude settings used by `/sdlc-init`.
@@ -242,6 +265,13 @@ codex plugin add talos@evo-talos
 ```
 
 Start a new Codex thread after installing so Codex loads the plugin skills.
+
+In that new Codex thread, use prompt-based entrypoints:
+
+```text
+Run sdlc-init
+Start the SDLC loop
+```
 
 ## Validate
 

@@ -1,0 +1,4 @@
+interface:
+  display_name: "SDLC Init"
+  short_description: "Initialize the current project with Evo Talos"
+  default_prompt: "Run sdlc-init for this project."

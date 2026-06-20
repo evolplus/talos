@@ -10,7 +10,7 @@ Presets encode a single answer per company / product family / domain so every UI
 
 ## Selection rule
 
-The SRS header `Design-Guideline:` field declares which preset the project consumes. Values are folder names under `presets/` (e.g., `modern-saas-admin`, `ios-consumer`, `default`). Value `none` is permitted for projects authoring from scratch — the Designer falls back to the SKILL.md defaults.
+The SRS header `Design-Guideline:` field declares which Foundation source the project consumes. Preset values are folder names under `presets/` (e.g., `modern-saas-admin`, `ios-consumer`, `default`). Value `from-figma` is permitted for Design-Flow A when `figma-requirements-extraction` found enough palette / typography / spacing / radius evidence in the provided Figma file. Value `none` is permitted for projects authoring from scratch — the Designer falls back to the SKILL.md defaults.
 
 BA Phase 1.X step 10 prompts for the value at SRS sign-off time when the SRS has any UI surface. The choice cannot change post-sign-off without an SRS revert (the Foundation tokens are downstream-load-bearing for FE Dev's `docs/uiux/refs/<task-id>.md` design contract and QA-Author's `docs/uiux/visual-specs/<task-id>.md`).
 

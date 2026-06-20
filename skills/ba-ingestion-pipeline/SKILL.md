@@ -172,43 +172,52 @@ You are the BA and you have finished a mode-specific setup skill (Mode A/B/C/D/E
    - **Design-Flow A means BA never calls `create` mode.** Creation is reserved for Flow B/C user-confirmed dispatches. If `map` returns `Mapping-Status: gaps`, the resolution is PM-side (add screens to Figma OR reduce SRS scope) — NOT auto-`create`.
    - **The `Design-Flow:` header value is immutable per SRS version.** Changing it (e.g., partway through implementation the user wants Flow C instead of B) is an iteration trigger; Phase 1.Z handles it.
 
-10b. **Design-Guideline selection (mandatory when SRS has any UI surface).** Runs immediately after step 10 — the two header fields (`Design-Flow:`, `Design-Guideline:`) are paired and set in the same Phase 1.X pass. Determines which Foundation preset the UI/UX Designer applies in `create` / `import` / `revise` / `incorporate` modes; downstream-load-bearing for FE Dev's design contract and QA-Author's visual spec.
+10b. **Design-Guideline selection (mandatory when SRS has any UI surface).** Runs immediately after step 10 — the two header fields (`Design-Flow:`, `Design-Guideline:`) are paired and set in the same Phase 1.X pass. Determines which Foundation source the UI/UX Designer applies in `create` / `import` / `revise` / `incorporate` modes; downstream-load-bearing for FE Dev's design contract and QA-Author's visual spec.
 
    **Skip when `Design-Flow: N/A`.** No UI surface → set `Design-Guideline: N/A` and exit this step.
 
    **Enumerate available presets.** List the immediate child folders under `.claude/skills/design-system-author/references/presets/` excluding `_template/` and `README.md`. Each child folder is a valid preset slug. Read each preset's `preset.md` § "When to use" to know what the preset is for.
 
+   **Inspect Flow A design-extracted evidence.** When `Design-Flow: A` and a `docs/requirements/design-extracted/<figma-file-id>-*.md` file exists, read the latest file for each captured Figma URL and inspect `## Section 6 — Design guideline extraction (Flow A)`. This section may recommend `Candidate Design-Guideline: from-figma` when the design itself carries enough token evidence.
+
    **Branch on what you find.**
 
-   **Case 10b.A — SRS source mentioned a preset slug → use it.** Grep the upstream artifact(s) you ingested for a `Design-Guideline:`, `Design Preset:`, `Foundation:` or similar declaration. If a value matches an available preset slug exactly → set SRS header `Design-Guideline: <slug>` and proceed (no NEEDS_CONTEXT needed).
+   **Case 10b.A — SRS source declared a Foundation source → use it.** Grep the upstream artifact(s) you ingested for a `Design-Guideline:`, `Design Preset:`, `Foundation:` or similar declaration.
+   - If a value matches an available preset slug exactly → set SRS header `Design-Guideline: <slug>` and proceed (no NEEDS_CONTEXT needed).
+   - If the value is `from-figma` and `Design-Flow: A` has a design-extracted artifact with Section 6 token evidence → set SRS header `Design-Guideline: from-figma` and proceed.
+   - If the value is `from-figma` but there is no Flow A extraction evidence → file OQ category `design-guideline-figma-extraction-missing` and block sign-off until extraction runs.
 
-   **Case 10b.B — Brand-default match found → use it.** Some upstream contexts imply a default without naming it (e.g., the SRS is for an admin-tooling project → `modern-saas-admin` is the natural default). When the project description matches a preset's `preset.md` § "When to use" unambiguously AND there's no contradicting signal, set the header to the matching preset slug. Document the match reasoning in `## Changelog` so the choice is auditable.
+   **Case 10b.B — Flow A extraction recommends `from-figma` → use it.** If `Design-Flow: A` and the latest design-extracted artifact reports `Candidate Design-Guideline: from-figma` with `Confidence: high` or `Confidence: medium`, set SRS header `Design-Guideline: from-figma`. Document the artifact path, Figma version, and evidence summary in `## Changelog`, e.g., `Design-Guideline from Flow A extraction: colors + typography + spacing + radius inferred from docs/requirements/design-extracted/<file>.md (confidence: medium).`
 
-   **Case 10b.C — Ambiguous or no signal → halt with NEEDS_CONTEXT.**
+   **Case 10b.C — Brand-default match found → use it.** Some upstream contexts imply a default without naming it (e.g., the SRS is for an admin-tooling project → `modern-saas-admin` is the natural default). When the project description matches a preset's `preset.md` § "When to use" unambiguously AND there's no contradicting signal, set the header to the matching preset slug. Document the match reasoning in `## Changelog` so the choice is auditable.
+
+   **Case 10b.D — Ambiguous or no signal → halt with NEEDS_CONTEXT.**
 
    ```
    Status: NEEDS_CONTEXT
-   Reason: SRS has UI surfaces; Design-Guideline preset must be chosen.
-   Question: Which design preset should the UI/UX Designer apply as the Foundation?
+   Reason: SRS has UI surfaces; Design-Guideline Foundation source must be chosen.
+   Question: Which design guideline should the UI/UX Designer apply as the Foundation?
    Options:
      [<slug-1>] <preset-1 display name> — <preset.md § When to use, one-line summary>
      [<slug-2>] <preset-2 display name> — <one-line>
+     [from-figma] Use Flow A design evidence — only available when a design-extracted artifact exists and Section 6 lists palette / typography / spacing / radius evidence.
      [none] No preset — Designer authors Foundation from design-system-author SKILL.md defaults. Use ONLY when no preset is a reasonable starting point AND the project has bandwidth to author tokens from scratch.
    Recommended: <slug closest to the project context based on SRS §3.1 domain + §3.5 integration set>
    Confidence: <high | medium | low>
    Justification: <one-line tying the recommendation to a specific SRS signal>
    ```
 
-   Build the options list dynamically from the enumeration above — do NOT hardcode preset slugs. The list of available presets evolves over time (new presets added; deprecated ones removed); the dispatch must reflect on-disk state.
+   Build the preset options list dynamically from the enumeration above — do NOT hardcode preset slugs. Include `from-figma` only when Flow A extraction evidence exists. The list of available presets evolves over time (new presets added; deprecated ones removed); the dispatch must reflect on-disk state.
 
-   On re-dispatch with the user's choice: set SRS header `Design-Guideline: <slug>` (or `none`). Continue to Phase 1.Z.
+   On re-dispatch with the user's choice: set SRS header `Design-Guideline: <slug>` (or `from-figma` / `none`). Continue to Phase 1.Z.
 
    **Hard rules for step 10b.**
 
    - **Guideline selection is paired with Flow selection.** When step 10 halts on Flow B/C choice and step 10b would also halt, batch both questions in a single NEEDS_CONTEXT to minimize round-trips.
    - **`Design-Guideline:` is immutable per SRS version.** Token values flow downstream to FE Dev / QA-Author / DevOps bundle-grep; changing the guideline mid-project is an iteration trigger (Phase 1.Z handles it) and requires a Foundation-page refactor in Figma.
+   - **`from-figma` is allowed only for Design-Flow A.** It must cite a design-extracted artifact whose Section 6 covers colors plus either typography or at least two of spacing, radius, elevation, or component pattern evidence. If evidence is low-confidence or contradictory, halt for operator choice instead of guessing.
    - **`none` is the explicit opt-out.** A blank or `TBD` value at sign-off blocks Phase 2 sign-off — be deliberate. Picking `none` is fine when there's a reason; leaving the field unset is not.
-   - **Preset existence at the chosen slug is required at sign-off.** If the user picks a slug that doesn't exist on disk, Phase 2 step 3.5 (mapping gate sibling) refuses sign-off until either the preset is created OR the user picks an existing slug.
+   - **Preset existence at the chosen slug is required at sign-off.** If the user picks a slug that doesn't exist on disk, Phase 2 step 3.6 refuses sign-off until either the preset is created OR the user picks an existing slug.
 
 10c. **Frontend-Framework selection (mandatory when SRS has frontend source or UI surfaces).** Runs after `Design-Flow:` / `Design-Guideline:` selection. This field is the source of truth FE Dev uses to pick the matching `fe-framework-coding-standard` reference; FE Dev must not infer a different framework locally from preference or ad-hoc package discovery.
 
@@ -453,13 +462,21 @@ Don't write more than this. Specifically, do NOT propose how to handle each delt
 
    This check is procedural — BA reads the mapping artifact and applies the four sub-checks. Step 3.5 is SKIPPED when `Design-Flow:` is `B`, `C`, or `N/A`. For Flow B/C, the post-sign-off design lifecycle (`.claude/rules/parallel-execution.md` §4) handles design qualification.
 
-3.6. **Design-Guideline preset gate (strict — runs whenever SRS has any UI surface).** Per CLAUDE.md §10 hard rule, when SRS header `Design-Guideline:` is set to a preset slug:
+3.6. **Design-Guideline gate (strict — runs whenever SRS has any UI surface).** Per CLAUDE.md §10 hard rule, SRS header `Design-Guideline:` must resolve to a valid Foundation source:
 
-   1. **Preset existence.** Verify `.claude/skills/design-system-author/references/presets/<slug>/` exists on disk AND contains all required files (`preset.md`, `tokens.json`, `typography.md`, `components.md`, `layout-grid.md`). Missing folder OR missing required file → file OQ with category `design-guideline-preset-missing` and block sign-off; the user must either (a) create the preset OR (b) change `Design-Guideline:` to an existing slug OR (c) set `none` (opt-out).
+   1. **Header completeness.** If `Design-Guideline:` is `TBD`, empty, or missing AND SRS has UI surfaces → file OQ with category `design-guideline-undeclared` and block sign-off. Phase 1.X step 10b should have set this; reaching Phase 2 with the field unset signals a Phase 1.X step-10b failure that the user must resolve.
 
-   2. **Header completeness.** If `Design-Guideline:` is `TBD` or empty AND SRS has UI surfaces → file OQ with category `design-guideline-undeclared` and block sign-off. Phase 1.X step 10b should have set this; reaching Phase 2 with the field unset signals a Phase 1.X step-10b failure that the user must resolve.
+   2. **Preset existence.** When the value is a preset slug, verify `.claude/skills/design-system-author/references/presets/<slug>/` exists on disk AND contains all required files (`preset.md`, `tokens.json`, `typography.md`, `components.md`, `layout-grid.md`). Missing folder OR missing required file → file OQ with category `design-guideline-preset-missing` and block sign-off; the user must either (a) create the preset OR (b) change `Design-Guideline:` to an existing slug OR (c) set `from-figma` if Flow A evidence qualifies OR (d) set `none` (opt-out).
 
-   3. **`none` opt-out.** Value `none` is permitted (Designer authors Foundation from SKILL.md defaults). Document the rationale in `## Changelog` so the choice is auditable. No OQ filed.
+   3. **`from-figma` evidence gate.** Value `from-figma` is permitted only when all are true:
+      - `Design-Flow: A`.
+      - At least one `docs/requirements/design-extracted/<figma-file-id>-*.md` file exists for the captured Figma URL.
+      - The latest extraction contains `## Section 6 — Design guideline extraction (Flow A)`.
+      - Section 6 reports `Candidate Design-Guideline: from-figma`.
+      - Evidence covers colors plus either typography OR at least two of spacing, radius, elevation, component pattern evidence, with confidence `high` or `medium`.
+      Missing or low-confidence evidence → file OQ category `design-guideline-figma-extraction-missing` or `design-guideline-figma-extraction-low-confidence` and block sign-off.
+
+   4. **`none` opt-out.** Value `none` is permitted (Designer authors Foundation from SKILL.md defaults). Document the rationale in `## Changelog` so the choice is auditable. No OQ filed.
 
    This check is procedural — Step 3.6 is SKIPPED when `Design-Guideline:` is `N/A` (no UI surface). The kit does not currently ship a write-time hook for this gate; the Phase 2 BA check is the authoritative gate.
 

@@ -56,10 +56,10 @@ Load these skills when their condition applies:
 ## Common Procedure
 
 1. Run `ui-ux-page-scoping` and record the resolved page root.
-2. Run or verify `design-system-author` Foundation before screen work. Screens must consume Foundation tokens/components rather than hardcoded one-off styling.
+2. Run or verify `design-system-author` Foundation before screen work. The Foundation source comes from SRS `Design-Guideline:`: preset slug, `from-figma`, or `none`. Screens must consume Foundation tokens/components rather than hardcoded one-off styling.
 3. Read the relevant US/FR files. Build the required surface/state/platform matrix from SRS §3.4.1, user-story Main Flow, Business Rules, Post-conditions, and FR Error Handling.
 4. Perform the mode-specific procedure below.
-5. Run `figma-canvas-layout` lint on the scoped page and fix blocking layout issues when the mode permits Figma writes.
+5. Run `figma-canvas-layout` lint on the scoped page and fix blocking layout issues when the mode permits Figma writes. Do not mark handoff ready when `create` / `revise` / `incorporate` leaves overlapping top-level screen frames.
 6. Produce the handoff with enough detail for BA completeness and QA visual-spec authoring.
 7. Update only the SRS fields owned by UI/UX Designer: Design References Node IDs, Figma URL/page metadata, Visual-Critical, and design sub-status.
 8. Commit changes and emit `plan-update.json`.
@@ -113,6 +113,7 @@ Use when a human approver/designer edited Figma directly after handoff.
 - Mode: `create` | `import` | `revise` | `incorporate`.
 - Figma file URL, version, last-modified, page Node ID, and page name.
 - Design-may-be-stale flag.
+- Design guideline source: preset slug, `from-figma`, `none`, or `N/A`; cite extraction artifact path when `from-figma`.
 - Surface table: SRS requirement ID, surface name, platform, Figma node ID, source, design status.
 - Component inventory per surface.
 - Required states and variants per component.
@@ -128,6 +129,7 @@ Use when a human approver/designer edited Figma directly after handoff.
 - Never write requirements or change SRS body content.
 - Never hand off screens that skip required SRS states without a visible gap.
 - Never bypass Foundation tokens/components for screen work.
+- Never hand off overlapping top-level screen frames in `create` / `revise` / `incorporate`; route to `NEEDS_CONTEXT` when the current mode cannot write the cleanup.
 - Commit before signaling done.
 
 ## References

@@ -89,21 +89,25 @@ For every UI task, before writing implementation code:
 1. Confirm the task's design sub-status in master plan = `design-confirmed`. If not, halt and report — the
    Orchestrator should not have dispatched you.
 2. Read `docs/uiux/handoffs/<task-id>.md` and the user-confirmed Figma file version ID.
-3. **Read the Figma scope from SRS §3.4.1** — `Figma-File-URL`, `Figma-Design-Page-Node-ID`, `Figma-File-Version`. These three together define the EXACT subtree you may read. Frames on other pages are out of scope; tokens from the design-system Foundation page are out of scope at this step (consume them via the preset `tokens.json` instead — see the next bullet).
+3. **Read the Figma scope from SRS §3.4.1** — `Figma-File-URL`, `Figma-Design-Page-Node-ID`, `Figma-File-Version`. These three together define the EXACT subtree you may read. Frames on other pages are out of scope; consume the design guideline through the confirmed handoff/refs contract and SRS `Design-Guideline:` source.
 4. Use the Figma MCP server (read-only) to:
    - Pull the current state of each pinned node (frame + variants if applicable). **Every pinned Node ID in SRS §3.4.1 MUST descend from `Figma-Design-Page-Node-ID`** — if a Node ID belongs to a different page (e.g., the PM accidentally pinned a Foundation-page node), file a `figma-cross-page-reference` open-issue and halt. Cross-page references break the kit's scoping invariant.
-   - Extract design tokens (colors, spacing, typography, radii, shadows) — these MUST match the project's preset tokens at `.claude/skills/design-system-author/references/presets/<srs-design-guideline>/tokens.json` (when SRS `Design-Guideline:` is a preset slug). Mismatches between the extracted Figma tokens and the preset tokens.json are blockers — file `figma-preset-divergence` open-issue per mismatch.
+   - Extract design tokens (colors, spacing, typography, radii, shadows). These MUST match the project's declared Foundation source:
+     - preset slug → compare against `.claude/skills/design-system-author/references/presets/<srs-design-guideline>/tokens.json`;
+     - `from-figma` → compare against `docs/requirements/design-extracted/<figma-file-id>-*.md` Section 6 plus the confirmed handoff `## Design System Source`;
+     - `none` → compare against the confirmed handoff Foundation inventory.
+     Mismatches are blockers — file `figma-design-guideline-divergence` open-issue per mismatch.
    - Export a reference snapshot per platform
    - Verify the Figma file version matches the confirmed version recorded in master plan
 5. Produce `docs/uiux/refs/<task-id>.md` containing:
    - Header: `Figma-File-URL`, `Figma-Design-Page-Node-ID`, `Figma-Design-Page-Name`, `Figma-File-Version` — copied verbatim from SRS §3.4.1 so the contract is self-contained.
    - The pinned node IDs from SRS `## Design References` (every ID listed MUST descend from the recorded page Node ID — re-verify before freezing)
-   - Extracted design tokens (with explicit `Preset: <slug>` annotation when SRS `Design-Guideline:` is set; the contract is "tokens conform to preset XYZ unless `## Foundation Changes` says otherwise")
+   - Extracted design tokens with explicit `Design-Guideline: <preset | from-figma | none>` annotation. For preset sources, the contract is "tokens conform to preset XYZ unless `## Foundation Changes` says otherwise." For `from-figma`, cite the extraction artifact and handoff `## Design System Source`.
    - Component inventory
    - Reference snapshots stored under `docs/uiux/refs/<task-id>/`
-5. If you discover any drift between the handoff, the visual spec, the Figma file, or the SRS: halt and raise as a
+6. If you discover any drift between the handoff, the visual spec, the Figma file, or the SRS: halt and raise as a
    blocking issue per .claude/rules/change-synchronization.md §7. Do not start coding.
-6. When all checks pass: set `Status: Frozen` on `docs/uiux/refs/<task-id>.md` and proceed to implementation.
+7. When all checks pass: set `Status: Frozen` on `docs/uiux/refs/<task-id>.md` and proceed to implementation.
 
 ### Design Contract Hard Rules
 

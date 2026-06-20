@@ -1,6 +1,6 @@
 ---
 name: figma-requirements-extraction
-description: "Extract requirements information from a Figma file (screens, components, states, exact copy, form fields, interaction flows, accessibility hints) and write to docs/requirements/design-extracted/<figma-file-id>-<ISO-date>.md as additional source corpus for BA synthesis + srs-source-validator coverage check. Use when a PRD references Figma URLs and Design-Flow: A is in effect — runs PRE-BA so BA's first US/FR pass is informed by what the design already specifies. Strictly read-only against Figma (consumer pattern); strictly inferred-vs-confirmed discipline (no invention)."
+description: "Extract requirements and design-system evidence from a Figma file (screens, components, states, exact copy, form fields, interaction flows, design guideline tokens, accessibility hints) and write to docs/requirements/design-extracted/<figma-file-id>-<ISO-date>.md as additional source corpus for BA synthesis + srs-source-validator coverage check. Use when a PRD references Figma URLs and Design-Flow: A is in effect — runs PRE-BA so BA's first US/FR pass and Design-Guideline selection are informed by what the design already specifies. Strictly read-only against Figma (consumer pattern); strictly inferred-vs-confirmed discipline (no invention)."
 agents: [ui-ux-designer]
 sdlc_phase: ingestion
 owner: Platform Eng
@@ -15,12 +15,12 @@ You are the UI/UX Designer dispatched in `extract` mode. The Orchestrator has de
 
 The kit's pattern is: BA's first US/FR synthesis at Phase 1.X must be informed by FULL source corpus. Textual PRD + design-extracted requirements + conversational additions are the three branches. Without design-extracted input, BA invents details that Figma already specifies (or worse, misses details Figma specifies that the textual PRD omits) — every subsequent dispatch then re-discovers the gap.
 
-You produce a structured markdown enumerating WHAT THE DESIGN SHOWS. You do NOT author requirements (that's BA's role); you produce evidence that BA synthesizes into the SRS.
+You produce a structured markdown enumerating WHAT THE DESIGN SHOWS. You do NOT author requirements (that's BA's role); you produce evidence that BA synthesizes into the SRS. When the Figma file has no explicit design guideline, you still extract reusable visual-system evidence — color palette, typography, spacing, radius, elevation, component patterns, and layout grid — so BA can set `Design-Guideline: from-figma` instead of forcing a generic preset.
 
 ## Inputs and outputs
 
 - **Inputs:** Figma file URL passed by Orchestrator dispatch; Figma MCP server (read-only).
-- **Outputs:** `docs/requirements/design-extracted/<figma-file-id>-<ISO-date>.md` (the one and only artifact this skill produces).
+- **Outputs:** `docs/requirements/design-extracted/<figma-file-id>-<ISO-date>.md` (the one and only artifact this skill produces). The file includes both requirements evidence and a design-guideline evidence inventory for Flow A.
 - **Consumed by:** BA Phase 1.X (synthesis input); srs-source-validator (coverage check spans this file as part of `docs/requirements/`).
 
 ## Hard discipline: confirmed vs inferred
@@ -51,7 +51,7 @@ This is the same discipline as solution-defaults skill (kit-provided defaults vs
    - **The captured value is a FRAME or SECTION node** (the PM deep-linked to a specific frame they wanted to highlight) → walk UP the tree via Figma MCP's parent-pointer until you reach a `CANVAS` / `PAGE` node. Record the resolution in the extract output's `## Page-scope resolution` section. Update SRS §3.4.1 `Figma-Design-Page-Node-ID` to the resolved page node (you have write access to this single field; do NOT touch other SRS content).
    - **The captured value is a PAGE NAME (string, not Node ID)** — BA at Phase 1.X step 10 wrote the operator's answer as a name (e.g., "Project Design") rather than an ID. Resolve by querying Figma MCP for pages in the file, finding the one with matching name (case-insensitive, trimmed), and recording its Node ID. Update SRS §3.4.1 with the resolved ID. If no page matches by name → halt with `NEEDS_CONTEXT` asking the operator to choose from the list of actual page names in the file.
 
-6. The root of all enumeration in Steps 1-6 below is the resolved page node. Walk only its subtree. Frames on OTHER pages are NOT enumerated (they are out of scope for the project's design).
+6. The root of all enumeration in Steps 1-7 below is the resolved page node. Walk only its subtree. Frames on OTHER pages are NOT enumerated (they are out of scope for the project's design).
 
 ### Step 1 — Enumerate screens (frames)
 
@@ -88,7 +88,51 @@ Walk Figma Prototype connections (the connector arrows between frames). For each
 - Build a list of flows: "Login → Dashboard" / "Repository List → Repository Detail (drill-in)" / etc.
 - Flag flows with no explicit destination in Figma as gaps.
 
-### Step 6 — Enumerate accessibility hints
+### Step 6 — Extract design guideline evidence
+
+Build a confirmed visual-system inventory from the scoped page. Prefer formal Figma variables/styles/components when present; otherwise infer only from repeated values in the scoped frames. Do not create or modify Figma styles in this mode.
+
+For each category, capture the source of truth, observed values, usage locations, confidence, and whether the value is formal or inferred:
+
+- **Color palette**
+  - First read Figma Variables and local/shared color styles attached to scoped nodes.
+  - If no formal styles exist, sample fills, strokes, text colors, and gradients across frames; normalize solid colors to hex or rgba with opacity; group repeated values.
+  - Classify by usage where evidence supports it: `surface`, `text`, `border`, `accent`, `state-success`, `state-warning`, `state-error`, `disabled`, `overlay`.
+  - Record contrast-relevant pairs when visible: text color + immediate background.
+- **Typography**
+  - Read text styles when present.
+  - Otherwise group text nodes by font family, font size, weight, line height, paragraph spacing, and role inferred from position/name (`heading`, `body`, `label`, `caption`, `button`).
+  - Preserve exact numeric values; do not "fix" them into a scale.
+- **Spacing and layout rhythm**
+  - Read Auto Layout `padding`, `itemSpacing`, layout grids, column/gutter settings, and frame constraints.
+  - Infer common spacing values from repeated x/y gaps only when the same value appears across multiple frames/components.
+  - Identify likely baseline unit (`4px`, `8px`, or unknown) from the greatest common repeated spacing pattern.
+- **Border radius**
+  - Capture per-corner radius values from frames, rectangles, buttons, inputs, cards, modals, chips, and avatars.
+  - Group repeated values and classify by component role when clear.
+- **Elevation and effects**
+  - Capture shadow/effect styles when present; otherwise list repeated effect signatures (offset, blur, spread, color, opacity).
+- **Component pattern evidence**
+  - Inventory named component masters/instances and repeated component-like groups (buttons, inputs, cards, nav, modals, badges, tabs, menus).
+  - Note variant/state coverage visible in Figma.
+- **Layout grid / breakpoints**
+  - Capture frame sizes, platform hints, columns, gutters, margins, and responsive constraints if present.
+  - If only frame sizes exist, list them as observed viewport targets, not as declared breakpoints.
+
+Set a design-guideline recommendation in the output:
+
+- `Candidate Design-Guideline: from-figma` when either:
+  - formal Figma styles/variables/components exist for at least colors plus typography, or
+  - inferred repeated values cover colors plus at least two of typography, spacing, radius, or component patterns.
+- `Candidate Design-Guideline: needs-human-choice` when evidence is too sparse, inconsistent, or decorative-only.
+
+Confidence rules:
+
+- **High** — formal styles/variables/components exist and are used by most scoped screens.
+- **Medium** — no formal styles, but repeated values are consistent across multiple screens/components.
+- **Low** — one-off values, too few frames, or conflicting palettes/scales.
+
+### Step 7 — Enumerate accessibility hints
 
 When the design carries explicit a11y metadata:
 - Focus order if numbered on the canvas.
@@ -98,9 +142,9 @@ When the design carries explicit a11y metadata:
 
 Empty when design doesn't specify (most projects don't).
 
-### Step 7 — Write the design-extracted file
+### Step 8 — Write the design-extracted file
 
-Open `docs/requirements/design-extracted/<figma-file-id>-<YYYY-MM-DD>.md`. Use the structure below (template: confirmed-first, inferred-last). Do not include opinion or recommendation — just enumerate what the design contains.
+Open `docs/requirements/design-extracted/<figma-file-id>-<YYYY-MM-DD>.md`. Use the structure below (template: confirmed-first, inferred-last). Except for the required `Candidate Design-Guideline` field derived from Step 6 evidence, do not include opinion or recommendation — enumerate what the design contains.
 
 ```markdown
 # Design-extracted requirements — <figma-file-name>
@@ -120,7 +164,7 @@ Open `docs/requirements/design-extracted/<figma-file-id>-<YYYY-MM-DD>.md`. Use t
 
 This file is one of three branches of the `docs/requirements/` source corpus that BA reads at Phase 1.X synthesis. The other two are top-level PM-authored files and `conversational-additions/` (BA Mode D Step D0 captures). The srs-source-validator's coverage check spans ALL three branches.
 
-This file contains CONFIRMED elements (Sections 1–5 below) and INFERRED requirements (Section 6 below). BA at Phase 1.X synthesizes US/FR only from confirmed elements + inferred items the textual PRD also supports. Inferred-only items must become OQs per BA's no-invention invariant.
+This file contains CONFIRMED elements (Sections 1–7 below) and INFERRED requirements (Section 8 below). BA at Phase 1.X synthesizes US/FR only from confirmed elements + inferred items the textual PRD also supports. BA uses Section 6 to set `Design-Guideline:` when Flow A provides enough design-system evidence. Inferred-only items must become OQs per BA's no-invention invariant.
 
 ## Section 1 — Screens (frames)
 
@@ -170,7 +214,72 @@ This file contains CONFIRMED elements (Sections 1–5 below) and INFERRED requir
 | Batch Hide confirm | ConfirmDialog/Hide | click "Show" | RepositoryList/Default | close modal + toast |
 | Batch Hide cancel | ConfirmDialog/Hide | click "Cancel" | RepositoryList/SelectedRow | close modal, preserve selection |
 
-## Section 6 — Inferred requirements (proposed; require PRD anchor or OQ)
+## Section 6 — Design guideline extraction (Flow A)
+
+- **Formal design system present:** <yes | partial | no>
+- **Candidate Design-Guideline:** <from-figma | needs-human-choice>
+- **Confidence:** <high | medium | low>
+- **Evidence basis:** <formal styles/variables/components | repeated inferred values | sparse/ambiguous>
+- **Foundation recommendation:** <Use extracted Figma evidence as Foundation source | ask operator to choose preset | use `none` only with explicit opt-out>
+
+### Color palette evidence
+
+| Token candidate | Value | Role evidence | Source | Usage count | Confidence |
+|---|---|---|---|---:|---|
+| surface-default | #FFFFFF | Frame backgrounds | inferred from 12 frames | 12 | medium |
+| text-primary | #111827 | Body/title text | inferred from text nodes | 87 | medium |
+| accent-brand | #2563EB | Primary buttons + active nav | Figma color style `Brand/Blue/600` | 24 | high |
+| state-error | #DC2626 | Error text + destructive buttons | inferred repeated value | 6 | medium |
+
+### Typography evidence
+
+| Token candidate | Family | Size | Weight | Line height | Role evidence | Source | Confidence |
+|---|---|---:|---:|---:|---|---|---|
+| heading-lg | Inter | 32 | 700 | 40 | Page titles | text style `Heading/Large` | high |
+| body-md | Inter | 16 | 400 | 24 | Body text | repeated text nodes | medium |
+| label-md | Inter | 14 | 600 | 20 | Buttons + labels | repeated text nodes | medium |
+
+### Spacing and layout rhythm evidence
+
+| Value | Token candidate | Evidence | Usage count | Confidence |
+|---:|---|---|---:|---|
+| 8px | space-2 | Button icon gap, form label gap | 18 | medium |
+| 16px | space-4 | Card padding, list item gap | 42 | medium |
+| 24px | space-5 | Section gap | 16 | medium |
+
+- **Likely baseline unit:** <4px | 8px | unknown>
+- **Layout grid:** <columns/gutters/margins if present; otherwise observed frame sizes>
+
+### Radius evidence
+
+| Value | Token candidate | Evidence | Usage count | Confidence |
+|---:|---|---|---:|---|
+| 8px | radius-md | Buttons, inputs, cards | 38 | medium |
+| 9999px | radius-full | Pills, avatars | 9 | medium |
+
+### Elevation/effect evidence
+
+| Token candidate | Effect signature | Evidence | Usage count | Confidence |
+|---|---|---|---:|---|
+| elevation-sm | y=1 blur=2 color=#000000 opacity=0.08 | Cards | 12 | medium |
+
+### Component pattern evidence
+
+| Component candidate | Formal component? | Variants/states observed | Notes |
+|---|---|---|---|
+| Button | yes | primary, secondary, destructive; default, disabled, loading | Instance names use `Button/*` |
+| Input | partial | default, focused, error | Some inputs are standalone groups |
+| Card | no | default, selected | Repeated group pattern, no master component |
+
+### Design guideline gaps
+
+- <List missing token categories, inconsistent scales, sparse evidence, or formal-style gaps BA/UIUX must account for. Empty if none.>
+
+## Section 7 — Accessibility hints
+
+(Focus order, ARIA semantics, contrast annotations, touch-target sizes. Empty when design doesn't specify.)
+
+## Section 8 — Inferred requirements (proposed; require PRD anchor or OQ)
 
 Items the extractor infers from the design but cannot confirm. BA decides per Phase 1.X gap-handling: anchor to textual PRD OR file as OQ. Do NOT synthesize US/FR from this section without anchor.
 
@@ -180,7 +289,7 @@ Items the extractor infers from the design but cannot confirm. BA decides per Ph
 - **Inferred (toast timing):** Completion toast auto-dismisses — duration not visible in Figma (no timeline annotation).
 - **Inferred (locale support):** Only en copy in this file — VN / TH / TW locale support unknown.
 
-## Section 7 — Gaps observed
+## Section 9 — Gaps observed
 
 Items the extractor expected to find but didn't. These become OQs for BA to surface during synthesis:
 
@@ -191,14 +300,15 @@ Items the extractor expected to find but didn't. These become OQs for BA to surf
 - No design for mobile-bridge layout (< 480px viewport) — adaptive behavior unclear
 ```
 
-### Step 8 — Commit
+### Step 9 — Commit
 
 Commit the file with conventional-commits convention (`feat(requirements): extract design requirements from <figma-file-name>`). Reference any task ID if the dispatch carried one.
 
 ## Hard Rules
 
 - **READ-ONLY against Figma.** This skill uses Figma MCP in consumer mode only. No frame edits, no comment additions, no version changes.
-- **NO INVENTION.** Section 1–5 contains ONLY what the canvas literally shows. Section 6 contains inferred items but explicitly flags them as proposals BA must anchor or OQ. Empty sections stay empty (do not fabricate sample data).
+- **NO INVENTION.** Sections 1–7 contain ONLY what the canvas literally shows or repeated visual values/effects/components observed on scoped nodes. Section 8 contains inferred requirements but explicitly flags them as proposals BA must anchor or OQ. Empty sections stay empty (do not fabricate sample data).
+- **DESIGN GUIDELINE EXTRACTION IS EVIDENCE, NOT AUTHORING.** You may recommend `from-figma` from observed evidence, but you do not create the Foundation page, rename styles, normalize values, or invent missing token categories in extract mode.
 - **VERBATIM COPY.** Section 3 captures text exactly as it appears — no normalization, no fixing typos, no spelling corrections, no translation. The audit-log value depends on faithfulness.
 - **PARAMETERIZED STRINGS marked clearly.** When copy contains `{placeholders}`, flag as PARAMETERIZED so BA's FR specifies the parameter source.
 - **One file per dispatch.** If the Figma file is large enough that the extraction produces a >5000-line single file, split by Figma page into multiple files: `<figma-id>-<date>-<page-slug>.md`. The Orchestrator's BA dispatch reads the full directory; multiple files are fine.
@@ -208,7 +318,7 @@ Commit the file with conventional-commits convention (`feat(requirements): extra
 ## Edge cases
 
 - **Figma file inaccessible / version mismatch:** halt with `NEEDS_CONTEXT`. Do not produce a partial extraction; the audit-log value depends on completeness.
-- **Empty Figma file (canvas blank or trivial):** produce the output file with all sections marked "(no content extracted)" + a note in Section 7 stating "Figma file appears not yet designed." BA's Phase 1.X synthesis then treats this branch as informational-only.
+- **Empty Figma file (canvas blank or trivial):** produce the output file with all sections marked "(no content extracted)" + a note in Section 9 stating "Figma file appears not yet designed." BA's Phase 1.X synthesis then treats this branch as informational-only.
 - **Multi-version Figma file:** extract from the file's HEAD version only. If PRD references a specific version-id different from HEAD, halt with `NEEDS_CONTEXT` asking which to extract.
 - **Permission restricted:** if MCP can't read the file (private, restricted), halt with `NEEDS_CONTEXT` requesting access.
 

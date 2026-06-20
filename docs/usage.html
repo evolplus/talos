@@ -397,7 +397,7 @@
   <div class="shell">
     <header>
       <div>
-        <div class="eyebrow">Claude Code SDLC plugin</div>
+        <div class="eyebrow">Claude Code and Codex SDLC plugin</div>
         <h1>evo-talos Devkit Usage Guide</h1>
         <p class="summary">
           Use this kit to turn product intent, existing code, or design artifacts into a controlled SDLC flow with role agents, on-demand skills, guarded permissions, and QA evidence before work is marked done.
@@ -407,7 +407,8 @@
         <h3>Plugin</h3>
         <p><strong>Package:</strong> <code>talos</code></p>
         <p><strong>License:</strong> <code>Apache-2.0</code></p>
-        <p><strong>Entry commands:</strong> <code>/sdlc-init</code>, <code>/sdlc-loop</code></p>
+        <p><strong>Claude entries:</strong> <code>/sdlc-init</code>, <code>/sdlc-loop</code></p>
+        <p><strong>Codex entries:</strong> <code>Run sdlc-init</code>, <code>Start the SDLC loop</code></p>
       </aside>
     </header>
 
@@ -422,7 +423,7 @@
           <div class="flow-grid">
             <div class="node ba">
               <strong>1. Initialize</strong>
-              <span>Run <code>/sdlc-init</code> to inject kit rules and safer project settings.</span>
+              <span>Claude: <code>/sdlc-init</code>. Codex: <code>Run sdlc-init</code>.</span>
             </div>
             <div class="arrow">-&gt;</div>
             <div class="node ba">
@@ -492,19 +493,19 @@
         <div class="steps">
           <div class="step">
             <h3>Install or enable the plugin</h3>
-            <p>Make the kit available to Claude Code as a plugin. The plugin contributes commands, agents, skills, rules, settings, and hooks.</p>
+            <p>Make the kit available to Claude Code or Codex as a plugin. Claude Code uses slash commands; Codex uses command-shim skills and starter prompts.</p>
           </div>
           <div class="step">
-            <h3>Run <code>/sdlc-init</code> inside the target project</h3>
-            <p>The command injects the plugin guidance into project <code>AGENTS.md</code> by default for Codex, warns about conflicts, and skips Claude-specific <code>.claude</code> settings/hooks unless <code>--target claude</code> or <code>--target both</code> is supplied.</p>
+            <h3>Initialize inside the target project</h3>
+            <p>Claude Code: run <code>/sdlc-init</code>. Codex: prompt <code>Run sdlc-init</code>. The initializer injects the plugin guidance into project <code>AGENTS.md</code> by default for Codex, warns about conflicts, and skips Claude-specific <code>.claude</code> settings/hooks unless <code>--target claude</code> or <code>--target both</code> is supplied.</p>
           </div>
           <div class="step">
             <h3>Provide the starting source</h3>
             <p>Use a PRD, an existing SRS, a requirements folder, an external source, a Figma URL, or an existing codebase. The BA route depends on what exists.</p>
           </div>
           <div class="step">
-            <h3>Run <code>/sdlc-loop</code></h3>
-            <p>The Orchestrator dispatches the right role agents, checks gates, and moves tasks through planning, implementation, deployment, and QA.</p>
+            <h3>Start the SDLC loop</h3>
+            <p>Claude Code: run <code>/sdlc-loop</code>. Codex: prompt <code>Start the SDLC loop</code> or <code>Run sdlc-loop</code>. The Orchestrator dispatches the right role agents, checks gates, and moves tasks through planning, implementation, deployment, and QA.</p>
           </div>
           <div class="step">
             <h3>Review gates and answer only blocking questions</h3>
@@ -526,11 +527,12 @@
             <ol>
               <li>Open the target project in Codex or Claude Code.</li>
               <li>Run the initializer:
-                <code class="command-block">/sdlc-init</code>
+                <code class="command-block">Claude Code: /sdlc-init
+Codex: Run sdlc-init</code>
               </li>
               <li>Create or use <code>docs/requirements/</code> in the target project.</li>
               <li>Copy all requirement materials into <code>docs/requirements/</code>. Good file names are explicit, for example <code>product-brief.md</code>, <code>payment-flow.md</code>, <code>admin-dashboard-notes.md</code>, or <code>figma-links.md</code>.</li>
-              <li>Prompt Claude Code:
+              <li>Prompt the assistant:
                 <code class="command-block">start project</code>
               </li>
               <li>The kit should route to BA requirements-folder synthesis, ask only for missing blocking context, draft the SRS/user stories/FRs, then move through sign-off, architecture, planning, implementation, deployment, and QA.</li>
@@ -541,12 +543,13 @@
             <h3>Greenfield with existing Figma</h3>
             <p>Use this when Figma is already part of the product source and should influence the SRS instead of being treated as a later handoff.</p>
             <ol>
-              <li>Run <code>/sdlc-init</code>.</li>
+              <li>Initialize with <code>/sdlc-init</code> in Claude Code or <code>Run sdlc-init</code> in Codex.</li>
               <li>Put the PRD and a Figma URL/page note into <code>docs/requirements/</code>.</li>
               <li>Prompt:
                 <code class="command-block">start project</code>
               </li>
-              <li>The kit should use Design-Flow A: extract confirmed Figma details before BA synthesis, then map Figma frames to SRS surfaces before sign-off.</li>
+              <li>The kit should use Design-Flow A: extract confirmed Figma details before BA synthesis, including palette, typography, spacing, radius, component-pattern evidence, and a <code>Design-Guideline: from-figma</code> recommendation when the design is strong enough.</li>
+              <li>After BA synthesis, the kit maps Figma frames to SRS surfaces before sign-off.</li>
               <li>If the Figma page is ambiguous, answer the page-scope question with the project design page name or Node ID.</li>
             </ol>
           </article>
@@ -555,7 +558,7 @@
             <h3>Existing SRS migration</h3>
             <p>Use this when the project already has an SRS, user stories, or functional requirement documents and you want the kit to normalize them.</p>
             <ol>
-              <li>Run <code>/sdlc-init</code>.</li>
+              <li>Initialize with <code>/sdlc-init</code> in Claude Code or <code>Run sdlc-init</code> in Codex.</li>
               <li>Place the SRS and related documents under <code>docs/requirements/</code>, or keep existing kit-shaped files under <code>docs/SRS.md</code>, <code>docs/user-stories/</code>, and <code>docs/frs/</code>.</li>
               <li>Prompt:
                 <code class="command-block">continue SDLC from existing SRS</code>
@@ -568,7 +571,7 @@
             <h3>Brownfield codebase onboarding</h3>
             <p>Use this when source code exists but reliable requirements and architecture documentation are missing or outdated.</p>
             <ol>
-              <li>Run <code>/sdlc-init</code>.</li>
+              <li>Initialize with <code>/sdlc-init</code> in Claude Code or <code>Run sdlc-init</code> in Codex.</li>
               <li>Keep the codebase in place. Add any known product notes to <code>docs/requirements/</code>.</li>
               <li>Prompt:
                 <code class="command-block">start brownfield onboarding</code>
@@ -591,7 +594,7 @@
 
           <article class="recipe">
             <h3>Resume an interrupted run</h3>
-            <p>Use this when Claude Code stopped mid-flow, the machine restarted, or a previous run halted on a gate.</p>
+            <p>Use this when Claude Code or Codex stopped mid-flow, the machine restarted, or a previous run halted on a gate.</p>
             <ol>
               <li>Open the project again with the plugin enabled.</li>
               <li>Prompt:
@@ -684,7 +687,7 @@
               <tr>
                 <td><strong>Design-Flow A: Figma already exists</strong></td>
                 <td>Product source includes Figma before SRS sign-off.</td>
-                <td>Extracts design requirements pre-BA, maps frames to SRS surfaces pre-sign-off, and skips post-sign-off design work when mapping is qualified.</td>
+                <td>Extracts design requirements and design-guideline evidence pre-BA, maps frames to SRS surfaces pre-sign-off, and skips post-sign-off design work when mapping is qualified.</td>
                 <td><code>docs/requirements/design-extracted/</code>, <code>docs/uiux/figma-mappings/</code>, SRS Design References.</td>
               </tr>
               <tr>

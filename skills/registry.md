@@ -12,6 +12,8 @@ Skills consulted by any agent or human committing or operating in the repo, rega
 
 | Skill | When | Status |
 |---|---|---|
+| [`sdlc-init`](./sdlc-init/SKILL.md) | Codex command shim for `/sdlc-init` — initialize or refresh `AGENTS.md` and optional Claude target files from the plugin | active |
+| [`sdlc-loop`](./sdlc-loop/SKILL.md) | Codex command shim for `/sdlc-loop` / `start project` — run the governed orchestration loop until the next gate or completion | active |
 | [`git-commit`](./git-commit/SKILL.md) | Any commit on a worktree or main branch — identity check, conventional message format, .gitignore baseline, compliance attribution | active |
 
 ### BA — Business Analyst
@@ -83,10 +85,10 @@ Skills consulted by any agent or human committing or operating in the repo, rega
 |---|---|---|
 | [`ui-ux-page-scoping`](./ui-ux-page-scoping/SKILL.md) | Mandatory Step 0 for every UI/UX Designer mode — resolve one Figma page root before reading or writing Figma | active |
 | [`figma-design-handoff`](./figma-design-handoff/SKILL.md) | UI/UX Designer `create` / `import` / `revise` / `incorporate` modes — Figma-backed handoff, refs, SRS Design References updates, and reconciliation | active |
-| [`figma-canvas-layout`](./figma-canvas-layout/SKILL.md) | Authoring or revising Figma content (create / revise / incorporate modes) AND as a mandatory pre-handoff lint in every mode (including import). Enforces minimum-gap layout rules + 3-segment frame naming + overlap lint via Figma MCP. Prevents long-scroll screens from bleeding over neighbors at Approver-review time. | active |
+| [`figma-canvas-layout`](./figma-canvas-layout/SKILL.md) | Authoring or revising Figma content (create / revise / incorporate modes) AND as a mandatory pre-handoff lint in every mode (including import). Enforces deterministic placement + 3-segment frame naming + overlap lint via Figma MCP. Blocks `create` / `revise` / `incorporate` handoff when top-level screen frames overlap or cannot be reviewed comfortably. | active |
 | [`figma-srs-mapping`](./figma-srs-mapping/SKILL.md) | UI/UX Designer `map` mode — pre-sign-off scan of provided Figma URL; maps frames to SRS surfaces; qualifies design at sign-off (Design-Flow A) | active |
-| [`design-system-author`](./design-system-author/SKILL.md) | Every UI/UX Designer dispatch — build a Foundation Figma page (tokens: color / typography / spacing / radius / elevation / motion; components: Button / Input / Card / Modal / Nav / etc. with all variants and states) BEFORE drawing screens; consume only from Foundation in screens; pre-handoff token-compliance lint flags hardcoded values and non-component buttons. Prevents inconsistent spacing / text sizes / button styles / element alignment drift across screens. | active |
-| [`figma-requirements-extraction`](./figma-requirements-extraction/SKILL.md) | UI/UX Designer `extract` mode (Design-Flow A, pre-BA). Reads a Figma file via MCP (read-only) and produces `docs/requirements/design-extracted/<figma-file-id>-<ISO-date>.md` enumerating screens / components / exact copy / form fields / interaction flows / accessibility hints. CONFIRMED-vs-INFERRED discipline — BA at Phase 1.X synthesizes US/FR only from confirmed elements + inferred items the textual PRD anchors. Output becomes one of three branches of `docs/requirements/` source corpus consumed by BA AND srs-source-validator. | active |
+| [`design-system-author`](./design-system-author/SKILL.md) | Every UI/UX Designer dispatch — build a Foundation Figma page (tokens: color / typography / spacing / radius / elevation / motion; components: Button / Input / Card / Modal / Nav / etc. with all variants and states) BEFORE drawing screens; consume only from Foundation in screens; supports preset slugs, `from-figma`, and `none`; pre-handoff token-compliance lint flags hardcoded values and non-component buttons. Prevents inconsistent spacing / text sizes / button styles / element alignment drift across screens. | active |
+| [`figma-requirements-extraction`](./figma-requirements-extraction/SKILL.md) | UI/UX Designer `extract` mode (Design-Flow A, pre-BA). Reads a Figma file via MCP (read-only) and produces `docs/requirements/design-extracted/<figma-file-id>-<ISO-date>.md` enumerating screens / components / exact copy / form fields / interaction flows / design guideline evidence / accessibility hints. CONFIRMED-vs-INFERRED discipline — BA at Phase 1.X synthesizes US/FR only from confirmed elements + inferred items the textual PRD anchors and may set `Design-Guideline: from-figma` from Section 6. Output becomes one of three branches of `docs/requirements/` source corpus consumed by BA AND srs-source-validator. | active |
 
 ### Design Guidelines (presets under `design-system-author`)
 
@@ -95,6 +97,7 @@ Predefined Foundation starting points. Selected by SRS header `Design-Guideline:
 | Preset slug | Location | When to use | Status |
 |---|---|---|---|
 | `default` | [`design-system-author/references/presets/default/`](./design-system-author/references/presets/default/) | Kit catch-all. Cool-blue professional palette (`#1c5d99` primary, `#639fab` secondary, `#bbcde5` disabled, `#222222` text, `#FFFFFF` surface). Inter typeface, locale-neutral. B2B / SaaS / admin / dashboards without strong brand voice. | active |
+| `from-figma` | `docs/requirements/design-extracted/<figma-file-id>-<date>.md` Section 6 | Design-Flow A source. Use when the provided Figma file has enough palette / typography / spacing / radius / component-pattern evidence to become the Foundation source, even if no formal design-system page exists. | n/a |
 | `none` | (none) | Project authors Foundation from SKILL.md defaults. Use when no shipped preset matches and the project has bandwidth to author tokens from scratch. | n/a |
 
 ### DevOps
@@ -113,7 +116,7 @@ Predefined Foundation starting points. Selected by SRS header `Design-Guideline:
 
 | Phase | Skills |
 |---|---|
-| Cross-cutting (all phases) | git-commit |
+| Cross-cutting (all phases) | sdlc-init, sdlc-loop, git-commit |
 | Planning (BA / SA / TL) | user-story-author, security-compliance-checklist, solution-defaults, sa-architecture-design, sa-brownfield-extract, external-integration-adequacy, adr-author, third-party-dependency-evaluation, task-sizing, c4-author, data-lifecycle-contracts, format-boundary-contracts |
 | Design (UI/UX Designer) | ui-ux-page-scoping, figma-requirements-extraction, figma-srs-mapping, figma-design-handoff, figma-canvas-layout, design-system-author |
 | Implementation (BE / FE) | api-contract-author, be-framework-coding-standard, fe-framework-coding-standard |
