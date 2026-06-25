@@ -196,6 +196,7 @@ What's missing to close the diagnosis. Specifically:
    - `base_url` + `api_base_url` + `admin_base_url` — where the deployed services are reachable
    - `## Human Trial URLs` — the URLs to hit when reproducing
    - `## Test Environment` — the QA-Exec contract block
+   - `env_files` / `env_validation` — whether DevOps loaded/validated the intended local env files without exposing secret values
    - Listed container names (typically `<project_slug>-<service>-<replica>`)
    - Tear-down command (do NOT run; just note for reference)
 

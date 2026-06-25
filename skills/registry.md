@@ -39,7 +39,7 @@ Skills consulted by any agent or human committing or operating in the repo, rega
 | Skill | When | Status |
 |---|---|---|
 | [`sa-architecture-design`](./sa-architecture-design/SKILL.md) | SA `design` mode — produce or revise `docs/architecture.md`, ADRs, instrumentation contract, C4 C1-C3, data/format contracts, and dependency decisions from a signed-off SRS | active |
-| [`sa-brownfield-extract`](./sa-brownfield-extract/SKILL.md) | SA `extract` mode — brownfield Stage 2 provisional as-built architecture from archaeology reports and code, with extracted/confidence tags and confirmation issues | active |
+| [`sa-brownfield-extract`](./sa-brownfield-extract/SKILL.md) | SA `extract` mode — brownfield Stage 2 provisional as-built architecture from archaeology reports and code, with route/dependency/async workflow coverage, extracted API/message contract stubs, confidence tags, and confirmation issues | active |
 | [`external-integration-adequacy`](./external-integration-adequacy/SKILL.md) | SA `external-integration-adequacy` mode — fill external integration placeholders and set `Adequacy:` before SRS sign-off | active |
 | [`solution-defaults`](./solution-defaults/SKILL.md) | Pre-approved org defaults for common dependency categories (DB, cache, queue, etc.). Check BEFORE running third-party-dependency-evaluation. | active |
 | [`adr-author`](./adr-author/SKILL.md) | Recording any non-trivial architectural choice in `docs/decisions/` | active |
@@ -104,7 +104,7 @@ Predefined Foundation starting points. Selected by SRS header `Design-Guideline:
 
 | Skill | When | Status |
 |---|---|---|
-| [`local-deployment`](./local-deployment/SKILL.md) | Every DevOps dispatch against a `ready-for-deploy` task — Docker-based environment composition, port probing (never hardcode 3000), `docker-compose.override.yml` in worktree (don't edit project's compose), health-check polling, deploy report populated with both `## Test Environment` (QA-Exec consumes) and `## Human Trial URLs` (operator opens in browser). | active |
+| [`local-deployment`](./local-deployment/SKILL.md) | Every DevOps dispatch against a `ready-for-deploy` task — Docker-based environment composition, `.env`/template/compose `env_file` discovery without exposing secrets, port probing (never hardcode 3000), worktree override generation, health-check polling, deploy report populated with both `## Test Environment` (QA-Exec consumes) and `## Human Trial URLs` (operator opens in browser). | active |
 
 ### FE Dev
 

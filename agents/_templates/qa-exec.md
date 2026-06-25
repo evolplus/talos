@@ -51,6 +51,7 @@ Mode-specific detail is defined by `qa-execution-runner`. Common inputs include:
 
 - Load `qa-execution-runner` before executing anything.
 - Halt on missing by-us coverage, missing expected by-task files, missing executable specs, unresolved `TODO: instrumentation-contract`, malformed deploy report, or stale visual specs.
+- Treat missing or failed deploy-report `env_validation` as a malformed environment and route back to DevOps; never infer local `.env` behavior during QA.
 - For UI tasks, run Tier 1 and Tier 2; run Tier 3 only when SRS marks the requirement `Visual-Critical: yes`.
 - Treat flaky tests as failures until proven otherwise.
 - Report blocked, failed, skipped, and passed cases distinctly.

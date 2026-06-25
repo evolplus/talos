@@ -3,11 +3,13 @@
 
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 
 const PLUGIN_ROOT = path.resolve(__dirname, '..');
 const RULES_SOURCE = path.join(PLUGIN_ROOT, 'rules', 'CLAUDE.md');
 const SETTINGS_SOURCE = path.join(PLUGIN_ROOT, 'settings', 'original-settings.json');
 const HOOKS_SOURCE = path.join(PLUGIN_ROOT, 'hooks');
+const INIT_RECEIPT_REL = path.join('.claude', 'hooks', '.state', 'sdlc-init-receipt.json');
 
 const INSTRUCTION_TARGETS = {
   codex: {
@@ -28,7 +30,7 @@ function usage() {
     '',
     'Options:',
     '  --project <path>     Project root to initialize. Defaults to CODEX_PROJECT_DIR, CLAUDE_PROJECT_DIR, or cwd.',
-    '  --target <name>      Target runtime: codex (default), claude, or both.',
+    '  --target <name>      Override auto-detected runtime: codex, claude, or both.',
     '  --dry-run            Print planned changes without writing files.',
     '  --force-hooks        Replace conflicting project hook files with plugin hook files.',
     '  --skip-agents        Do not update AGENTS.md / CLAUDE.md instructions.',
@@ -39,10 +41,36 @@ function usage() {
   ].join('\n');
 }
 
+function firstEnvValue(env, names) {
+  for (const name of names) {
+    if (env[name]) {
+      return { name, value: env[name] };
+    }
+  }
+  return null;
+}
+
+function defaultProjectRoot(env) {
+  const codexProject = firstEnvValue(env, ['CODEX_PROJECT_DIR']);
+  if (codexProject) {
+    return { path: codexProject.value, source: codexProject.name };
+  }
+
+  const claudeProject = firstEnvValue(env, ['CLAUDE_PROJECT_DIR']);
+  if (claudeProject) {
+    return { path: claudeProject.value, source: claudeProject.name };
+  }
+
+  return { path: process.cwd(), source: 'cwd' };
+}
+
 function parseArgs(argv) {
+  const defaultRoot = defaultProjectRoot(process.env);
   const options = {
-    projectRoot: process.env.CODEX_PROJECT_DIR || process.env.CLAUDE_PROJECT_DIR || process.cwd(),
-    target: 'codex',
+    projectRoot: defaultRoot.path,
+    projectRootSource: defaultRoot.source,
+    target: null,
+    targetExplicit: false,
     dryRun: false,
     forceHooks: false,
     skipAgents: false,
@@ -60,6 +88,7 @@ function parseArgs(argv) {
         throw new Error('--project requires a path');
       }
       options.projectRoot = value;
+      options.projectRootSource = 'argument';
       i += 1;
     } else if (arg === '--target') {
       const value = argv[i + 1];
@@ -70,6 +99,7 @@ function parseArgs(argv) {
         throw new Error(`Unsupported --target value: ${value}. Expected codex, claude, or both.`);
       }
       options.target = value;
+      options.targetExplicit = true;
       i += 1;
     } else if (arg === '--dry-run') {
       options.dryRun = true;
@@ -89,17 +119,121 @@ function parseArgs(argv) {
   }
 
   options.projectRoot = path.resolve(options.projectRoot);
+  options.receiptFiles = new Map();
+  resolveTarget(options);
   return options;
 }
 
 function createResult(options) {
   return {
     dryRun: options.dryRun,
+    target: options.target,
+    targetDetection: options.targetDetection,
     changes: [],
     unchanged: [],
     warnings: [],
     errors: [],
   };
+}
+
+function hasEnvPrefix(env, prefix) {
+  return Object.keys(env).some((name) => name.startsWith(prefix) && Boolean(env[name]));
+}
+
+function markerExists(projectRoot, rel) {
+  try {
+    return fs.existsSync(path.join(projectRoot, rel));
+  } catch {
+    return false;
+  }
+}
+
+function detectAgentTarget(options, env = process.env) {
+  const claudeEnvSignals = [
+    firstEnvValue(env, ['CLAUDE_PLUGIN_ROOT', 'CLAUDE_PROJECT_DIR', 'CLAUDE_CODE', 'CLAUDECODE']),
+  ].filter(Boolean);
+
+  if (claudeEnvSignals.length > 0) {
+    const signal = claudeEnvSignals[0].name;
+    return {
+      target: 'claude',
+      source: 'environment',
+      reason: `${signal} detected`,
+    };
+  }
+
+  const codexEnvSignals = [
+    firstEnvValue(env, ['CODEX_PROJECT_DIR', 'CODEX_SHELL', 'CODEX_THREAD_ID', 'CODEX_HOME', 'CODEX_SANDBOX']),
+  ].filter(Boolean);
+
+  if (
+    codexEnvSignals.length > 0 ||
+    hasEnvPrefix(env, 'CODEX_') ||
+    env.__CFBundleIdentifier === 'com.openai.codex' ||
+    String(env.PATH || '').includes('/Codex.app/')
+  ) {
+    const signal = codexEnvSignals[0]
+      ? codexEnvSignals[0].name
+      : env.__CFBundleIdentifier === 'com.openai.codex'
+        ? '__CFBundleIdentifier=com.openai.codex'
+        : 'CODEX_*';
+    return {
+      target: 'codex',
+      source: 'environment',
+      reason: `${signal} detected`,
+    };
+  }
+
+  const codexMarkers = ['AGENTS.md', '.codex', '.agents'].filter((rel) => markerExists(options.projectRoot, rel));
+  const claudeMarkers = ['CLAUDE.md', '.claude'].filter((rel) => markerExists(options.projectRoot, rel));
+
+  if (codexMarkers.length > 0 && claudeMarkers.length === 0) {
+    return {
+      target: 'codex',
+      source: 'project-markers',
+      reason: `${codexMarkers.join(', ')} detected`,
+    };
+  }
+
+  if (claudeMarkers.length > 0 && codexMarkers.length === 0) {
+    return {
+      target: 'claude',
+      source: 'project-markers',
+      reason: `${claudeMarkers.join(', ')} detected`,
+    };
+  }
+
+  if (codexMarkers.length > 0 && claudeMarkers.length > 0) {
+    return {
+      target: 'both',
+      source: 'project-markers',
+      reason: `${codexMarkers.join(', ')} and ${claudeMarkers.join(', ')} detected`,
+      warning:
+        'Could not detect an active agent environment, but both Codex and Claude project markers exist; updating both targets. Use --target codex or --target claude to override.',
+    };
+  }
+
+  return {
+    target: 'codex',
+    source: 'fallback',
+    reason: 'no agent environment or project marker detected',
+    warning:
+      'Could not detect the active agent tool from environment or project markers; defaulted to Codex. Use --target claude or --target both to override.',
+  };
+}
+
+function resolveTarget(options) {
+  if (options.targetExplicit) {
+    options.targetDetection = {
+      target: options.target,
+      source: 'argument',
+      reason: `--target ${options.target}`,
+    };
+    return;
+  }
+
+  options.targetDetection = detectAgentTarget(options);
+  options.target = options.targetDetection.target;
 }
 
 function recordChange(result, message) {
@@ -146,11 +280,79 @@ function writeText(file, content, options) {
   }
   fs.mkdirSync(path.dirname(file), { recursive: true });
   fs.writeFileSync(file, content, 'utf8');
+  recordInstallReceiptFile(options, file);
 }
 
 function relativeToProject(file, projectRoot) {
   const rel = path.relative(projectRoot, file);
   return rel || '.';
+}
+
+function relativeToProjectPosix(file, projectRoot) {
+  return relativeToProject(file, projectRoot).split(path.sep).join('/');
+}
+
+function sha256File(file) {
+  const buf = fs.readFileSync(file);
+  return crypto.createHash('sha256').update(buf).digest('hex');
+}
+
+function isSecurityAuditSensitivePath(relPosix) {
+  if (relPosix === 'CLAUDE.md') {
+    return true;
+  }
+  if (relPosix === '.claude/settings.json' || relPosix === '.claude/settings.local.json') {
+    return true;
+  }
+  if (relPosix.startsWith('.claude/hooks/') && !relPosix.startsWith('.claude/hooks/.state/')) {
+    return true;
+  }
+  if (relPosix.startsWith('.claude/agents/') || relPosix.startsWith('.claude/rules/')) {
+    return true;
+  }
+  return false;
+}
+
+function recordInstallReceiptFile(options, file) {
+  if (options.dryRun || !options.receiptFiles) {
+    return;
+  }
+  const resolved = path.resolve(file);
+  const rel = relativeToProjectPosix(resolved, options.projectRoot);
+  if (rel.startsWith('..') || path.isAbsolute(rel) || !isSecurityAuditSensitivePath(rel)) {
+    return;
+  }
+  try {
+    const stat = fs.statSync(resolved);
+    if (!stat.isFile()) {
+      return;
+    }
+    options.receiptFiles.set(rel, {
+      path: rel,
+      sha256: sha256File(resolved),
+      size: stat.size,
+    });
+  } catch {
+    // The receipt is a best-effort audit hint; install correctness is handled elsewhere.
+  }
+}
+
+function writeInstallReceipt(options) {
+  if (options.dryRun || !options.receiptFiles || options.receiptFiles.size === 0) {
+    return;
+  }
+
+  const receiptPath = path.join(options.projectRoot, INIT_RECEIPT_REL);
+  const receipt = {
+    tool: 'evo-talos-sdlc-init',
+    version: 1,
+    createdAt: new Date().toISOString(),
+    projectRoot: options.projectRoot,
+    files: Array.from(options.receiptFiles.values()).sort((a, b) => a.path.localeCompare(b.path)),
+  };
+
+  fs.mkdirSync(path.dirname(receiptPath), { recursive: true });
+  fs.writeFileSync(receiptPath, `${JSON.stringify(receipt, null, 2)}\n`, 'utf8');
 }
 
 function normalizeHeading(text) {
@@ -577,6 +779,7 @@ function copyHookFile(source, target, options) {
   }
   fs.mkdirSync(path.dirname(target), { recursive: true });
   fs.copyFileSync(source, target);
+  recordInstallReceiptFile(options, target);
 }
 
 function injectHooks(options, result) {
@@ -640,6 +843,9 @@ function injectHooks(options, result) {
 function printResult(projectRoot, result) {
   const mode = result.dryRun ? 'DRY-RUN' : 'OK';
   console.log(`sdlc-init project: ${projectRoot}`);
+  if (result.targetDetection) {
+    console.log(`sdlc-init target: ${result.target} (${result.targetDetection.source}: ${result.targetDetection.reason})`);
+  }
 
   for (const message of result.changes) {
     console.log(`${mode} ${message}`);
@@ -679,6 +885,9 @@ function main() {
   }
 
   const result = createResult(options);
+  if (options.targetDetection && options.targetDetection.warning) {
+    result.warnings.push(options.targetDetection.warning);
+  }
 
   if (!fs.existsSync(options.projectRoot) || !fs.statSync(options.projectRoot).isDirectory()) {
     result.errors.push(`Project root is not a directory: ${options.projectRoot}`);
@@ -695,6 +904,7 @@ function main() {
     recordUnchanged(result, 'Skipped .claude/settings.json injection for Codex target.');
     recordUnchanged(result, 'Skipped .claude/hooks sync for Codex target.');
   }
+  writeInstallReceipt(options);
 
   printResult(options.projectRoot, result);
   if (result.errors.length > 0) {

@@ -46,16 +46,26 @@ docs/api-contracts/
 └── search-suggest.md                    # Markdown contract for one endpoint
 ```
 
-Every contract file starts with a header (Markdown, or `info`/`description` block for OpenAPI):
+Every contract file starts with a header (Markdown, or `info`/`description` / `x-contract-status` block for OpenAPI, AsyncAPI, GraphQL SDL, or Proto):
 
 ```
-Status: Draft | Frozen | Deprecated
+Status: Extracted | Draft | Frozen | Deprecated
 Last-Updated: <ISO-8601>
 Frozen-By: <agent or person>
 Frozen-At: <ISO-8601>
 ```
 
-`Frozen` is the only status FE Dev may consume from. `Draft` means the BE is still iterating; `Deprecated` means there's a successor and consumers should migrate.
+`Frozen` is the only status FE Dev may consume from. `Draft` means the BE is still iterating. `Extracted` means SA brownfield extract created the contract from observed code; it is useful evidence but not a governed contract until BE Dev validates it and freezes a revision. `Deprecated` means there's a successor and consumers should migrate.
+
+## Brownfield extracted contracts
+
+When SA extract mode creates `Status: Extracted` contract stubs, BE Dev later treats them as inputs, not authority:
+
+1. Read the extracted contract plus the source evidence it cites.
+2. Validate every operation/channel/message against the implementation.
+3. Resolve TODO schema gaps or file open issues where source evidence is insufficient.
+4. Convert `Extracted` to `Draft`, revise as needed, then freeze through the normal procedure.
+5. Never let FE Dev consume `Extracted` contracts directly.
 
 ## Required content per endpoint
 
@@ -100,7 +110,7 @@ When you discover after freezing that the contract must change:
 
 ## Hard rules
 
-- A contract without `Status: Frozen` is not a contract — FE cannot consume it.
+- A contract without `Status: Frozen` is not a FE-consumable contract. `Extracted` and `Draft` are evidence/work-in-progress only.
 - Once `Frozen`, no edits in place. Period.
 - Every status code your endpoint can emit is in the contract. Codes that are in the code but not the contract are bugs (one of them is wrong).
 - Errors return a standard error body shape across the service. Per-endpoint snowflake error shapes are a refactor target, not a contract feature.

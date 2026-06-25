@@ -20,28 +20,31 @@ The codebase exists; no SRS has been authored yet (or only a placeholder exists)
 E1. **Read all inputs.**
    - Every `docs/archaeology-reports/<topic-slug>.md` (Stage 1 output).
    - `docs/architecture.md` from SA extract mode (Stage 2 output; `Source: extracted` per section).
+   - Every `docs/api-contracts/*` file produced by SA extract mode with `Status: Extracted`.
    - Any pre-existing non-kit docs the archaeology report cataloged (READMEs, Confluence pages, prior ADRs).
    - User-supplied context from the dispatch input (named PM, named Eng Lead, business intent the team can articulate even if it's not in code).
    - Frontend framework evidence from the archaeology report (`## Frontend Framework Evidence` if present, Service / Module Inventory `Stack` column otherwise) and architecture container stack fields.
    - Backend track/framework evidence from the archaeology report (`## Backend Framework Evidence` if present, Service / Module Inventory `Stack` column otherwise), public API/event/worker evidence, and architecture container stack fields.
+   - Route/dependency/message evidence from the archaeology report: `## Service Boundary & Entry Point Map`, `## Route / RPC / Job Trace Matrix`, `## Dependency & Call Graph (C3)`, `## Message Broker / Consumer Logic`, and `## API / Message Spec Candidates`.
 
 E2. **Derive User Stories from observed surfaces.**
-   - Each public endpoint, UI route, or job trigger observed in the archaeology report becomes a candidate US.
+   - Each user-facing endpoint, UI route, externally consumed API/RPC operation, externally consumed message flow, or job trigger with a human/business outcome becomes a candidate US. Do not create one US per internal helper endpoint or internal-only consumer; group internal service choreography under the FRs that deliver the externally visible outcome.
    - For each: Description's `As a <Role>` + `I want to <Action>` come from the observed surface and its consumer (when identifiable). `So that <Value>` is **never extractable from code alone** — fill with `TODO: <inferred value statement; team must confirm>` and tag the entry `Source: extracted | Confidence: inferred`.
    - Pre-conditions: derive from observed auth / authz middleware + observed state preconditions in code.
-   - Main Flow: derive from observed handler implementation (one numbered step per code-observable action: receive input → validate → persist → emit event → return).
-   - Business Rules: derive from observed invariants in code + tests + DB constraints. Confidence-tag each.
-   - Post-conditions: derive from observed DB writes / event emissions / cache invalidations.
+   - Main Flow: derive from the route/RPC/job trace matrix and message broker/consumer logic (one numbered step per code-observable action: receive input -> validate -> call internal service -> persist -> emit/consume event -> return/ack).
+   - Business Rules: derive from observed invariants in code + tests + DB constraints + idempotency/dedup/ordering rules in broker consumers. Confidence-tag each.
+   - Post-conditions: derive from observed DB writes / event emissions / cache invalidations / broker acknowledgements / side effects.
    - Write each US to `docs/user-stories/<US-ID>.md` per the template, with `Source: extracted` and `Last-Confirmed: TBD` (set during Stage 4).
    - Add a row per US to SRS §3.2 index with the same Source / Last-Confirmed columns (see SRS template Source-flag schema).
 
 E3. **Derive FRs from observed operations.**
-   - Each endpoint with a stable contract (observed schemas in code + tests) becomes an FR.
-   - Input / Output schemas: lift from code's data classes / DTOs / JSON marshaling.
-   - Error Handling table: lift from observed error responses in handlers + tests.
-   - Sequence Diagram: derive from observed call graph (handler → service → DB / external).
+   - Each endpoint, RPC operation, job trigger, message producer, or message consumer with a stable observable contract becomes an FR or part of an FR. Group tightly coupled producer/consumer chains into one FR when the chain implements a single business operation.
+   - Input / Output schemas: lift first from `docs/api-contracts/*` extracted contracts, then from code's data classes / DTOs / JSON marshaling cited by archaeology. For async flows, include payload schema, key/partition/ordering, consumer group, ack/commit semantics, retry/backoff/DLQ, and idempotency/dedup rules.
+   - Error Handling table: lift from observed error responses in handlers + tests and from retry/DLQ/failure paths in the message broker logic.
+   - Sequence Diagram: derive from observed route/RPC/job trace and service dependency edges (handler -> service -> DB / internal service / external system / producer -> broker -> consumer -> side effect).
    - Write each FR to `docs/frs/<FR-ID>.md` with `Source: extracted` flag and `Confidence: <level>` per section.
    - Add a row per FR to SRS §3.3 index.
+   - If a public API/message surface exists in archaeology but has no extracted contract file under `docs/api-contracts/`, add an OQ category `contract-extraction-missing`, keep the affected FR `Confidence: low`, and halt at the Stage 4 confirmation gate. Do not invent the missing schema.
 
 E4. **Derive NRS from observed metrics + tests + NFR-shaped code.**
    - Performance targets: when deployed-env metrics are available, lift observed P95 / P99 latency, throughput, error rate. Mark `Source: extracted | Confidence: high`.
@@ -148,6 +151,7 @@ Unscoped (the default) covers the entire archaeology report's surface. Scoped is
 - **HIGH-severity security issues from archaeology are blockers.** Phase 1.E halts before producing any SRS content over a codebase with known credential leaks / unaddressed CVEs / equivalent.
 - **Frontend framework is extracted, not chosen by FE Dev.** Brownfield Mode E records the detected framework in the SRS header and per-surface/per-app rows. If code evidence conflicts, keep `Frontend-Framework: TBD` and surface the conflict at Stage 4; do not let FE Dev resolve it during implementation.
 - **Backend track/framework are extracted, not chosen by BE Dev.** Brownfield Mode E records the detected backend track and framework in the SRS header and per-service rows. If code evidence conflicts, keep the affected backend header(s) as `TBD` and surface the conflict at Stage 4; do not let BE Dev resolve it during implementation.
+- **API/message behavior is extracted from trace + contract evidence, not guessed.** Route/RPC/job trace rows, `docs/api-contracts/*`, and Message Broker / Consumer Logic are the source for FR schemas, sequence diagrams, retry/DLQ behavior, and side effects. Missing evidence is an OQ/extraction gap, never a place to improvise.
 - **Extracted artifacts retain `Source: extracted` flag in their content forever**, even after Stage 4 confirmation flips to `Source: confirmed`. The history is preserved via `Source: confirmed (originally extracted YYYY-MM-DD)` so future readers can trace lineage.
 
 ## Next step

@@ -497,7 +497,7 @@
           </div>
           <div class="step">
             <h3>Initialize inside the target project</h3>
-            <p>Claude Code: run <code>/sdlc-init</code>. Codex: prompt <code>Run sdlc-init</code>. The initializer injects the plugin guidance into project <code>AGENTS.md</code> by default for Codex, warns about conflicts, and skips Claude-specific <code>.claude</code> settings/hooks unless <code>--target claude</code> or <code>--target both</code> is supplied.</p>
+            <p>Claude Code: run <code>/sdlc-init</code>. Codex: prompt <code>Run sdlc-init</code>. The initializer detects the active agent tool, writes <code>AGENTS.md</code> for Codex or <code>CLAUDE.md</code> plus Claude settings/hooks for Claude Code, warns about conflicts, and keeps <code>--target codex|claude|both</code> as an explicit override for migration or dual-tool setups.</p>
           </div>
           <div class="step">
             <h3>Provide the starting source</h3>
@@ -576,7 +576,7 @@ Codex: Run sdlc-init</code>
               <li>Prompt:
                 <code class="command-block">start brownfield onboarding</code>
               </li>
-              <li>The kit should run codebase archaeology, SA extract mode, and BA reverse-engineering. Extracted facts are tagged with confidence and confirmation questions before downstream work depends on them.</li>
+              <li>The kit should run codebase archaeology, SA extract mode, and BA reverse-engineering. Archaeology traces routes, internal service/component dependencies, API/message contract candidates, and broker producer/consumer logic; extracted facts are tagged with confidence and confirmation questions before downstream work depends on them.</li>
             </ol>
           </article>
 

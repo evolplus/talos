@@ -78,6 +78,8 @@ const WATCHLIST_HOME = [
   '~/.ssh/authorized_keys',
 ];
 const MAX_WATCH_FILES = 800;
+const SDLC_INIT_RECEIPT = '.claude/hooks/.state/sdlc-init-receipt.json';
+const SDLC_INIT_RECEIPT_MAX_AGE_MS = 15 * 60 * 1000;
 
 // Commands that trigger the dependency-install audit.
 const INSTALL_PATTERNS = [
@@ -261,7 +263,7 @@ function editDistanceLeq1(a, b) {
 // ---------------------------------------------------------------------------
 
 function checkSensitivePaths(root, prevSnap) {
-  const findings = [];
+  let findings = [];
   const current = takeSnapshot(root);
   if (prevSnap && prevSnap.files) {
     const before = prevSnap.files;
@@ -269,18 +271,96 @@ function checkSensitivePaths(root, prevSnap) {
     for (const [f, h] of Object.entries(after)) {
       if (!(f in before)) {
         const sev = f.includes(`${path.sep}.git${path.sep}hooks`) || isExecutable(f) ? 'high' : 'medium';
-        findings.push({ sev, msg: `New file appeared in a persistence-vector path during this command: ${f}${isExecutable(f) ? ' (executable)' : ''}` });
+        findings.push({
+          sev,
+          kind: 'sensitive-path',
+          change: 'new',
+          file: f,
+          hash: h,
+          msg: `New file appeared in a persistence-vector path during this command: ${f}${isExecutable(f) ? ' (executable)' : ''}`,
+        });
       } else if (before[f] !== h) {
-        findings.push({ sev: 'high', msg: `Sensitive file MODIFIED during this command: ${f}` });
+        findings.push({
+          sev: 'high',
+          kind: 'sensitive-path',
+          change: 'modified',
+          file: f,
+          hash: h,
+          msg: `Sensitive file MODIFIED during this command: ${f}`,
+        });
       }
     }
     for (const f of Object.keys(before)) {
       if (!(f in current.files)) {
-        findings.push({ sev: 'medium', msg: `Sensitive file deleted during this command: ${f}` });
+        findings.push({
+          sev: 'medium',
+          kind: 'sensitive-path',
+          change: 'deleted',
+          file: f,
+          hash: null,
+          msg: `Sensitive file deleted during this command: ${f}`,
+        });
       }
     }
   }
   return { findings, current };
+}
+
+function commandLooksLikeSdlcInit(command) {
+  return /(?:^|\s)(?:node(?:\s+\S+)*\s+)?(?:"[^"]*sdlc-init\.cjs"|'[^']*sdlc-init\.cjs'|\S*sdlc-init\.cjs)(?:\s|$)/.test(command);
+}
+
+function relPosix(root, file) {
+  return path.relative(root, file).split(path.sep).join('/');
+}
+
+function loadFreshSdlcInitReceipt(root) {
+  const receipt = loadJson(path.join(root, SDLC_INIT_RECEIPT));
+  if (!receipt || receipt.tool !== 'evo-talos-sdlc-init' || receipt.version !== 1 || !Array.isArray(receipt.files)) {
+    return null;
+  }
+
+  const createdAt = Date.parse(receipt.createdAt);
+  if (!Number.isFinite(createdAt) || Date.now() - createdAt > SDLC_INIT_RECEIPT_MAX_AGE_MS) {
+    return null;
+  }
+
+  if (receipt.projectRoot && path.resolve(receipt.projectRoot) !== path.resolve(root)) {
+    return null;
+  }
+
+  const files = new Map();
+  for (const file of receipt.files) {
+    if (!file || typeof file.path !== 'string' || typeof file.sha256 !== 'string') {
+      continue;
+    }
+    files.set(file.path, file.sha256);
+  }
+  return files;
+}
+
+function suppressTrustedSdlcInitSensitiveFindings(root, command, findings) {
+  if (!commandLooksLikeSdlcInit(command)) {
+    return findings;
+  }
+
+  const receiptFiles = loadFreshSdlcInitReceipt(root);
+  if (!receiptFiles) {
+    return findings;
+  }
+
+  return findings.filter((finding) => {
+    if (finding.kind !== 'sensitive-path' || finding.change === 'deleted' || !finding.file) {
+      return true;
+    }
+    const rel = relPosix(root, finding.file);
+    const expectedHash = receiptFiles.get(rel);
+    if (!expectedHash) {
+      return true;
+    }
+    const actualHash = finding.hash || sha256(finding.file);
+    return actualHash !== expectedHash;
+  });
 }
 
 function changedLockfiles(root) {
@@ -332,7 +412,7 @@ function newPackagesFromLockDiff(root, lockfile) {
 }
 
 function checkInstallScripts(root, lockfile, pkgs) {
-  const findings = [];
+  let findings = [];
   const moduleRoot = path.join(root, path.dirname(lockfile), 'node_modules');
   for (const name of pkgs.slice(0, 200)) {
     const pj = loadJson(path.join(moduleRoot, name, 'package.json'));
@@ -352,7 +432,7 @@ function checkInstallScripts(root, lockfile, pkgs) {
 }
 
 function checkTyposquats(pkgs) {
-  const findings = [];
+  let findings = [];
   for (const name of pkgs) {
     const bare = name.replace(/^@[^/]+\//, '');
     for (const pop of POPULAR_NPM) {
@@ -437,13 +517,14 @@ function main() {
 
   // ---- Audit mode (PostToolUse) ----
   const command = (event && event.tool_input && event.tool_input.command) || '';
-  const findings = [];
+  let findings = [];
 
   // 1. Sensitive-path tampering vs. pre-run snapshot.
   const prevSnap = loadJson(snapPath);
   const { findings: tamper, current } = checkSensitivePaths(root, prevSnap);
   findings.push(...tamper);
   try { saveJson(snapPath, current); } catch { /* fail-open */ }
+  findings = suppressTrustedSdlcInitSensitiveFindings(root, command, findings);
 
   // 2. Dependency-install audit.
   if (INSTALL_PATTERNS.some((re) => re.test(command))) {

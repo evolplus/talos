@@ -39,9 +39,9 @@ These three gaps mean extracted artifacts CANNOT have the same confidence as aut
 
 **Goal:** Read-only sweep of the codebase + git history + deployed env + existing non-kit docs. Produce an informational report.
 
-**Output:** `docs/archaeology-reports/<topic-slug>.md`. Confidence-tagged inventory of services, public surfaces, data model, cross-cutting concerns, NFR posture, tests, git signals, existing docs, and explicit gap categories.
+**Output:** `docs/archaeology-reports/<topic-slug>.md`. Confidence-tagged inventory of services, public surfaces, route/RPC/job traces, internal dependency edges, API/message spec candidates, message broker producer/consumer logic, data model, cross-cutting concerns, NFR posture, tests, git signals, existing docs, and explicit gap categories.
 
-**Gate:** None. Report is informational. It is NOT a canonical artifact and downstream agents do NOT consume it as truth — only as input for the extract stages.
+**Gate:** None in the canonical-artifact sense. Report is informational and is NOT truth by itself. However, `SUFFICIENT_FOR_EXTRACT` requires enough route trace, dependency, API/message contract, and broker/consumer evidence for SA to produce architecture plus extracted contract stubs. A shallow service inventory is `PARTIAL_GAPS` at best.
 
 **Re-dispatch:** Large codebases may need multiple archaeology dispatches (one per service / sub-module). The Orchestrator coordinates.
 
@@ -51,9 +51,9 @@ These three gaps mean extracted artifacts CANNOT have the same confidence as aut
 
 **Goal:** Produce a provisional `docs/architecture.md` documenting the as-built system.
 
-**Output:** `docs/architecture.md` with every section flagged `Source: extracted` and `Confidence: high | medium | low | inferred`. ADRs at `docs/decisions/` only for decisions the code irrefutably encodes — never for inferred intent.
+**Output:** `docs/architecture.md` with every section flagged `Source: extracted` and `Confidence: high | medium | low | inferred`; extracted contract stubs under `docs/api-contracts/` for observable HTTP/RPC/GraphQL/WebSocket/message surfaces; ADRs at `docs/decisions/` only for decisions the code irrefutably encodes — never for inferred intent.
 
-**Gate:** Sections marked `Confidence: inferred` get paired open-issues with category `extract-confirmation-pending`. These block Stage 4 confirmation.
+**Gate:** Sections marked `Confidence: inferred` get paired open-issues with category `extract-confirmation-pending`. Missing contract stubs for observable routes/messages, or missing producer/consumer logic for brokered flows, are extraction gaps and must be resolved before Stage 3 unless the dispatch is explicitly scoped to `architecture-only`.
 
 **Hard rule:** SA in `extract` mode does NOT propose new architectural decisions. It documents what exists. Recommendations / changes are a future Path A SDLC task.
 
@@ -76,6 +76,7 @@ These three gaps mean extracted artifacts CANNOT have the same confidence as aut
 - **`So that <Value>` is never extracted.** Mark `TODO: <team-supplied value statement>` and tag inferred.
 - **NRS numbers** come from observed metrics OR are explicitly `unknown — measure during pilot`. Never invent.
 - **HIGH-severity security issues** from Stage 1 are blockers — Stage 3 halts; team addresses via Path A first.
+- **Route/message contracts come from Stage 2 outputs.** BA derives FR schemas, flows, and error handling from `docs/api-contracts/`, architecture API inventory, route trace rows, and broker/consumer logic. If those are absent for an observable surface, BA raises an extraction gap rather than inventing behavior.
 
 ### Stage 4 — Human Confirmation Gate (mandatory, multi-mode)
 

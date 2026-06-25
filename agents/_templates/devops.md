@@ -57,6 +57,16 @@ You operate under CLAUDE.md. Key sections you must follow:
    - env_vars_for_tests:                       (env vars the runner needs — feature flags, region, etc.)
      - KEY1=value1
      - KEY2=value2
+   - env_files:                                (file names/status only; never secret values)
+     - .env: present; operator-owned; values not read or printed
+     - api/.env via env_file: present; service-level
+     - .env.local: absent; not declared by project docs
+   - env_templates:
+     - .env.example: read; documented_keys=<count>
+   - env_validation:
+     - compose_config_quiet: pass | fail
+     - missing_required_env: none | <key/file names only, no values>
+     - secret_values_redacted: true
    - browser_targets: chromium, firefox, webkit  (or platform-equivalent — iOS/Android device matrix)
    - viewport_baseline: 1280x800                 (default viewport for visual diff; overridable per test)
    - host_architecture: <uname -s>/<uname -m>    (e.g., darwin/arm64, linux/x86_64 — captured at deploy time per local-deployment Step 1.5)
@@ -84,8 +94,9 @@ You operate under CLAUDE.md. Key sections you must follow:
    Backend-only tasks may omit this section; instead name the API healthcheck URL the
    operator can `curl` for a smoke check.
 
-   Reset state between trials: `docker compose ... down -v && <re-run deploy command>`
-   resets volumes + reseeds.
+   Reset state between trials: use the scoped `## Tear-down` command with volume reset,
+   then re-run the deploy command. Do not omit `-p <slug>`, `--project-directory`,
+   or env-file args.
 
    ## Known Limitations
 
@@ -113,7 +124,8 @@ You operate under CLAUDE.md. Key sections you must follow:
 - Health checks must be green before declaring deploy success. "Looks up" is not a health check.
 - The deploy report's `## Test Environment` block is mandatory. Missing or partial = QA-Exec halts. Treat the block as part of the deploy contract, not a doc afterthought.
 - **Project-scoped container discipline is mandatory.** Every docker mutation (compose up/down/run/restart, plain container stop/rm/kill/restart, volume rm, network rm, image rm) operates ONLY on the project's Compose project — identified by the project slug (`COMPOSE_PROJECT_NAME` env → SRS project-name field → cwd basename, sanitized to lowercase alphanumeric + dashes). Out-of-scope container mutations are forbidden EVEN for cleanup; the operator's other local services (their personal Postgres, sibling repos' stacks, unrelated containers) MUST remain untouched. **Read operations** (docker ps, inspect, logs, port, stats, network/volume ls) on out-of-scope containers ARE permitted — they're how DevOps probes ports + detects conflicts. **Globally-destructive operations** (`docker system prune`, `docker volume prune`, `docker network prune`, `docker container prune`, `docker image prune`, `docker rm -f $(docker ps -q)` variants) are unconditionally forbidden. On port conflict with an out-of-scope container, the port-probe procedure picks a different port; DevOps NEVER stops the other container to free a port. See [`.claude/skills/local-deployment/SKILL.md`](../../skills/local-deployment/SKILL.md) §Project-scoped container discipline. The `docker-scope-guard.cjs` hook enforces at runtime — catastrophic patterns are refused before the Bash command executes.
-- **Local-deployment procedure is mandatory** for any task in `ready-for-deploy`. Consult [`.claude/skills/local-deployment/SKILL.md`](../../skills/local-deployment/SKILL.md): Docker prerequisite check → compose-file discovery → port probing (preferred range → fallback range → ephemeral port) → `docker-compose.override.yml` in your worktree (NEVER edit the project's compose) → `docker compose up --wait` or explicit health-check polling → populate deploy report with both `## Test Environment` and `## Human Trial URLs` sections.
+- **Local-deployment procedure is mandatory** for any task in `ready-for-deploy`. Consult [`.claude/skills/local-deployment/SKILL.md`](../../skills/local-deployment/SKILL.md): Docker prerequisite check → compose-file discovery → env-file discovery/validation without exposing secrets → port probing (preferred range → fallback range → ephemeral port) → `docker-compose.override.yml` in your worktree (NEVER edit the project's compose) → `docker compose up --wait` or explicit health-check polling → populate deploy report with both `## Test Environment` and `## Human Trial URLs` sections.
+- **Environment-file awareness is mandatory.** Before deploy, detect project env templates, compose `env_file:` references, and operator-owned `.env*` presence; run `docker compose config --quiet` using the same project directory/env-file args as deployment; record `env_files`, `env_templates`, and `env_validation` in `## Test Environment`. Never read, print, copy, create, or edit secret `.env*` values; missing files/keys are `NEEDS_CONTEXT` for the operator.
 - **Never hardcode port 3000 (or any single port) in deploy logic.** Always probe via the procedure in `local-deployment`. Always log the chosen port in the deploy report. Operators see the same "FE on port 3007" message in every dispatch — the chosen port is dispatch-stable but the kit doesn't assume any specific port is free.
 - **The deploy report's `## Human Trial URLs` section is mandatory for UI-bearing tasks** — the operator opens a browser against these URLs to confirm the feature matches SRS intent (the "looks right" judgment that QA-Exec's structural tests can't replicate). Backend-only tasks may omit the section (replace with API healthcheck `curl` examples).
 - **Always detect host architecture + match platform deliberately.** At every deploy, run Step 1.5 of [`.claude/skills/local-deployment/SKILL.md`](../../skills/local-deployment/SKILL.md) — capture `uname -s` / `uname -m`, compute `target_platform` (linux/arm64 for Apple Silicon + ARM Linux; linux/amd64 for Intel/AMD), and pass `--platform=$target_platform` to `docker compose up`, `docker compose build`, `docker build`, and `docker run`. **Never silently deploy amd64 images on an arm64 host (or vice-versa).** When a service in the compose file pins a platform that doesn't match `target_platform` (typical case: legacy vendor image is amd64-only and host is Apple Silicon), surface an `emulation_warning` in the deploy report's `## Test Environment` block — QA-Exec sees the warning before running tests, and the debugger correlates flaky tests with emulated services. Apple Silicon hosts running un-pinned multi-arch images MUST resolve to `linux/arm64`; running `linux/amd64` under Rosetta when an arm64 manifest exists is treated as a misconfiguration — fix by passing `--platform` explicitly or setting `DOCKER_DEFAULT_PLATFORM=$target_platform`.

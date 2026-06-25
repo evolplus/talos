@@ -1,6 +1,6 @@
 ---
 name: sdlc-init
-description: Codex-native initializer for Evo Talos. Use when the user asks for /sdlc-init, sdlc-init, initialize the SDLC kit, install the kit into the current project, or update the project's AGENTS.md from the plugin. Runs the plugin script to inject AGENTS.md by default, with optional Claude target files when requested.
+description: Codex-native initializer for Evo Talos. Use when the user asks for /sdlc-init, sdlc-init, initialize the SDLC kit, install the kit into the current project, or update the project's AGENTS.md from the plugin. Runs the plugin script, which auto-detects the active agent tool and chooses Codex or Claude project files.
 agents: [orchestrator]
 sdlc_phase: bootstrap
 owner: Platform Eng
@@ -34,9 +34,9 @@ slash commands and may not exist in Codex.
 
 ## Supported Arguments
 
-- `--target codex` - default. Injects `AGENTS.md` only.
-- `--target claude` - writes `CLAUDE.md`, `.claude/settings.json`, and `.claude/hooks`.
-- `--target both` - writes both Codex and Claude instruction targets.
+- `--target codex` - override auto-detection and inject `AGENTS.md` only.
+- `--target claude` - override auto-detection and write `CLAUDE.md`, `.claude/settings.json`, and `.claude/hooks`.
+- `--target both` - override auto-detection and write both Codex and Claude instruction targets.
 - `--dry-run` - prints planned changes without writing files.
 - `--force-hooks` - allows replacing conflicting Claude hook files.
 - `--skip-agents` - skip instruction injection.
@@ -48,14 +48,16 @@ slash commands and may not exist in Codex.
 
 The helper performs project-local changes only:
 
-1. Injects the plugin contract from `rules/CLAUDE.md` into the project's
-   `AGENTS.md` inside a managed block for Codex by default.
-2. Warns when existing project instruction headings overlap with plugin
+1. Detects the active agent tool from environment signals first, then project
+   markers if needed.
+2. In Codex, injects the plugin contract from `rules/CLAUDE.md` into the
+   project's `AGENTS.md` inside a managed block.
+3. In Claude Code, injects `CLAUDE.md`, merges `.claude/settings.json`, and
+   copies `.claude/hooks`.
+4. Warns when existing project instruction headings overlap with plugin
    sections.
-3. Skips `.claude/settings.json` and `.claude/hooks` for the default Codex
-   target.
-4. Applies Claude files only when `--target claude` or `--target both` is
-   requested.
+5. Uses `--target` only as an explicit override for unusual migration or
+   dual-tool setups.
 
 After the helper exits:
 
@@ -74,4 +76,3 @@ Operators can invoke this in Codex with natural prompts such as:
 - `Run sdlc-init --dry-run`
 - `Initialize this project with Evo Talos`
 - `Refresh AGENTS.md from the Talos plugin`
-

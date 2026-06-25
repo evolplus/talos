@@ -331,6 +331,8 @@ The kit's only PostToolUse hook. PreToolUse guards gate *intent*; this hook audi
 
 **Dedupe**: finding fingerprints in `.claude/hooks/.state/audit-seen.json` prevent the same finding set from re-filing on every subsequent Bash run.
 
+**Trusted kit init/update receipt**: `sdlc-init` writes `.claude/hooks/.state/sdlc-init-receipt.json` with the hashes of sensitive files it intentionally changed. When the audited Bash command is a fresh `sdlc-init` run, the hook suppresses only matching sensitive-path findings. Extra changed files, stale/missing receipts, hash mismatches, deleted files, dependency findings, and command red flags still file open issues.
+
 **Override per-session**: `export CLAUDE_SKIP_SECURITY_AUDIT=1`
 
 **Known limits** (extend when they bite): no advisory-DB lookup (npm audit / osv — deliberately excluded from the inline hook for speed; run on demand); first-install of an untracked lockfile skips per-package extraction (URL/script scans still run); watchlist walk capped at 800 files; a long-running background process started by one command and mutating files later is attributed to the NEXT Bash run's audit window.

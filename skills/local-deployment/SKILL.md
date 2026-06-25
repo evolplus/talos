@@ -1,6 +1,6 @@
 ---
 name: local-deployment
-description: How DevOps composes the local environment using Docker so QA-Exec can run end-to-end tests AND the operator can manually trial features in a browser. Probes available host ports instead of hardcoding (avoids the port-3000 conflict that derails dispatches); never edits the project's compose file directly (generates an override in the worktree); produces a deploy report with both QA test-environment fields and human-friendly trial URLs.
+description: How DevOps composes the local environment using Docker so QA-Exec can run end-to-end tests AND the operator can manually trial features in a browser. Probes available host ports instead of hardcoding, discovers project .env/template/env_file requirements without exposing secrets, never edits the project's compose file directly, and produces a deploy report with QA test-environment fields and human-friendly trial URLs.
 agents: [devops]
 sdlc_phase: deploy
 owner: Platform Eng
@@ -110,7 +110,7 @@ NEVER auto-resolve by stopping the other container.
 
 ## Inputs and outputs
 
-- **Inputs:** the project's existing `docker-compose.yml` (or equivalent); `docs/architecture.md` C2 Containers section (to know what services to expect); the task ID; SRS §3.4 Technical Constraints if it pins ports.
+- **Inputs:** the project's existing `docker-compose.yml` (or equivalent); project env templates and compose `env_file:` references; `docs/architecture.md` C2 Containers section (to know what services to expect); the task ID; SRS §3.4 Technical Constraints if it pins ports.
 - **Outputs:** a running local environment (containers up + health-checked); `docs/deploy-reports/<task-id>.md` with the standard Test Environment block + a new `## Human Trial URLs` section both QA and the operator consume.
 
 ## Procedure
@@ -208,6 +208,56 @@ Question: The kit cannot author a compose file inline (per the DevOps template's
   [b] The compose file lives elsewhere — name the path.
 ```
 
+### Step 2.5 — Discover environment files and validate env readiness
+
+Do this before port probing or `docker compose up`. Many local deploy failures are really env-loading failures: Compose was run from the wrong directory, the root `.env` was not loaded, a service-level `env_file:` was missing, or QA ran with defaults that differ from the operator's intended local setup.
+
+Classify env files:
+
+- **Operator-owned secret env files:** `.env`, `.env.local`, `.env.development`, `.env.test`, `.env.<service>`, and any file named by compose `env_file:` unless it is an allowlisted template. Detect existence and usage, but never read or print values.
+- **Safe templates:** `.env.example`, `.env.template`, `.env.sample`, including service-specific variants. These may be read to collect required key names and comments.
+
+Procedure:
+
+1. Inspect the selected compose files and project run docs for:
+   - `env_file:` entries per service;
+   - `${VAR}` / `${VAR:-default}` / `${VAR:?required}` interpolation placeholders;
+   - documented local env-file order, for example `.env` then `.env.local`.
+2. Read safe templates only. Extract key names, defaults, and comments; do not treat template placeholder values as deploy secrets.
+3. Detect whether operator-owned env files exist and whether every compose-referenced `env_file:` path exists. Do not copy env files into the worktree and do not create missing files.
+4. Build a `compose_env_args` list for every later Compose command:
+   - run from the project root or pass `--project-directory <project-root>` so root `.env` participates in interpolation;
+   - include explicit `--env-file <path>` only when the project docs/scripts/compose setup declare that file order;
+   - preserve service-level `env_file:` entries in compose instead of copying them into the generated override.
+5. Validate the selected compose/env files before port probing:
+
+   ```bash
+   # Use the same -p, -f, --project-directory, and --env-file arguments that the final deploy will use,
+   # but do not include the generated override yet because Step 5 has not created it.
+   docker compose --project-directory "$project_root" "${compose_env_args[@]}" -p "$slug" -f docker-compose.yml config --quiet
+   ```
+
+   Use `config --quiet`, not full `docker compose config`, because full config output can print resolved secret values.
+6. If validation fails because a required env var or env file is missing, halt with `NEEDS_CONTEXT`. Ask the operator to create/update the project-local env file manually. Do not write `.env` yourself.
+7. If privacy hooks block key-only inspection of operator-owned env files, record `key_status: not inspected (privacy guard)` in the deploy report. Do not bypass privacy just to count keys.
+
+The deploy report must include an env summary with file names and statuses only:
+
+```markdown
+### Env File Awareness
+
+| Item | Status | Notes |
+|---|---|---|
+| `.env` | present | operator-owned; values not read or printed |
+| `.env.local` | absent | not declared by project docs |
+| `api/.env` via compose `env_file` | present | service-level env file |
+| `.env.example` | read | 18 documented keys |
+
+- compose_config_quiet: pass
+- missing_required_env: none
+- secret_values_redacted: true
+```
+
 ### Step 3 — Determine preferred port ranges
 
 Consult, in priority order:
@@ -294,15 +344,23 @@ docker compose -f docker-compose.yml -f docker-compose.override.yml up -d
 
 Or set `COMPOSE_FILE` env var. The override file lives in the worktree alongside the deploy report; it is **not** intended for main-branch commit (the kit's `.gitignore` already excludes `.worktrees/`).
 
+After generating the override and setting any probed-port variables it references, run final Compose validation with the override included:
+
+```bash
+docker compose --project-directory "$project_root" "${compose_env_args[@]}" -p "$slug" -f docker-compose.yml -f docker-compose.override.yml config --quiet
+```
+
+This final validation catches env/override interpolation mistakes without dumping resolved secret values.
+
 ### Step 6 — Bring the environment up
 
 ```bash
-# target_platform from Step 1.5
-docker compose -p "$slug" -f docker-compose.yml -f docker-compose.override.yml up -d --wait
+# target_platform from Step 1.5, compose_env_args/project_root from Step 2.5
+docker compose --project-directory "$project_root" "${compose_env_args[@]}" -p "$slug" -f docker-compose.yml -f docker-compose.override.yml up -d --wait
 # When images are built locally from a Dockerfile:
-#   docker compose -p "$slug" build --build-arg TARGETPLATFORM="$target_platform"
+#   docker compose --project-directory "$project_root" "${compose_env_args[@]}" -p "$slug" -f docker-compose.yml -f docker-compose.override.yml build --build-arg TARGETPLATFORM="$target_platform"
 # When pulling pre-built images that don't have a manifest list, set DOCKER_DEFAULT_PLATFORM:
-#   DOCKER_DEFAULT_PLATFORM=$target_platform docker compose -p "$slug" up -d --wait
+#   DOCKER_DEFAULT_PLATFORM=$target_platform docker compose --project-directory "$project_root" "${compose_env_args[@]}" -p "$slug" up -d --wait
 ```
 
 The `--wait` flag (Compose v2.17+) blocks until every service with a healthcheck reports `healthy`. If your compose file lacks healthchecks for some services, fall back to the polling loop in Step 7.
@@ -435,6 +493,16 @@ Standard schema per the DevOps template — `base_url`, `api_base_url`, `admin_b
   - payments-legacy: linux/amd64            (vendor image; amd64-only)
 - emulation_warnings:                       (services where compose_platforms != target_platform -- running under emulation)
   - payments-legacy: amd64 image on arm64 host (Rosetta/QEMU); expect slower cold-start + occasional native-syscall flake
+- env_files:                                (file names/status only; never values)
+  - .env: present; operator-owned; values not read or printed
+  - api/.env via env_file: present; service-level
+  - .env.local: absent; not declared by project docs
+- env_templates:
+  - .env.example: read; documented_keys=18
+- env_validation:
+  - compose_config_quiet: pass
+  - missing_required_env: none
+  - secret_values_redacted: true
 ```
 
 The `host_architecture` / `target_platform` / `compose_platforms` / `emulation_warnings` fields surface platform mismatches explicitly in the deploy report -- QA-Exec sees them before running tests, and the debugger correlates "this test is flaky" with "this service runs under emulation" without re-deriving the host arch.
@@ -445,6 +513,7 @@ The debugger agent (`.claude/agents/_non-sdlc/debugger.md`) reads this deploy re
 
 - `project_slug` — for `docker logs <slug>-<service>-N` and `docker exec` scoping
 - `base_url` / `api_base_url` / `admin_base_url` — for reproducing the symptom against the actual deployed surface
+- `env_files` / `env_validation` — to identify local-env gaps without exposing secret values
 - Container names (typically `<project_slug>-<service>-<replica>`) — for log inspection
 - `## Human Trial URLs` — the same URLs operators trial; debugger uses to reproduce
 
@@ -468,7 +537,7 @@ with the test fixture below; walk through the user flows the task implements.
 
 **Common dev-only credentials** are seeded by `db-seed.sql` (committed under `e2e/fixtures/`). These are NOT real users; do NOT use these patterns in staging or prod.
 
-**Reset state** between trials: `docker compose down -v && <re-run deploy command>` resets volumes + reseeds.
+**Reset state** between trials: use the scoped `## Tear-down` command below with volume reset, then re-run the deploy command. Do not omit `-p <slug>`, `--project-directory`, or the env-file args.
 ```
 
 The Human Trial URLs section is what makes the deploy useful beyond just QA-Exec. The operator can click through and verify the feature matches SRS intent (the "looks right" judgment that QA-Exec's structural tests can't replicate).
@@ -480,7 +549,7 @@ Document the tear-down command in the report:
 ```markdown
 ## Tear-down
 
-- Standard: `docker compose -f docker-compose.yml -f docker-compose.override.yml down`
+- Standard: `docker compose --project-directory <project-root> <same --env-file args> -p <slug> -f docker-compose.yml -f docker-compose.override.yml down`
 - With volume reset: `docker compose ... down -v` (drops Postgres data, reseeds on next up)
 - Override file location (worktree-local; auto-cleaned on dispatch close): .worktrees/devops-T-001/docker-compose.override.yml
 ```
@@ -492,6 +561,9 @@ For dispatch close, the kit's worktree-isolation pattern cleans up the worktree 
 - **Deploying `linux/amd64` images on Apple Silicon (`darwin/arm64`) hosts without realising.** The compose file is silent about platform; Docker Desktop dutifully runs the amd64 image under Rosetta/QEMU emulation; tests pass but are 3-10x slower, cold-start times balloon, and occasional native-syscall paths flake. Run Step 1.5 at every deploy; pass `--platform=$target_platform`; surface `emulation_warnings` in the deploy report for any service whose `compose_platforms` entry doesn't match `target_platform`. If a vendor image is amd64-only (legacy SDK, proprietary binary), document the emulation in the deploy report so QA-Exec + the debugger know to expect it -- don't hide it.
 - **Hardcoding port 3000** — every example online uses 3000. Don't. Probe; pick what's free; log the chosen port; tell the operator. The user's frustration with port-3000 conflicts is THE motivation for this skill.
 - **Editing the project's `docker-compose.yml`** to "fix" port conflicts. Don't — that's project-owned reusable infra (DevOps template Tool Scope rule 2). Generate an override file in your worktree.
+- **Running Compose from the worktree and accidentally skipping the project root `.env`.** Use `--project-directory <project-root>` or run from the project root, and record the env-file status in the deploy report.
+- **Dumping `docker compose config` to logs.** Full config output can include resolved secret values. Use `docker compose config --quiet` for validation.
+- **Creating or editing `.env` to make deploy pass.** Env files are operator-owned. Halt with `NEEDS_CONTEXT` and list missing file/key names without values.
 - **`sleep 30` instead of a health-check loop.** Times out cleanly; produces flaky deploys when services are slow to start. Always poll readiness, never sleep blind.
 - **Reporting only the chosen FE port and leaving the operator to discover the API port.** Both go in the deploy report. The operator opens one tab and hits the FE; QA-Exec opens many tabs and hits the API.
 - **Forgetting to bring volumes down between dispatches.** A `down` without `-v` keeps the Postgres data — fine for some tests, broken for others. Document the recovery command in the deploy report so the operator can reset state without asking.
@@ -499,6 +571,9 @@ For dispatch close, the kit's worktree-isolation pattern cleans up the worktree 
 ## Hard rules
 
 - **Always detect host architecture + match deliberately.** Run Step 1.5 at deploy start. Pass `--platform=$target_platform` to docker compose / build / run. When a service in the compose file pins `linux/amd64` and the host is `linux/arm64` (or vice-versa), surface an `emulation_warning` in the deploy report. Never silently emulate.
+- **Always run env-file discovery and validation before deployment.** Step 2.5 is mandatory. Do not deploy until compose env readiness is recorded in the deploy report.
+- **Never read, print, copy, create, or edit operator-owned `.env*` values.** Read only allowlisted templates (`.env.example`, `.env.template`, `.env.sample`). Missing required env files or keys are `NEEDS_CONTEXT` for the operator, not something DevOps silently patches.
+- **Never run full `docker compose config` in a way that prints resolved secrets.** Use `config --quiet` and record pass/fail only.
 - **Never hardcode port 3000 (or any single port) in deploy logic.** Always probe. Always log the chosen port in the deploy report.
 - **Never edit the project's `docker-compose.yml` directly.** Generate `docker-compose.override.yml` in your worktree.
 - **Health checks must be green** before the deploy is declared successful. `--wait` flag or explicit polling loop; never blind `sleep`.

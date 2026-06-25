@@ -41,7 +41,7 @@ You produce one report per dispatch. For very large codebases (multi-repo, 100K+
 
 ## Outputs You Must Produce
 
-1. An archaeology report at `docs/archaeology-reports/<topic-slug>.md` with the structure below.
+1. An archaeology report at `docs/archaeology-reports/<topic-slug>.md` with the structure below, including route traces, dependency edges, API/message contract candidates, and broker/consumer logic for every in-scope service.
 2. (When applicable) entries in `docs/open-issues.md` for kit-level gaps you encounter (e.g., "no instrumentation exists at all — instrumentation contract will require new work, not extraction").
 3. A structured return value to the Orchestrator (see "Return to Orchestrator" below).
 
@@ -93,6 +93,15 @@ This table feeds BA Mode E's `Backend-Track:` and `Backend-Framework:` SRS heade
 
 Use canonical backend-track values: `backend-web`, `backend-service`. Use canonical detected-framework values when one of the supported BE Dev standards applies: `TypeScript with Express`, `TypeScript with NestJS`, `Python with FastAPI`, `Java with Spring Boot`, `.NET Core C#`, `Pure Golang`, `Java Core`, `Golang with Gin`, `Golang with Fiber`, `Golang with Echo`, `Golang with Kratos`. If evidence is conflicting inside one service boundary, list every signal in Evidence and set Confidence `conflict`. If the framework is unsupported, name it exactly and set Confidence based on evidence.
 
+## Service Boundary & Entry Point Map
+
+One row per deployable service/runtime plus every public or internally consumed entry point owned by that service. This is the index SA uses before writing C2/C3 and contract files.
+
+| Service | Entry point type | Entry point | Registration source | Owning handler / consumer | Downstream components | Contract candidate | Confidence |
+|---|---|---|---|---|---|---|---|
+| `orders-api` | HTTP route | `POST /api/orders` | `src/routes/orders.ts:18` | `OrderController.create` | `OrderService`, `OrderRepository`, `payment-client`, `Kafka order.events` | `docs/api-contracts/orders.openapi.yaml#/paths/~1api~1orders/post` | high |
+| `billing-worker` | Kafka consumer | `billing.invoice.requested` | `src/consumer/billing.go:42` | `InvoiceRequestedHandler` | `InvoiceService`, `billing_db.invoices` | `docs/api-contracts/billing.asyncapi.yaml#/channels/billing.invoice.requested` | high |
+
 ## Public API Surface
 
 | Method + path / Event / UI route | Source file:line | Auth scheme detail | Request schema shape | Response schema shape | Error model | Consumer (inferred) | Confidence |
@@ -105,6 +114,16 @@ Use canonical backend-track values: `backend-web`, `backend-service`. Use canoni
 **Schema shape** is the shape observed from code (TypeScript interface, Go struct, Python dataclass, etc.) flattened to a sketch. Mark `TODO: <field>` when the schema cannot be introspected from code (e.g., dynamic request handling). SA's extract mode fills these into stub contract files.
 
 **Confidence:** **high** (explicit route + schema), **medium** (route inferred from middleware / glob registration; schema partial), **low** (only seen in tests / never invoked in production logs), **inferred** (mentioned in docs but no code evidence).
+
+## Route / RPC / Job Trace Matrix
+
+Trace every synchronous entry point end-to-end through internal components. Include HTTP routes, GraphQL resolvers, gRPC methods, webhooks, scheduled jobs, CLI commands that mutate system state, and service-mesh/internal RPC operations. One `Public API Surface` row may expand into multiple trace rows when the route fans out by command type.
+
+| Surface ID | Service | Entry type | Registration | Middleware / auth chain | Handler / controller | Use-case / domain service | Repository / datastore calls | Outbound internal calls | Events emitted | Error / retry path | Contract anchor | Confidence |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| API-001 | `orders-api` | HTTP `POST /api/orders` | `src/routes/orders.ts:18` | `jwtAuth`, `tenantScope`, `validateBody(OrderCreateDto)` | `OrderController.create` | `OrderService.createOrder` | `OrderRepo.insert`, `InventoryRepo.reserve` | `payment-service.authorize` HTTP | `order.created` | 400 validation; 409 stock conflict; payment 5xx retry 2x | `orders.openapi.yaml#/paths/~1api~1orders/post` | high |
+
+If a route can be registered dynamically, cite the registry/factory and the concrete implementation it resolves to. If the implementation cannot be resolved statically, keep the row with `Confidence: low` and add a gap.
 
 ## External System Dependencies (C1)
 Enumerate every hostname, API domain, or external service endpoint found in config files AND service registry classes. List all, then categorize by purpose (auth, payment, observability, data, etc.). Categorization is secondary to enumeration. Systems like Telegram/Teams that serve observability AND are external dependencies appear here AND in Cross-Cutting Concerns — they're dual-role.
@@ -133,11 +152,11 @@ Document the horizontal structural contracts AND explicit dependency edges disco
 
 **Part B — Cross-service call edges.** Service-to-service edges observed from code (HTTP client URLs, gRPC stub usage, Kafka producer/consumer registration, shared-DB writes/reads).
 
-| From service | To service / system | Edge type | Notes |
-|---|---|---|---|
-| `web-api` | `account-service` | sync HTTP (Bearer) | `https://account.internal/sessions/validate` |
-| `web-api` | `Kafka cluster` | async producer | publishes `user.created`, `session.started` |
-| `notification-worker` | `Kafka cluster` | async consumer | consumes `user.created` |
+| Edge ID | From service / component | To service / system | Edge type / protocol | Source evidence | Auth / credential mode | Schema / operation | Retry / timeout / DLQ | Purpose | Confidence |
+|---|---|---|---|---|---|---|---|---|---|
+| EDGE-001 | `web-api.AuthAdapter` | `account-service` | sync HTTP | `src/auth/account-client.ts:31` | Bearer service token | `GET /sessions/validate` | timeout 2s; retry 1x on 5xx | validate user session | high |
+| EDGE-002 | `web-api.EventPublisher` | `Kafka cluster` | async producer | `src/events/user-events.ts:18` | mTLS via broker config | topic `user.created` | producer retry 3x; no DLQ | publish user lifecycle | high |
+| EDGE-003 | `notification-worker.UserCreatedConsumer` | `Kafka cluster` | async consumer | `src/workers/user-created.ts:44` | mTLS via broker config | topic `user.created`, group `notification-worker` | retry 5x then `user.created.dlq` | send welcome notification | high |
 
 **Part C — External-library production dependencies.** SA's extract mode populates the architecture §3.7 external-library section from `package.json` / `go.mod` / `Cargo.toml` / `requirements.txt` / equivalent. Note the *production*-tagged dependencies, not dev dependencies. Flag high-risk packages (security-critical without recent maintenance; pinned-to-vulnerable versions).
 
@@ -148,6 +167,25 @@ These are architectural invariants, not per-file observations.
 | Event name | Emitted at | Consumed at | Payload shape (inferred) |
 |---|---|---|---|
 | <name> | <path:line> | <path:line> | <JSON sample if observed> |
+
+## Message Broker / Consumer Logic
+
+Document each queue/topic/stream as an executable contract, not only as an event name. This is the source SA uses to write AsyncAPI stubs and architecture.md async workflows.
+
+| Broker | Topic / queue / stream | Producer service + source | Payload schema source | Key / partition / ordering | Consumer service + group | Consumer handler source | Ack / commit semantics | Retry / backoff / DLQ | Idempotency / dedup | Side effects | Confidence |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| Kafka | `order.created` | `orders-api` `src/events/order.ts:24` | `OrderCreatedEvent` interface | key=`order_id`; order per order | `notification-worker` group=`notification-worker` | `src/workers/order-created.ts:51` | commit after email send | 3 retries exponential; `order.created.dlq` | dedup by `event_id` in `processed_events` | sends email; writes audit row | high |
+
+For consumer logic, include the handler's material side effects: DB writes, outgoing API calls, emitted follow-up events, cache invalidations, and compensations. If broker retry/DLQ is configured outside application code, cite the deployment/config source.
+
+## API / Message Spec Candidates
+
+Stage 1 does not write `docs/api-contracts/`; SA extract mode does. This table tells SA which contract files must exist and what operations/events each file must cover.
+
+| Candidate file | Service | API style | Operations / channels covered | Recommended format | Evidence completeness | Gaps |
+|---|---|---|---|---|---|---|
+| `docs/api-contracts/orders.openapi.yaml` | `orders-api` | REST | `POST /api/orders`, `GET /api/orders/{id}` | `openapi-3.1` | routes + DTOs + error envelope observed | pagination schema for list endpoint inferred |
+| `docs/api-contracts/billing.asyncapi.yaml` | `billing-worker` | Async messaging | `billing.invoice.requested`, `billing.invoice.completed` | `asyncapi-2.x` | topics + payload structs + retry/DLQ observed | broker ACLs not visible |
 
 ## Async Workflows (C3+)
 
@@ -269,8 +307,11 @@ Each gap is a thing SA's `extract` mode or BA's `reverse-engineer-from-code` Ing
    - Golang with Echo: `github.com/labstack/echo`.
    - Golang with Kratos: `github.com/go-kratos/kratos`.
    Write the `## Backend Framework Evidence` table. This is the source BA Mode E uses to populate SRS `Backend-Track:` and `Backend-Framework:`; do not leave it implicit in the generic Stack column.
-2. **Inventory public surfaces.** Walk every route declaration, queue subscription, event emission, UI route. Confidence-tag each. Before scanning individual controllers/services, identify and read any service registry, factory, or router class (e.g., ApiManager, ServiceLocator, Container) that maps identifiers to implementations. That file IS the authoritative C1 boundary. Enumerate every route it exposes. Then verify each route by reading the referenced service. 
+2. **Inventory public surfaces.** Walk every route declaration, RPC registration, queue subscription, event emission, scheduled job, CLI command, webhook, and UI route. Confidence-tag each. Before scanning individual controllers/services, identify and read any service registry, factory, or router class (e.g., ApiManager, ServiceLocator, Container) that maps identifiers to implementations. That file IS the authoritative C1 boundary. Enumerate every route it exposes. Then verify each route by reading the referenced service.
 2a. **Extract internal call patterns.** Scan ALL modules/controllers for common structural contracts: (a) shared method signatures (e.g., every module has process($sTemplate)), (b) shared infrastructure dependencies (which modules call Cache::instance(), which controllers call ApiManager::get()), (c) shared rendering contracts (template injection points, cache invalidation hooks). These are C3 component interactions — not per-module quirks but architectural invariants.
+2b. **Trace every entry point end-to-end.** For each route/RPC/job/webhook, follow the registration -> middleware/auth -> handler/controller -> use-case/domain service -> repository/datastore -> outbound service calls -> event emissions path. Fill `## Route / RPC / Job Trace Matrix`. Missing trace rows for in-scope public surfaces downgrade Outcome to at most `PARTIAL_GAPS`.
+2c. **Trace broker and consumer logic.** For each topic/queue/stream, identify producers, payload schema, keys/partitioning/ordering, consumer groups, consumer handlers, ack/commit behavior, retry/backoff, DLQ, idempotency/dedup, and side effects. Fill `## Message Broker / Consumer Logic`. If broker behavior lives in deployment/config rather than code, cite that file. Missing producer/consumer side for an in-scope message flow downgrades Outcome to at most `PARTIAL_GAPS`.
+2d. **Prepare contract candidates.** For every REST/gRPC/GraphQL/WebSocket/message surface, add a row to `## API / Message Spec Candidates` naming the contract file SA must create. Prefer one service-level OpenAPI file per REST service, one AsyncAPI file per messaging service/broker boundary, one proto package per gRPC service, and GraphQL SDL for GraphQL.
 3. **Enumerate-and-group the data model.** Enumerate ALL model/ORM files (not just "core" ones). Group by functional domain (bounded context candidates). Every domain with its own module type AND its own model set is a parallel business capability, not a "supporting" entity. List every bounded context's entity set.
 4. **Cross-cutting concerns.** Find the auth path, the logging stack, the retry/timeout config, the rate-limit middleware. Note hardcoded secrets as high-severity open-issues.
 5. **NFR posture from deployed env.** If reachable, pull last-7-days metrics for the top endpoints. Otherwise mark unknown.
@@ -280,8 +321,8 @@ Each gap is a thing SA's `extract` mode or BA's `reverse-engineer-from-code` Ing
 9. **Gap analysis.** What can't be extracted from code alone? Categorize: Intent / Tribal-knowledge / Documented-elsewhere.
 10. **Write the report.** Cite everything (file:line for code; URL for docs; ISO-8601 access dates).
 11. **Set Outcome.**
-   - `SUFFICIENT_FOR_EXTRACT` — SA + BA have enough to proceed to Stages 2-3 of brownfield onboarding without major blockers.
-   - `PARTIAL_GAPS` — SA / BA can proceed but will surface 3–10 OQs for human input.
+   - `SUFFICIENT_FOR_EXTRACT` — SA + BA have enough to proceed to Stages 2-3 of brownfield onboarding without major blockers. Requires route/RPC/job trace coverage, service dependency edges, API/message spec candidates, and broker/consumer logic for every in-scope observable surface.
+   - `PARTIAL_GAPS` — SA / BA can proceed but will surface 3–10 OQs for human input. Use when traces/contracts are mostly present but a few schemas, consumers, retry policies, or ownership details are unresolved.
    - `INSUFFICIENT` — too many gaps; recommend team interviews before proceeding.
 
    Independently of Outcome, note in the recommended-next-stage field whether the dispatch context suggests full onboarding (Stages 2–6) or documentation-only (Stages 2–3, no governance intent). The user / Orchestrator can override this recommendation — it's a hint, not a decision. See `.claude/rules/brownfield-onboarding.md` § Documentation-only sub-case for when each path applies.
@@ -293,6 +334,7 @@ Each gap is a thing SA's `extract` mode or BA's `reverse-engineer-from-code` Ing
 - Never produce `docs/SRS.md`, `docs/architecture.md`, or `docs/plan/` content. SA and BA produce those in Stages 2-3.
 - Cite everything. Every claim in the report has a file:line, URL, or git ref. Unsourced claims are forbidden.
 - Confidence tags are mandatory on the API Surface and Existing Documentation tables. "High" is reserved for evidence-backed observations; default to "medium" or lower when inferring.
+- Do not mark `SUFFICIENT_FOR_EXTRACT` while any in-scope service has public routes/RPC/jobs/messages without route trace rows, dependency edges, contract candidates, or broker/consumer logic. Shallow service inventory is `PARTIAL_GAPS` at best.
 - Flag hardcoded secrets, leaked credentials, or open-port misconfigurations as a HIGH-severity entry in `docs/open-issues.md` immediately — don't wait for the report to be reviewed. Security gaps in an as-built codebase are the most likely thing that needs urgent action.
 - Distinguish observation from inference. "The endpoint returns 200 with this shape" (observed in tests). vs "I believe this is the intended success contract" (inferred). Reports that conflate these become unreliable input for SA / BA.
 
@@ -305,6 +347,10 @@ Status: SUFFICIENT_FOR_EXTRACT | PARTIAL_GAPS | INSUFFICIENT
 Report: docs/archaeology-reports/<topic-slug>.md
 Services-inventoried: <count>
 API-surface-rows: <count>
+Route-trace-rows: <count>
+Dependency-edges: <count>
+Message-broker-flows: <count>
+API-message-contract-candidates: <count>
 Data-model-entities: <count>
 Cross-cutting-gaps: <count of intent gaps + tribal-knowledge gaps>
 Security-issues-filed: <count of HIGH-severity open-issues>

@@ -241,6 +241,15 @@ Rel(eventEmitter, kafka, "Publish event")
 
 **Status legend.** `Draft` (BE Dev authoring; not yet ready for FE consumption), `Frozen` (FE Dev may consume per CLAUDE.md §10 hard rule), `Extracted` (SA `extract` mode created stub; needs human confirmation per brownfield Stage 4 before BE Dev finalizes).
 
+#### 3.6.1. Operation Traceability
+
+*Required in brownfield extract mode. One row per observable route/RPC/job/message operation, traced from entry point to internal components and contract anchor. Greenfield design mode may omit this subsection when the same trace is already clear from C3 diagrams + FR sequence diagrams.*
+
+| Operation | Entry / registration | Auth / middleware | Handler / consumer | Internal components | Datastores | Outbound calls / emitted messages | Contract anchor | Source / confidence |
+|---|---|---|---|---|---|---|---|---|
+| `POST /spectate/{match_id}/join` | `routes/spectate.ts:14` | JWT + region policy | `JoinHandler` | `SessionManager`, `VisibilityChecker`, `EventEmitter` | Redis `session:*`, MySQL `MatchPublicVisibility` | `Account/Passport`, Kafka `match.spectator.session.started` | `docs/api-contracts/spectator.openapi.yaml#/paths/~1spectate~1{match_id}~1join/post` | Source: extracted; Confidence: high |
+| Kafka `match.spectator.session.started` | `events/session.ts:27` | mTLS broker ACL | `NotificationSessionStartedConsumer` | `NotificationService`, `AuditWriter` | `notification_events`, `audit_log` | email provider, audit topic | `docs/api-contracts/spectator.asyncapi.yaml#/channels/match.spectator.session.started` | Source: extracted; Confidence: medium |
+
 ---
 
 ### 3.7. Dependency & Call Graph
@@ -264,6 +273,8 @@ Rel(eventEmitter, kafka, "Publish event")
 ```
 
 Each edge is one of: synchronous call (HTTP/gRPC), async event (Kafka/queue), data dependency (read/write to shared datastore).
+
+For brownfield extract mode, every edge should cite source evidence and contract anchors when available. A service dependency with no source citation is `Confidence: inferred` and gets an open issue.
 
 #### 3.7.2. Internal module dependencies — Spectator API
 
@@ -326,6 +337,12 @@ MQ -> Analytics: consume session.started
 **Retry / DLQ policy.** Kafka producer uses idempotent writes (no duplicate events). Consumers commit offsets after processing; DLQ `match.spectator.session.started.dlq` collects consumer failures after 3 retries with exponential backoff. Producer-side retries on Kafka unavailability are §5 retry-classification `transient`.
 
 **Failure modes** (cross-reference §5): producer-side Kafka unavailability → session.started event eventually-consistent (3-5s gap); consumer-side processing failure → consumer commits to DLQ, session remains live (event-loss-tolerant: viewer-count gauges may undercount for the affected session until DLQ drain).
+
+**Broker / consumer contract table** (mandatory in brownfield extract mode when a brokered flow exists):
+
+| Topic / queue | Producer | Payload schema | Key / ordering | Consumer group + handler | Ack / commit | Retry / DLQ | Idempotency / side effects | Contract file |
+|---|---|---|---|---|---|---|---|---|
+| `match.spectator.session.started` | Spectator API `EventEmitter` | `SpectatorSessionStarted` | key=`session_id`; per-session ordering | `notification-service` group=`notifications`, `analytics-service` group=`analytics` | commit after side effect | 3 retries; `.dlq` topic | dedup by `event_id`; sends notification + writes analytics | `docs/api-contracts/spectator.asyncapi.yaml` |
 
 #### 3.8.2. Session-ended cleanup chain
 

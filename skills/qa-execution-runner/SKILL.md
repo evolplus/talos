@@ -39,6 +39,7 @@ Use this skill for every QA-Exec dispatch.
 4. Pre-run checks:
    - parse deploy report `## Test Environment`;
    - verify base URLs, fixtures, env vars, build/commit/instrumentation identity;
+   - verify `env_files`, `env_templates`, and `env_validation` are present; `compose_config_quiet` is `pass`; `missing_required_env` is `none`; and `secret_values_redacted` is `true`;
    - verify every `Executable:` file exists;
    - grep executable specs for `TODO: instrumentation-contract`; any hit is `blocked`.
 5. Skip deprecated US test cases with reason `deprecated-us`; report the skip.
@@ -112,6 +113,7 @@ The markdown report at `docs/qa-reports/<task-id>.md` links the supporting artif
 - Never declare done with failed or blocked cases.
 - Never silently skip verification.
 - Missing spec files, stale visual specs, build identity mismatch, and unresolved selector TODOs are blocked states.
+- Missing or failed deploy-report env validation is a blocked state routed back to DevOps. QA-Exec never guesses local `.env` behavior.
 - Flaky is failure until proven otherwise.
 - Per-property UI reporting is mandatory for Tier 2.
 - Commit before signaling done.

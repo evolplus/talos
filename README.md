@@ -92,23 +92,23 @@ Initializes the current project for the kit.
 Optional flags:
 
 ```sh
-/sdlc-init --target codex
-/sdlc-init --target claude
-/sdlc-init --target both
 /sdlc-init --dry-run
 /sdlc-init --force-hooks
 /sdlc-init --skip-agents
 /sdlc-init --skip-settings
 /sdlc-init --skip-hooks
+/sdlc-init --target codex
+/sdlc-init --target claude
+/sdlc-init --target both
 ```
 
 What it does:
 
-- Injects the plugin guidance into the project's `AGENTS.md` inside a managed block by default.
+- Detects the active agent tool from environment signals first, then project markers if needed.
+- In Codex, injects the plugin guidance into the project's `AGENTS.md` inside a managed block.
+- In Claude Code, writes `CLAUDE.md`, merges original Claude settings into the project, and mirrors hook scripts into `.claude/hooks`.
 - Warns about overlapping or conflicting headings.
-- Skips `.claude/settings.json` and `.claude/hooks` for the default Codex target.
-- With `--target claude`, writes `CLAUDE.md`, merges original Claude settings into the project, and mirrors hook scripts into `.claude/hooks`.
-- With `--target both`, writes both `AGENTS.md` and `CLAUDE.md`, then applies Claude settings/hooks.
+- Uses `--target codex`, `--target claude`, or `--target both` only as an explicit override for migration or dual-tool setups.
 
 Run `/sdlc-init` again in Claude Code, or prompt `Run sdlc-init` in Codex,
 after plugin updates when you want the target project to receive updated kit
@@ -132,7 +132,7 @@ The loop is intentionally gate-driven. It should halt for unresolved SRS questio
 - Multi-document SRS + per-US/per-FR ingestion.
 - External-source ingestion.
 - Requirements-folder synthesis.
-- Brownfield reverse engineering from source and archaeology reports.
+- Brownfield reverse engineering from source and archaeology reports, including route traces, internal service/component dependency edges, extracted API/message contract stubs, and broker producer/consumer logic.
 - Augmentation and iteration planning for post-sign-off changes.
 
 ### Design Tracks
