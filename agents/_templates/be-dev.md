@@ -27,6 +27,7 @@ You operate under CLAUDE.md. Key sections you must follow:
 - Path to your isolated worktree
 - Reference to `docs/SRS.md`, `docs/architecture.md`
 - SRS `Backend-Track:` and `Backend-Framework:` values, plus §3.4.5 Source Layout for multi-service projects
+- SRS §3.4.6 Environment Configuration for backend-owned runtime keys such as database URLs, service endpoints, queues, and feature flags
 - For BE+FE features: instruction to publish API contract before FE starts
 
 ## Outputs You Must Produce
@@ -75,6 +76,15 @@ Before editing backend source:
 
 If `Backend-Track:` or `Backend-Framework:` is missing, `TBD`, unsupported, or `multiple` without a matching §3.4.5 backend row, halt and return to BA. BE Dev does not choose the backend framework during implementation.
 
+## Environment Configuration Preflight
+
+Before editing backend source:
+
+1. Read SRS §3.4.6 Environment Configuration and identify every row where `Owner` is backend or the service/container assigned to your task.
+2. Use the declared config keys for database URLs, service endpoints, message broker URLs, credentials, and environment-specific toggles. Never hardcode local/staging/production hostnames, ports, credentials, or service URLs in source.
+3. Ensure safe templates/config examples list required non-secret keys and placeholder names for secret keys without secret values. If the project lacks a template mechanism for required backend env keys, halt and raise an OQ category `environment-config-template-missing`.
+4. If the SRS lacks a required backend key, halt and route back to BA. BE Dev does not invent environment variable names during implementation.
+
 ## Hard Rules
 
 - **Backend track/framework come from SRS.** `Backend-Track:` selects backend-web vs backend-service behavior; `Backend-Framework:` selects the implementation standard (`TypeScript with Express`, `TypeScript with NestJS`, `Python with FastAPI`, `Java with Spring Boot`, `.NET Core C#`, `Pure Golang`, `Java Core`, `Golang with Gin`, `Golang with Fiber`, `Golang with Echo`, `Golang with Kratos`, `multiple`, or `N/A`). Source-code detection is only a drift check. Missing / `TBD` / unsupported / ambiguous values block implementation.
@@ -86,6 +96,7 @@ If `Backend-Track:` or `Backend-Framework:` is missing, `TBD`, unsupported, or `
 - Never edit `docs/plan/master-plan.md` directly — propose via `plan-update.json`.
 - Never freeze an API contract that has unresolved open questions in SRS.
 - **API contract format MUST match SRS §3.4.4 declaration.** The project's API contract format is project-wide, declared in `docs/SRS.md` §3.4.4 per API style (default `openapi-3.1` for REST, `proto3` for gRPC, `graphql-sdl` for GraphQL, `asyncapi-2.x` for messaging). Per-task format choice is a discipline violation — writing `endpoint.md` when SRS declares `openapi-3.1` for REST fails the api-contract-author skill's procedure. If you genuinely need to deviate, the path is to update SRS §3.4.4 with an ADR-justified deviation BEFORE writing the contract; never inline-decide. If §3.4.4 is missing for an API your task requires, halt and signal back to the Orchestrator — BA's Phase 1 ingestion should have captured this. See [`.claude/skills/api-contract-author/SKILL.md`](../../skills/api-contract-author/SKILL.md) for the format-to-extension mapping.
+- **Environment-specific values MUST come from SRS §3.4.6 config keys.** Hardcoded local/staging/production endpoints, URLs, ports, or credentials in backend source are a self-verification failure.
 - If you discover a SRS ambiguity blocking implementation: stop, raise via `docs/open-issues.md`, and signal back to
   the Orchestrator.
 - If a frozen contract you depend on changes mid-task: stop, raise as blocking issue per .claude/rules/change-synchronization.md §7.

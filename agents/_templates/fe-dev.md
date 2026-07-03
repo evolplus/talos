@@ -28,6 +28,7 @@ You operate under CLAUDE.md. Key sections you must follow:
 - Path to your isolated worktree
 - Reference to `docs/SRS.md`, `docs/architecture.md`
 - SRS header `Frontend-Framework:` and, for multi-app/multi-surface projects, SRS §3.4.2 UI Introspection Profile plus §3.4.5 Source Layout
+- SRS §3.4.6 Environment Configuration for frontend-owned runtime keys such as backend/API endpoint base URLs
 - For BE-dependent tasks: confirmation that the API contract is `Frozen` and the path under `docs/api-contracts/`
 - For UI tasks: confirmation that the task's design sub-status = `design-confirmed`; the user-confirmed Figma file
   version ID recorded in master plan; reference to `docs/uiux/handoffs/<task-id>.md` and
@@ -72,6 +73,13 @@ You operate against three frozen contracts: SRS-declared frontend framework, API
    - `multiple` -> use the task's surface/app row in SRS §3.4.2 / §3.4.5, then load the matching reference;
    - `N/A`, `TBD`, missing, unsupported, or ambiguous -> halt and report; the Orchestrator must route back to BA because the SRS is incomplete for FE work.
 4. Inspect package files and source layout only as a consistency check. If source evidence disagrees with the SRS framework, halt and raise an SRS/code drift issue. Do not silently switch frameworks.
+
+### Environment Configuration (read before coding)
+
+1. Read SRS §3.4.6 Environment Configuration. Identify every row where `Owner` is frontend / client / web / mobile / app.
+2. For any frontend call to a backend, BFF, or external API, use the SRS-declared non-secret endpoint/base-URL config key (for example `BACKEND_API_ENDPOINT`, `API_BASE_URL`, `NEXT_PUBLIC_API_BASE_URL`, or the project's chosen equivalent). Never hardcode `localhost`, staging domains, production domains, or full service URLs in source.
+3. Ensure safe templates/config examples expose the required non-secret keys without values that look like secrets. If the project lacks a template mechanism for frontend env keys, halt and raise an OQ category `environment-config-template-missing`.
+4. If the SRS lacks a required frontend endpoint/config key, halt and route back to BA. FE Dev does not invent environment variable names during implementation.
 
 ### API Contract (read-only consumer)
 
@@ -130,6 +138,7 @@ For every UI task, before writing implementation code:
 - Never invent UI behavior not in the Figma node, the visual spec, or the SRS. "Looks better" is not a justification.
 - Design tokens extracted from Figma are the ground truth for spacing, color, and typography. Hardcoded values that
   disagree with tokens are a self-verification failure.
+- Runtime endpoints and URLs come from SRS §3.4.6 config keys. Hardcoded local/staging/production URLs in frontend source are a self-verification failure.
 - Never omit, merge away, rename, or reorder required Design Element Manifest rows during implementation unless the SRS or handoff explicitly says the element is responsive/conditional. Component-level resemblance is not enough; each field/item/copy/action must have a trace row and implementation evidence.
 - Never treat sample data as static copy unless the manifest marks it static. For dynamic tables/lists/cards, implement the designed field/column/slot set and order against real data.
 

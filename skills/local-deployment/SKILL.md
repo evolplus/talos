@@ -110,7 +110,7 @@ NEVER auto-resolve by stopping the other container.
 
 ## Inputs and outputs
 
-- **Inputs:** the project's existing `docker-compose.yml` (or equivalent); project env templates and compose `env_file:` references; `docs/architecture.md` C2 Containers section (to know what services to expect); the task ID; SRS §3.4 Technical Constraints if it pins ports.
+- **Inputs:** the project's existing `docker-compose.yml` (or equivalent); project env templates and compose `env_file:` references; `docs/architecture.md` C2 Containers section (to know what services to expect); the task ID; SRS §3.4 Technical Constraints if it pins ports; SRS §3.4.6 Environment Configuration for declared runtime config keys and required environment tiers.
 - **Outputs:** a running local environment (containers up + health-checked); `docs/deploy-reports/<task-id>.md` with the standard Test Environment block + a new `## Human Trial URLs` section both QA and the operator consume.
 
 ## Procedure
@@ -219,17 +219,22 @@ Classify env files:
 
 Procedure:
 
-1. Inspect the selected compose files and project run docs for:
+1. Read SRS §3.4.6 Environment Configuration when present. Extract the declared runtime config keys, owners/components, required environments, secret classification, and config source/template columns. If the SRS declares FE/BE runtime scope but §3.4.6 is missing or does not name local + testing/staging + production, halt and route back to BA; DevOps must not invent the environment contract during deployment.
+2. Inspect the selected compose files and project run docs for:
    - `env_file:` entries per service;
    - `${VAR}` / `${VAR:-default}` / `${VAR:?required}` interpolation placeholders;
    - documented local env-file order, for example `.env` then `.env.local`.
-2. Read safe templates only. Extract key names, defaults, and comments; do not treat template placeholder values as deploy secrets.
-3. Detect whether operator-owned env files exist and whether every compose-referenced `env_file:` path exists. Do not copy env files into the worktree and do not create missing files.
-4. Build a `compose_env_args` list for every later Compose command:
+3. Read safe templates only. Extract key names, defaults, and comments; do not treat template placeholder values as deploy secrets.
+4. Cross-check the SRS §3.4.6 declared keys against the safe templates, compose interpolation placeholders, and documented config-source paths:
+   - every declared key must appear in at least one safe template, compose placeholder, or documented config source named in §3.4.6;
+   - every declared frontend/backend/API endpoint key must be visible in the frontend app's documented template or build/runtime config source;
+   - missing key names block deploy with `NEEDS_CONTEXT` unless the deploy report can point to a project-owned config source that intentionally supplies the key at runtime.
+5. Detect whether operator-owned env files exist and whether every compose-referenced `env_file:` path exists. Do not copy env files into the worktree and do not create missing files.
+6. Build a `compose_env_args` list for every later Compose command:
    - run from the project root or pass `--project-directory <project-root>` so root `.env` participates in interpolation;
    - include explicit `--env-file <path>` only when the project docs/scripts/compose setup declare that file order;
    - preserve service-level `env_file:` entries in compose instead of copying them into the generated override.
-5. Validate the selected compose/env files before port probing:
+7. Validate the selected compose/env files before port probing:
 
    ```bash
    # Use the same -p, -f, --project-directory, and --env-file arguments that the final deploy will use,
@@ -238,8 +243,8 @@ Procedure:
    ```
 
    Use `config --quiet`, not full `docker compose config`, because full config output can print resolved secret values.
-6. If validation fails because a required env var or env file is missing, halt with `NEEDS_CONTEXT`. Ask the operator to create/update the project-local env file manually. Do not write `.env` yourself.
-7. If privacy hooks block key-only inspection of operator-owned env files, record `key_status: not inspected (privacy guard)` in the deploy report. Do not bypass privacy just to count keys.
+8. If validation fails because a required env var or env file is missing, halt with `NEEDS_CONTEXT`. Ask the operator to create/update the project-local env file manually. Do not write `.env` yourself.
+9. If privacy hooks block key-only inspection of operator-owned env files, record `key_status: not inspected (privacy guard)` in the deploy report. Do not bypass privacy just to count keys.
 
 The deploy report must include an env summary with file names and statuses only:
 
@@ -255,6 +260,8 @@ The deploy report must include an env summary with file names and statuses only:
 
 - compose_config_quiet: pass
 - missing_required_env: none
+- srs_environment_contract: pass
+- declared_config_keys_status: all documented
 - secret_values_redacted: true
 ```
 
@@ -502,6 +509,11 @@ Standard schema per the DevOps template — `base_url`, `api_base_url`, `admin_b
 - env_validation:
   - compose_config_quiet: pass
   - missing_required_env: none
+  - srs_environment_contract: pass
+  - declared_config_keys_status: all documented
+  - declared_config_keys:
+    - BACKEND_API_ENDPOINT: documented in frontend/.env.example; required environments=all; secret=false
+    - DATABASE_URL: documented in backend/.env.example; required environments=all; secret=true
   - secret_values_redacted: true
 ```
 
@@ -513,7 +525,7 @@ The debugger agent (`.claude/agents/_non-sdlc/debugger.md`) reads this deploy re
 
 - `project_slug` — for `docker logs <slug>-<service>-N` and `docker exec` scoping
 - `base_url` / `api_base_url` / `admin_base_url` — for reproducing the symptom against the actual deployed surface
-- `env_files` / `env_validation` — to identify local-env gaps without exposing secret values
+- `env_files` / `env_validation` — to identify local-env gaps and SRS §3.4.6 key coverage without exposing secret values
 - Container names (typically `<project_slug>-<service>-<replica>`) — for log inspection
 - `## Human Trial URLs` — the same URLs operators trial; debugger uses to reproduce
 
@@ -562,6 +574,7 @@ For dispatch close, the kit's worktree-isolation pattern cleans up the worktree 
 - **Hardcoding port 3000** — every example online uses 3000. Don't. Probe; pick what's free; log the chosen port; tell the operator. The user's frustration with port-3000 conflicts is THE motivation for this skill.
 - **Editing the project's `docker-compose.yml`** to "fix" port conflicts. Don't — that's project-owned reusable infra (DevOps template Tool Scope rule 2). Generate an override file in your worktree.
 - **Running Compose from the worktree and accidentally skipping the project root `.env`.** Use `--project-directory <project-root>` or run from the project root, and record the env-file status in the deploy report.
+- **Treating SRS §3.4.6 as documentation only.** It is the deploy contract. Cross-check declared keys against templates, compose placeholders, and documented config sources before `docker compose up`; missing keys route back to BA/DevOps context instead of being patched ad hoc.
 - **Dumping `docker compose config` to logs.** Full config output can include resolved secret values. Use `docker compose config --quiet` for validation.
 - **Creating or editing `.env` to make deploy pass.** Env files are operator-owned. Halt with `NEEDS_CONTEXT` and list missing file/key names without values.
 - **`sleep 30` instead of a health-check loop.** Times out cleanly; produces flaky deploys when services are slow to start. Always poll readiness, never sleep blind.
@@ -571,7 +584,7 @@ For dispatch close, the kit's worktree-isolation pattern cleans up the worktree 
 ## Hard rules
 
 - **Always detect host architecture + match deliberately.** Run Step 1.5 at deploy start. Pass `--platform=$target_platform` to docker compose / build / run. When a service in the compose file pins `linux/amd64` and the host is `linux/arm64` (or vice-versa), surface an `emulation_warning` in the deploy report. Never silently emulate.
-- **Always run env-file discovery and validation before deployment.** Step 2.5 is mandatory. Do not deploy until compose env readiness is recorded in the deploy report.
+- **Always run env-file discovery and SRS §3.4.6 validation before deployment.** Step 2.5 is mandatory. Do not deploy until compose env readiness and declared config-key coverage are recorded in the deploy report.
 - **Never read, print, copy, create, or edit operator-owned `.env*` values.** Read only allowlisted templates (`.env.example`, `.env.template`, `.env.sample`). Missing required env files or keys are `NEEDS_CONTEXT` for the operator, not something DevOps silently patches.
 - **Never run full `docker compose config` in a way that prints resolved secrets.** Use `config --quiet` and record pass/fail only.
 - **Never hardcode port 3000 (or any single port) in deploy logic.** Always probe. Always log the chosen port in the deploy report.

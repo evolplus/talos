@@ -70,13 +70,13 @@ Skills consulted by any agent or human committing or operating in the repo, rega
 | Skill | When | Status |
 |---|---|---|
 | [`api-contract-author`](./api-contract-author/SKILL.md) | Publishing or updating an API contract under `docs/api-contracts/` | active |
-| [`be-framework-coding-standard`](./be-framework-coding-standard/SKILL.md) | Implementing or reviewing backend tasks after SRS `Backend-Track:` and `Backend-Framework:` are declared - selects the matching backend-web/backend-service and TypeScript/Python/Java/.NET/Go coding standard without migrating the stack | active |
+| [`be-framework-coding-standard`](./be-framework-coding-standard/SKILL.md) | Implementing or reviewing backend tasks after SRS `Backend-Track:` / `Backend-Framework:` and §3.4.6 env config are declared - selects the matching backend-web/backend-service and TypeScript/Python/Java/.NET/Go coding standard without migrating the stack or hardcoding runtime values | active |
 
 ### QA-Exec
 
 | Skill | When | Status |
 |---|---|---|
-| [`qa-execution-runner`](./qa-execution-runner/SKILL.md) | QA-Exec dispatches — collect task test cases, enforce pre-run gates, execute the runner, produce QA report/artifacts, and route failures | active |
+| [`qa-execution-runner`](./qa-execution-runner/SKILL.md) | QA-Exec dispatches — collect task test cases, enforce deploy/env pre-run gates, execute the runner, produce QA report/artifacts, and route failures | active |
 | [`ui-test-execution`](./ui-test-execution/SKILL.md) | Invoking the test runner against the deployed build — Run Contract per platform, artifact layout under `docs/qa-reports/<task-id>/` | active |
 
 ### UI/UX Designer
@@ -104,13 +104,13 @@ Predefined Foundation starting points. Selected by SRS header `Design-Guideline:
 
 | Skill | When | Status |
 |---|---|---|
-| [`local-deployment`](./local-deployment/SKILL.md) | Every DevOps dispatch against a `ready-for-deploy` task — Docker-based environment composition, `.env`/template/compose `env_file` discovery without exposing secrets, port probing (never hardcode 3000), worktree override generation, health-check polling, deploy report populated with both `## Test Environment` (QA-Exec consumes) and `## Human Trial URLs` (operator opens in browser). | active |
+| [`local-deployment`](./local-deployment/SKILL.md) | Every DevOps dispatch against a `ready-for-deploy` task — Docker-based environment composition, SRS §3.4.6 config-key validation, `.env`/template/compose `env_file` discovery without exposing secrets, port probing (never hardcode 3000), worktree override generation, health-check polling, deploy report populated with both `## Test Environment` (QA-Exec consumes) and `## Human Trial URLs` (operator opens in browser). | active |
 
 ### FE Dev
 
 | Skill | When | Status |
 |---|---|---|
-| [`fe-framework-coding-standard`](./fe-framework-coding-standard/SKILL.md) | Implementing or reviewing frontend tasks after SRS `Frontend-Framework:` is declared - selects the matching React Native, ReactJS, Flutter, Vue.js, Angular, or Next.js coding standard and requires every Design Element Manifest field/item/copy/action to be implemented | active |
+| [`fe-framework-coding-standard`](./fe-framework-coding-standard/SKILL.md) | Implementing or reviewing frontend tasks after SRS `Frontend-Framework:` and §3.4.6 env config are declared - selects the matching React Native, ReactJS, Flutter, Vue.js, Angular, or Next.js coding standard, requires every Design Element Manifest field/item/copy/action, and forbids hardcoded backend/API URLs | active |
 
 ## By SDLC phase
 

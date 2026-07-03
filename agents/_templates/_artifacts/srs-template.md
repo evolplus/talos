@@ -326,6 +326,34 @@ EXAMPLE -->
 
 ---
 
+#### 3.4.6 Environment Configuration
+
+*Required for any project that ships frontend or backend runtime code.* Declares the environment tiers and runtime configuration keys the implementation must consume. The kit never reads secret values, but it does require key names, ownership, and per-environment coverage before sign-off. DevOps later validates templates / compose env loading against this contract without printing values.
+
+##### Environment tiers
+
+| Environment | Purpose | Backend/API base URL policy | Secret source |
+|---|---|---|---|
+| local | Developer and QA local Docker/runtime | localhost / compose service URL only | operator-owned `.env*`; values not read by agents |
+| testing/staging | Shared pre-production validation | staging/test service domains only | CI/CD or secret manager |
+| production | Live users | production service domains only | production secret manager |
+
+##### Runtime configuration variables
+
+| Env Var | Owner | Required environments | Purpose | Secret? | Config source / template |
+|---|---|---|---|---|---|
+| BACKEND_API_ENDPOINT | frontend | local, testing/staging, production | Backend API base URL consumed by the frontend; values differ per environment | no | `.env.example`, CI/CD env |
+| DATABASE_URL | backend | local, testing/staging, production | Database connection string for backend service | yes | operator `.env*`, CI/CD secret manager |
+
+Rules:
+- Every FE/BE runtime config key must be listed here before sign-off.
+- Frontend + backend projects MUST declare at least one non-secret frontend-owned backend/API endpoint variable (for example `BACKEND_API_ENDPOINT`, `API_BASE_URL`, or `NEXT_PUBLIC_API_BASE_URL`) covering local, testing/staging, and production.
+- Code must read endpoints/URLs from configuration, never hardcode local/staging/production service URLs.
+- Secret values are never written to SRS, docs, or deploy reports. List key names, purpose, and source only.
+- If the project genuinely has no runtime configuration because it ships no FE/BE code, omit this section. If it has FE/BE code, do not write "N/A"; define the keys.
+
+---
+
 ### 3.5. External Integrations
 
 *Index of every external system the product calls, receives from, or depends on at runtime — including in-org defaults (Account/Passport, Kafka, internal queues), managed cloud services (Redis, MySQL, S3, payment processors), and third-party APIs. One row per external system. Per-system interface detail lives in [`docs/external-integrations/<system-slug>.md`](../docs/external-integrations/) per [`external-integration-template.md`](./external-integration-template.md).*

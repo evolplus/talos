@@ -15,7 +15,7 @@ You are BE Dev implementing or reviewing backend code after the backend track an
 
 ## Inputs and outputs
 
-- **Inputs:** task assignment, `docs/SRS.md` headers `Backend-Track:` and `Backend-Framework:`, SRS §3.4.4 API Contract Format, SRS §3.4.5 Source Layout, task US / FR / NFR IDs, architecture, data-contract constraints, external-integration specs, current backend source tree, manifests, and installed framework versions.
+- **Inputs:** task assignment, `docs/SRS.md` headers `Backend-Track:` and `Backend-Framework:`, SRS §3.4.4 API Contract Format, SRS §3.4.5 Source Layout, SRS §3.4.6 Environment Configuration, task US / FR / NFR IDs, architecture, data-contract constraints, external-integration specs, current backend source tree, manifests, and installed framework versions.
 - **Outputs:** backend code under the declared backend source root, framework-native handlers/controllers/services/repositories/workers, API contracts when endpoints/messages change, validation/error/observability behavior aligned to SRS/architecture, and focused unit/integration/contract tests.
 
 ## Backend track selection
@@ -60,20 +60,21 @@ Read the matching reference before editing:
 ## Universal implementation procedure
 
 1. Inspect nearby backend code before editing. Preserve established folders, naming, dependency injection, persistence abstraction, error envelope, logging, metrics, config, test style, formatter, and lint rules.
-2. Map every changed endpoint, worker, job, or service operation to the task's SRS IDs and FR contract. If the FR/schema/error model is incomplete, halt and raise an OQ; do not invent a contract in code.
-3. Keep boundaries explicit:
+2. Read SRS §3.4.6 Environment Configuration before touching database URLs, downstream service endpoints, queue topics, feature flags, credentials, regions, retry/timeout settings, or runtime config paths. Use the declared backend/service-owned key names and existing project config loader; if the task needs a new runtime key, halt and raise an OQ instead of inventing it in code.
+3. Map every changed endpoint, worker, job, or service operation to the task's SRS IDs and FR contract. If the FR/schema/error model is incomplete, halt and raise an OQ; do not invent a contract in code.
+4. Keep boundaries explicit:
    - transport layer owns request/message parsing, auth context extraction, response/message shape, and status codes;
    - application/service layer owns use-case orchestration and transaction boundaries;
    - domain layer owns invariants and state transitions;
    - repository/infrastructure layer owns persistence, external clients, queues, and adapters.
-4. Validate inputs at the boundary and map validation failures to the declared project error envelope. Never let framework-default validation errors leak if the API contract declares a different shape.
-5. Preserve security controls: authentication, authorization, tenant isolation, CSRF/session policy for web backends, mTLS/service auth for service backends, PII masking, and secret handling.
-6. Respect architecture §6 data contracts. Run named format conversions at boundaries and avoid writing gate fields unless the task owns the write condition.
-7. Make failure behavior deliberate: classify deterministic vs transient errors, use retries only for transient failures, preserve idempotency keys, and route poison messages / DLQ paths as architecture declares.
-8. Keep observability consistent: structured logs with correlation/request IDs, metrics for success/failure/latency, traces/spans where the project uses them, and no sensitive data in logs.
-9. Update API contracts under `docs/api-contracts/` when endpoints/messages change, using SRS §3.4.4's declared format. Freeze only when stable.
-10. Test at the right layer: unit tests for domain/application logic, framework handler/controller tests for transport mapping, integration tests for DB/queue/external adapter behavior, and contract tests for public API/message changes.
-11. Run format, lint, typecheck/compile, unit tests, and relevant integration/contract tests. If a command cannot run locally, document the blocker and the narrower checks you did run.
+5. Validate inputs at the boundary and map validation failures to the declared project error envelope. Never let framework-default validation errors leak if the API contract declares a different shape.
+6. Preserve security controls: authentication, authorization, tenant isolation, CSRF/session policy for web backends, mTLS/service auth for service backends, PII masking, and secret handling.
+7. Respect architecture §6 data contracts. Run named format conversions at boundaries and avoid writing gate fields unless the task owns the write condition.
+8. Make failure behavior deliberate: classify deterministic vs transient errors, use retries only for transient failures, preserve idempotency keys, and route poison messages / DLQ paths as architecture declares.
+9. Keep observability consistent: structured logs with correlation/request IDs, metrics for success/failure/latency, traces/spans where the project uses them, and no sensitive data in logs.
+10. Update API contracts under `docs/api-contracts/` when endpoints/messages change, using SRS §3.4.4's declared format. Freeze only when stable.
+11. Test at the right layer: unit tests for domain/application logic, framework handler/controller tests for transport mapping, integration tests for DB/queue/external adapter behavior, and contract tests for public API/message changes.
+12. Run format, lint, typecheck/compile, unit tests, and relevant integration/contract tests. If a command cannot run locally, document the blocker and the narrower checks you did run.
 
 ## Track-specific rules
 
@@ -95,7 +96,7 @@ Read the matching reference before editing:
 - Do not choose a framework from package files when `docs/SRS.md` declares a different `Backend-Framework:`. Treat that as SRS/code drift and halt.
 - Do not start BE implementation while `Backend-Track:` or `Backend-Framework:` is missing, `TBD`, unsupported, or `multiple` without a matching §3.4.5 row.
 - Do not rewrite established project structure to match a reference file. The reference guides decisions inside the existing architecture.
-- Do not hardcode API URLs, secrets, credentials, tenant IDs, region rules, retry counts, or timeout values outside the project config mechanism.
+- Do not hardcode API URLs, downstream endpoints, secrets, credentials, tenant IDs, region rules, retry counts, or timeout values outside the project config mechanism. Runtime values must come from the SRS §3.4.6 config keys through the project config loader.
 - Do not swallow errors or map all failures to generic 500s when the FR error model declares specific cases.
 - Do not bypass type errors, compiler errors, lints, analyzer failures, or tests with broad suppressions.
 

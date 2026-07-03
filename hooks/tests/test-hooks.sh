@@ -17,6 +17,7 @@ ROLE_GUARD="$HOOKS_DIR/kit-role-dispatch-guard.cjs"
 SCENARIOS_VALIDATOR="$HOOKS_DIR/acceptance-scenarios-validator.cjs"
 SELF_CONTAINMENT="$HOOKS_DIR/self-containment-validator.cjs"
 EXT_ADEQUACY="$HOOKS_DIR/external-integration-adequacy-validator.cjs"
+ENV_CONFIG="$HOOKS_DIR/environment-config-validator.cjs"
 SRS_DESIGN_FLOW="$HOOKS_DIR/srs-design-flow-validator.cjs"
 DESIGN_SUBSTATUS="$HOOKS_DIR/design-substatus-validator.cjs"
 PLAN_CONSISTENCY="$HOOKS_DIR/plan-consistency-validator.cjs"
@@ -955,6 +956,156 @@ run_exit "ignores non-SRS file_path (other docs)"             0 "$EXT_ADEQUACY" 
 run_exit "ignores non-Write/Edit tool"                        0 "$EXT_ADEQUACY" '{"tool_name":"Read","tool_input":{"file_path":"docs/SRS.md"}}'
 run_exit "ignores empty stdin (ext-adequacy)"                 0 "$EXT_ADEQUACY" ''
 run_exit "ignores malformed event JSON (ext-adequacy)"        0 "$EXT_ADEQUACY" 'not json'
+
+# ---------------- environment-config-validator.cjs ----------------
+echo
+echo "environment-config-validator.cjs:"
+
+env_srs_payload_from_file() {
+  local file="$1"
+  python3 - "$file" <<'PY'
+import json, sys
+content = open(sys.argv[1], encoding='utf-8').read()
+print(json.dumps({
+  'tool_name': 'Write',
+  'tool_input': {'file_path': 'docs/SRS.md', 'content': content}
+}))
+PY
+}
+
+mkdir -p "$FIX_ROOT/env-config"
+cat > "$FIX_ROOT/env-config/valid-fe-be.md" <<'EOF'
+# SRS
+
+**Status:** Ready-for-Sign-off
+**Frontend-Framework:** ReactJS
+**Backend-Track:** backend-web
+**Backend-Framework:** TypeScript with Express
+
+#### 3.4.6 Environment Configuration
+
+| Environment | Endpoint/source profile | Owner |
+|---|---|---|
+| local | `.env.local` and local compose network | Dev |
+| testing/staging | staging secret store and staging URLs | DevOps |
+| production | production secret store and production URLs | DevOps |
+
+| Env Var | Owner | Required environments | Purpose | Secret? | Config source |
+|---|---|---|---|---|---|
+| BACKEND_API_ENDPOINT | frontend | all | Backend API base URL consumed by the frontend | no | frontend/.env.example |
+| DATABASE_URL | backend | all | Database connection URL for the API | yes | backend/.env.example |
+EOF
+
+cat > "$FIX_ROOT/env-config/missing-section.md" <<'EOF'
+# SRS
+
+Status: Ready-for-Sign-off
+Frontend-Framework: ReactJS
+Backend-Track: backend-web
+Backend-Framework: TypeScript with Express
+EOF
+
+cat > "$FIX_ROOT/env-config/missing-staging.md" <<'EOF'
+# SRS
+
+Status: Ready-for-Sign-off
+Frontend-Framework: ReactJS
+Backend-Track: backend-web
+Backend-Framework: TypeScript with Express
+
+#### 3.4.6 Environment Configuration
+
+| Environment | Endpoint/source profile | Owner |
+|---|---|---|
+| local | `.env.local` and local compose network | Dev |
+| production | production secret store and production URLs | DevOps |
+
+| Env Var | Owner | Required environments | Purpose | Secret? | Config source |
+|---|---|---|---|---|---|
+| BACKEND_API_ENDPOINT | frontend | all | Backend API base URL consumed by the frontend | no | frontend/.env.example |
+EOF
+
+cat > "$FIX_ROOT/env-config/no-fe-api-endpoint.md" <<'EOF'
+# SRS
+
+Status: Ready-for-Sign-off
+Frontend-Framework: ReactJS
+Backend-Track: backend-web
+Backend-Framework: TypeScript with Express
+
+#### 3.4.6 Environment Configuration
+
+| Environment | Endpoint/source profile | Owner |
+|---|---|---|
+| local | `.env.local` and local compose network | Dev |
+| testing/staging | staging secret store and staging URLs | DevOps |
+| production | production secret store and production URLs | DevOps |
+
+| Env Var | Owner | Required environments | Purpose | Secret? | Config source |
+|---|---|---|---|---|---|
+| PUBLIC_SITE_URL | frontend | all | Public site canonical URL | no | frontend/.env.example |
+| DATABASE_URL | backend | all | Database connection URL for the API | yes | backend/.env.example |
+EOF
+
+cat > "$FIX_ROOT/env-config/backend-only.md" <<'EOF'
+# SRS
+
+Status: Signed-off
+Frontend-Framework: N/A
+Backend-Track: backend-service
+Backend-Framework: Python with FastAPI
+
+#### 3.4.6 Environment Configuration
+
+| Environment | Endpoint/source profile | Owner |
+|---|---|---|
+| local | `.env.local` and local compose network | Dev |
+| testing/staging | staging secret store | DevOps |
+| production | production secret store | DevOps |
+
+| Env Var | Owner | Required environments | Purpose | Secret? | Config source |
+|---|---|---|---|---|---|
+| DATABASE_URL | backend | all | Database connection URL for the worker | yes | backend/.env.example |
+EOF
+
+cat > "$FIX_ROOT/env-config/no-runtime.md" <<'EOF'
+# SRS
+
+Status: Signed-off
+Frontend-Framework: N/A
+Backend-Track: N/A
+Backend-Framework: N/A
+EOF
+
+cat > "$FIX_ROOT/env-config/in-review.md" <<'EOF'
+# SRS
+
+Status: In-Review
+Frontend-Framework: ReactJS
+Backend-Track: backend-web
+Backend-Framework: TypeScript with Express
+EOF
+
+run_exit "env-config: allows FE+BE signoff with three tiers and endpoint var" 0 \
+    "$ENV_CONFIG" "$(env_srs_payload_from_file "$FIX_ROOT/env-config/valid-fe-be.md")"
+run_exit "env-config: blocks FE+BE signoff when section missing" 2 \
+    "$ENV_CONFIG" "$(env_srs_payload_from_file "$FIX_ROOT/env-config/missing-section.md")"
+run_exit "env-config: blocks when testing/staging tier missing" 2 \
+    "$ENV_CONFIG" "$(env_srs_payload_from_file "$FIX_ROOT/env-config/missing-staging.md")"
+run_exit "env-config: blocks FE+BE without frontend backend/API endpoint var" 2 \
+    "$ENV_CONFIG" "$(env_srs_payload_from_file "$FIX_ROOT/env-config/no-fe-api-endpoint.md")"
+run_exit "env-config: allows backend-only signoff with backend runtime vars" 0 \
+    "$ENV_CONFIG" "$(env_srs_payload_from_file "$FIX_ROOT/env-config/backend-only.md")"
+run_exit "env-config: skips no-runtime SRS" 0 \
+    "$ENV_CONFIG" "$(env_srs_payload_from_file "$FIX_ROOT/env-config/no-runtime.md")"
+run_exit "env-config: skips In-Review SRS" 0 \
+    "$ENV_CONFIG" "$(env_srs_payload_from_file "$FIX_ROOT/env-config/in-review.md")"
+
+mkdir -p "$FIX_ROOT/env-edit/docs"
+cp "$FIX_ROOT/env-config/missing-section.md" "$FIX_ROOT/env-edit/docs/SRS.md"
+ENV_EDIT_BLOCK=$(printf '{"tool_name":"Edit","tool_input":{"file_path":"%s/docs/SRS.md","old_string":"Status: Ready-for-Sign-off","new_string":"Status: Signed-off"}}' "$FIX_ROOT/env-edit")
+run_exit "env-config: blocks Edit to Signed-off when env section missing" 2 \
+    "$ENV_CONFIG" "$ENV_EDIT_BLOCK" "CLAUDE_PROJECT_DIR=$FIX_ROOT/env-edit"
 
 # ---------------- qa-runtime-evidence-validator.cjs ----------------
 echo

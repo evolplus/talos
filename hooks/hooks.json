@@ -139,6 +139,13 @@
             "type": "command",
             "command": "node",
             "args": [
+              "${CLAUDE_PLUGIN_ROOT}/hooks/environment-config-validator.cjs"
+            ]
+          },
+          {
+            "type": "command",
+            "command": "node",
+            "args": [
               "${CLAUDE_PLUGIN_ROOT}/hooks/srs-design-flow-validator.cjs"
             ]
           }

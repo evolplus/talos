@@ -18,6 +18,7 @@ All hooks are **fail-open**: if a hook crashes or its event JSON is malformed, i
 | `acceptance-scenarios-validator.cjs` | PreToolUse (Write) | Blocks US/FR writes that lack a Given/When/Then Acceptance Scenarios section |
 | `self-containment-validator.cjs` | PreToolUse (Write) | Blocks kit artifacts that back-reference upstream sources instead of being self-contained |
 | `external-integration-adequacy-validator.cjs` | PreToolUse (Write/Edit) | Blocks SRS sign-off when external integration adequacy files are missing or non-adequate |
+| `environment-config-validator.cjs` | PreToolUse (Write/Edit) | Blocks SRS sign-off states when FE/BE runtime scope lacks local + testing/staging + production environment config and declared runtime variables |
 | `srs-design-flow-validator.cjs` | PreToolUse (Write/Edit) | Blocks Flow A SRS sign-off states when Figma extraction/mapping evidence is incomplete |
 | `design-substatus-validator.cjs` | PreToolUse (Write/Edit) | Blocks task files from setting `design-confirmed` before handoff + BA completeness evidence exists |
 | `integration-dod-validator.cjs` | PreToolUse (Write) | Blocks glue/cross-track tasks whose DoD lacks integration/runtime verification |
@@ -176,6 +177,12 @@ When a match fires AND `subagent_type === 'general-purpose'`, the hook exits 2 w
 Refuses `Write`/`Edit` to `docs/SRS.md` when `Status:` is `Ready-for-Sign-off`, `Source-Validated`, or `Signed-off`, `Design-Flow: A`, and the required Figma evidence is incomplete.
 
 Checks: SRS `Version:` exists, each Figma URL has a paired `docs/requirements/design-extracted/<figma-file-id>-*.md` with Section 6 design-token evidence, `docs/uiux/figma-mappings/v<version>.md` exists with `Mapping-Status: qualified | orphans-only`, no `gap-surface` remains, fuzzy-match decisions are not awaiting confirmation, and Flow A Design References rows have pinned Figma Node IDs.
+
+## environment-config-validator.cjs (PreToolUse)
+
+Refuses `Write`/`Edit` to `docs/SRS.md` when `Status:` is `Ready-for-Sign-off`, `Source-Validated`, or `Signed-off` and the SRS has frontend/backend runtime scope but lacks SRS `§3.4.6 Environment Configuration`.
+
+Checks: the section declares local + testing/staging + production tiers, includes a runtime config variable table with key names, owners, required environments, purpose, secret classification, and config source, and each variable covers all three tiers. For frontend+backend projects, at least one non-secret frontend-owned backend/API endpoint variable (for example `BACKEND_API_ENDPOINT` or `NEXT_PUBLIC_API_BASE_URL`) must be declared so FE Dev cannot hardcode environment-specific backend URLs.
 
 ## design-substatus-validator.cjs (PreToolUse)
 

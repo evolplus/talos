@@ -68,6 +68,7 @@ If at least one User Story has a UI surface:
 
 - [ ] `#### 3.4.4 API Contract Format` — declares format per API style (REST / gRPC / GraphQL / async messaging). Required when project exposes any API. Defaults: openapi-3.1 (REST), proto3 (gRPC), graphql-sdl (GraphQL), asyncapi-2.x (messaging). Deviations require ADR reference. Markdown is legacy/prototype only — also ADR-required.
 - [ ] `#### 3.4.5 Source Layout` — declares the two fixed source roots (`frontend/`, `backend/`) and one sub-directory per app/service when a tier has more than one. Required for any project that ships FE or BE code. Single app/service per tier → source under the root directly; multiple → `frontend/<app-slug>/`, `backend/<service-slug>/` (slugs mirror architecture.md C4 containers). Frontend rows include `Framework / Runtime` so FE Dev can choose the matching skill reference when `Frontend-Framework: multiple`. Backend rows include `Framework / Runtime` and `Backend Track` so BE Dev can choose the matching skill reference when `Backend-Framework:` or `Backend-Track:` is `multiple`. The `source-code-write-guard.cjs` hook reads this and blocks source writes outside the declared roots.
+- [ ] `#### 3.4.6 Environment Configuration` — declares local, testing/staging, and production environment tiers plus runtime config keys. Required for any project that ships FE or BE code. Frontend+backend projects must include a non-secret frontend-owned backend/API endpoint variable (for example `BACKEND_API_ENDPOINT`, `API_BASE_URL`, or `NEXT_PUBLIC_API_BASE_URL`) so FE never hardcodes environment-specific URLs.
 
 **Downstream note (for BA's awareness; not BA's output).** Any UI-bearing SRS triggers a downstream mandate: SA must produce `docs/instrumentation-contract.md` declaring the project's testID set, regardless of UI Introspection Profile level. This is the canonical selector source for QA-Author's by-us mode (Pass 1 + Pass 2 timing in `.claude/rules/parallel-execution.md` §4). Previously the kit required it only for Partial/None introspection; widened so QA-Author has a single selector source on every UI project.
 
@@ -225,6 +226,7 @@ When BA adds a missing engineering section, use the structures shown in `srs-tem
 - §3.4.3 Acceptance of Non-Introspectable Surfaces — table with Surface / Reason / Accepted-by / Date / Mitigation.
 - §3.4.4 API Contract Format — table with API style / Declared format / Default? / Justification columns. Required when project has APIs; lists one row per API style in use.
 - §3.4.5 Source Layout — fixed roots `frontend/` + `backend/`, plus a sub-directory table (one row per app/service) with Framework / Runtime, Backend Track, and SDLC Track columns. Required for any project shipping FE or BE code.
+- §3.4.6 Environment Configuration — environment tiers table and runtime config variable table with Env Var / Owner / Required environments / Purpose / Secret? / Config source columns. Required for any project shipping FE or BE code.
 - §4 NRS — explicit numbers (P95, throughput, uptime); no subjective adjectives.
 - §4.1 Security & Compliance — sub-sub-sections per applicable trigger category.
 - §5 Roles — role matrix table.
@@ -257,6 +259,7 @@ The no-invention invariant applies only to **required** fields. Optional fields 
 | Backend-Track and Backend-Framework header fields | SRS header | BE Dev must select the correct backend track/framework coding standard from the SRS, not guess from preference. Required when the project has backend source or server-side operations; `multiple` requires per-service rows in §3.4.5. |
 | SRS §3.4.4 API Contract Format | SRS body | BE Dev's api-contract-author skill reads this; without it, BE picks format ad-hoc per task and project ends up with `users.openapi.yaml` + `orders.md` + `payments.proto` mix. Required when project has APIs; N/A row when no APIs. |
 | SRS §3.4.5 Source Layout | SRS body | FE Dev / BE Dev write source only under the declared roots (`frontend/`, `backend/`); `source-code-write-guard.cjs` enforces. Required for any project shipping FE or BE code. |
+| SRS §3.4.6 Environment Configuration | SRS body | FE Dev / BE Dev / DevOps / QA need a declared local + staging/testing + production config contract. Required for any project shipping FE or BE code; frontend+backend scope requires a non-secret frontend backend/API endpoint variable. |
 | SRS §3.5 External Integrations index + per-system `docs/external-integrations/<system-slug>.md` with `Adequacy: adequate` | SRS + integration docs | SA, BE Dev, FE Dev, QA-Author for integration tests all gated on these; per CLAUDE.md §10 strict gate, every system must reach Adequacy: adequate before BA signs off |
 
 **Conditionally required (depends on scope):**
@@ -270,6 +273,7 @@ The no-invention invariant applies only to **required** fields. Optional fields 
 | SRS headers `Backend-Track:` and `Backend-Framework:` | Project has backend source or server-side operations | `N/A` |
 | SRS §3.4.4 API Contract Format | Project exposes any API (REST / gRPC / GraphQL / messaging) | N/A row stating 'no API surface' |
 | SRS §3.4.5 Source Layout | Project ships any FE or BE source | N/A root row for a tier with no source |
+| SRS §3.4.6 Environment Configuration | Project ships any FE or BE runtime code | Omit silently only when both FE and BE are N/A |
 | SRS §4.1 Security & Compliance | SRS involves auth, payments, PII, account data, public endpoints, or third-party integrations | Omit silently |
 | SRS §6 User Activity Logging & Tracking | SRS involves audit-required actions (admin role changes, payment, security-relevant) | Omit silently with §10 Changelog note |
 

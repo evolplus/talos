@@ -338,6 +338,34 @@ You are the BA and you have finished a mode-specific setup skill (Mode A/B/C/D/E
    - **`Backend-Track:` and `Backend-Framework:` are immutable per SRS version.** Changing either after sign-off is an iteration trigger and usually an architecture/test/deploy migration.
    - **`multiple` is allowed only with explicit per-service mapping.** A bare `multiple` header without §3.4.5 backend rows blocks sign-off.
 
+10e. **Environment Configuration contract (mandatory when SRS has frontend or backend runtime code).** Runs after source layout + framework selection. This field-level contract prevents hardcoded local/staging/production URLs and makes DevOps/QA environment validation deterministic.
+
+   **Skip only when both frontend and backend are `N/A`.** If `Frontend-Framework: N/A`, `Backend-Track: N/A`, `Backend-Framework: N/A`, and §3.4.5 declares no FE/BE source roots, omit §3.4.6. Otherwise §3.4.6 is required before sign-off.
+
+   **Add §3.4.6 Environment Configuration with two tables:**
+   - **Environment tiers** — must include `local`, `testing/staging`, and `production`. Each row states purpose, backend/API base URL policy, and secret source.
+   - **Runtime configuration variables** — columns: `Env Var`, `Owner`, `Required environments`, `Purpose`, `Secret?`, `Config source / template`.
+
+   **Required coverage.**
+   - Every FE/BE runtime key named by upstream requirements, architecture notes, local run docs, or existing code evidence must appear in the runtime config table.
+   - For frontend+backend projects, include at least one non-secret frontend-owned backend/API endpoint variable covering local, testing/staging, and production. Acceptable names include project conventions such as `BACKEND_API_ENDPOINT`, `API_BASE_URL`, `NEXT_PUBLIC_API_BASE_URL`, `VITE_API_BASE_URL`, or equivalent. The exact name is project-owned; the contract is mandatory.
+   - Secret values are never written. Record key names, ownership, purpose, required environments, and source only.
+   - If upstream omits the key name, use `TODO: frontend backend/API endpoint env var` and file an OQ category `environment-config-missing-key`. Do not invent the variable name silently.
+
+   **NEEDS_CONTEXT prompt when ambiguous.**
+
+   ```
+   Status: NEEDS_CONTEXT
+   Reason: SRS has FE/BE runtime scope but environment configuration is incomplete.
+   Question: What runtime config keys should the project use across local, testing/staging, and production?
+   Required at minimum for frontend+backend: a non-secret frontend API endpoint key (e.g. BACKEND_API_ENDPOINT / API_BASE_URL / NEXT_PUBLIC_API_BASE_URL) plus backend secrets such as DATABASE_URL only when the backend needs them.
+   ```
+
+   **Hard rules for step 10e.**
+   - **No hardcoded endpoint URLs.** FE/BE code must read environment-specific URLs from the §3.4.6 keys.
+   - **Three tiers are mandatory.** A local-only `.env` is insufficient; testing/staging and production must be named before sign-off.
+   - **The hook `environment-config-validator.cjs` enforces this at SRS write time.** It refuses sign-off-state SRS writes when the section is absent, lacks tiers, or omits the frontend backend/API endpoint variable for frontend+backend projects.
+
 ### Phase 1.Z — Delta Detection (Iteration Trigger)
 
 After Phase 1.X completes, if the repo carries evidence of a previously-signed-off SRS, this phase decides whether the current dispatch is a **first-time ingest** (no prior sign-off) or an **iteration** (SRS content has changed since a prior `Signed-off` state).
@@ -489,6 +517,16 @@ Don't write more than this. Specifically, do NOT propose how to handle each delt
    5. **Multiple-framework consistency.** If `Frontend-Framework: multiple`, verify every frontend UI row in §3.4.2 and every frontend app row in §3.4.5 names one supported canonical framework. Missing or unsupported row values become OQs category `frontend-framework-multiple-incomplete`.
 
    This check is procedural. The kit does not currently ship a write-time hook for this gate; BA Phase 2 is authoritative.
+
+3.8. **Environment Configuration gate (strict — runs whenever SRS has frontend or backend runtime code).** Per the SRS §3.4.6 contract, Dev/DevOps/QA must know which config keys exist for local, testing/staging, and production before sign-off:
+
+   1. **Section presence.** If the SRS has frontend or backend source/runtime scope and §3.4.6 is missing, file OQ category `environment-config-missing` and block sign-off.
+   2. **Three-tier coverage.** §3.4.6 must name `local`, `testing` or `staging`, and `production`. Missing tiers file OQ category `environment-config-tier-gap`.
+   3. **Runtime config variable table.** §3.4.6 must include a table with Env Var / Owner / Required environments / Purpose / Secret? / Config source columns. Each required runtime key must cover local + testing/staging + production or explicitly say `all`.
+   4. **Frontend backend/API endpoint.** If the project has both frontend and backend scope, the table must include a non-secret frontend-owned backend/API endpoint/base URL variable (for example `BACKEND_API_ENDPOINT`, `API_BASE_URL`, `NEXT_PUBLIC_API_BASE_URL`, `VITE_API_BASE_URL`, or project equivalent). Missing → OQ category `environment-config-frontend-api-endpoint-missing`.
+   5. **Secrets hygiene.** Secret values never appear in SRS; only key names and source are listed. If values appear, move them out of docs and file an OQ category `environment-config-secret-exposure`.
+
+   The hook `environment-config-validator.cjs` enforces this deterministically for sign-off-state SRS writes. BA Phase 2 remains the semantic audit.
 
 4. Write each gap, ambiguity, conflict, or cross-consistency inconsistency as a unique entry under `## Open Questions` (`OQ-NNN`, …) with explicit category tag where applicable.
 5. If `## Open Questions` non-empty → Status = `In-Review`. Stop.
