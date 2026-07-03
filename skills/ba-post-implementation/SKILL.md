@@ -22,7 +22,7 @@ This phase mirrors Phase 3 (design completeness against the handoff) but operate
 #### Trigger
 
 - FE Dev has emitted `plan-update.json` proposing `to_status: ready-for-deploy` for a UI-bearing task.
-- The `ui-task-readiness-guard.cjs` hook has already accepted the write (the artifact set — `docs/uiux/refs/<task-id>.md`, `docs/uiux/visual-specs/<task-id>.md`, `docs/test-cases/by-task/<task-id>/` — is present on disk). If the hook refused, the Orchestrator routes the gap to QA-Author / FE Dev re-dispatch first; this phase does NOT run while the artifact set is incomplete.
+- The `ui-task-readiness-guard.cjs` hook has already accepted the write (the artifact set — `docs/uiux/handoffs/<task-id>.md`, `docs/uiux/refs/<task-id>.md`, `docs/uiux/visual-specs/<task-id>.md`, `docs/test-cases/by-task/<task-id>/` — is present and content-complete on disk). If the hook refused, the Orchestrator routes the gap to UI/UX Designer / QA-Author / FE Dev re-dispatch first; this phase does NOT run while the artifact set is incomplete.
 - The Orchestrator dispatches you with: `task_id`, the FE Dev worktree path (`.worktrees/fe-dev-<task-id>/`), and a copy of the FE Dev `plan-update.json` (notes + DoD-scope justifications).
 
 #### Procedure

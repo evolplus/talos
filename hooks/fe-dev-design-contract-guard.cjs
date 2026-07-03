@@ -16,7 +16,8 @@
 //   - On Write / Edit / MultiEdit / NotebookEdit to a frontend source path,
 //     extract <task-id>, look for `docs/uiux/refs/<task-id>.md` at worktree
 //     and project root, verify it exists, its header declares `Status: Frozen`,
-//     and it contains `## Design Element Manifest` + `## Implementation Trace Matrix`.
+//     and it contains non-empty `## Design Element Manifest` +
+//     `## Implementation Trace Matrix` rows.
 //   - Refuse the write (exit 2) with a kit-aware message if any check fails.
 //
 // What this hook does NOT do:
@@ -37,6 +38,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const { stripFencedCodeBlocks } = require('./lib/strip-fences.cjs');
 
 // ─── Frontend source extensions ───
 const FE_SOURCE_EXTENSIONS = new Set([
@@ -116,7 +118,7 @@ function resolveContext(cwd, candidates) {
 // ─── Frozen check ───
 function readsFrozen(content) {
   if (typeof content !== 'string') return false;
-  const lines = content.split(/\r?\n/);
+  const lines = stripFencedCodeBlocks(content).split(/\r?\n/);
   const head = [];
   for (let i = 0; i < Math.min(lines.length, 80); i++) {
     head.push(lines[i]);
@@ -126,16 +128,55 @@ function readsFrozen(content) {
   return /^\s*-?\s*\**Status\**\s*:\s*Frozen\b/im.test(headerBlob);
 }
 
-function missingRequiredHeadings(content) {
+function hasHeading(content, heading) {
+  if (typeof content !== 'string') return false;
+  const stripped = stripFencedCodeBlocks(content);
+  const escaped = heading.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const re = new RegExp('^#{2,6}\\s+' + escaped + '\\s*$', 'im');
+  return re.test(stripped);
+}
+
+function getSection(content, heading) {
+  if (typeof content !== 'string') return '';
+  const lines = stripFencedCodeBlocks(content).split(/\r?\n/);
+  const escaped = heading.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const re = new RegExp('^#{2,6}\\s+' + escaped + '\\s*$', 'i');
+  let start = -1;
+  for (let i = 0; i < lines.length; i++) {
+    if (re.test(lines[i])) { start = i; break; }
+  }
+  if (start === -1) return '';
+  const out = [lines[start]];
+  for (let i = start + 1; i < lines.length; i++) {
+    if (/^#{1,6}\s+/.test(lines[i])) break;
+    out.push(lines[i]);
+  }
+  return out.join('\n');
+}
+
+function sectionHasDemRow(content, heading) {
+  return /\bDEM-\d+\b/i.test(getSection(content, heading));
+}
+
+function designContractIssues(content) {
+  const issues = [];
   const required = ['Design Element Manifest', 'Implementation Trace Matrix'];
-  const missing = [];
-  if (typeof content !== 'string') return required;
+  if (typeof content !== 'string') {
+    return required.map(h => 'missing ## ' + h);
+  }
+  const stripped = stripFencedCodeBlocks(content);
   for (const heading of required) {
     const escaped = heading.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     const re = new RegExp('^#{2,6}\\s+' + escaped + '\\s*$', 'im');
-    if (!re.test(content)) missing.push(heading);
+    if (!re.test(stripped)) issues.push('missing ## ' + heading);
   }
-  return missing;
+  if (hasHeading(content, 'Design Element Manifest') && !sectionHasDemRow(content, 'Design Element Manifest')) {
+    issues.push('## Design Element Manifest has no DEM-* rows');
+  }
+  if (hasHeading(content, 'Implementation Trace Matrix') && !sectionHasDemRow(content, 'Implementation Trace Matrix')) {
+    issues.push('## Implementation Trace Matrix has no DEM-* trace rows');
+  }
+  return issues;
 }
 
 function checkDesignContract(projectRoot, taskId, worktreeRoot) {
@@ -146,19 +187,19 @@ function checkDesignContract(projectRoot, taskId, worktreeRoot) {
 
   let foundPath = null;
   let frozen = false;
-  let missingHeadings = [];
+  let issues = [];
   for (const c of candidates) {
     try {
       if (fs.existsSync(c)) {
         foundPath = c;
         const content = fs.readFileSync(c, 'utf8');
         frozen = readsFrozen(content);
-        missingHeadings = missingRequiredHeadings(content);
-        if (frozen && missingHeadings.length === 0) break;
+        issues = designContractIssues(content);
+        if (frozen && issues.length === 0) break;
       }
     } catch { /* keep looking */ }
   }
-  return { foundPath, frozen, missingHeadings, candidates };
+  return { foundPath, frozen, issues, candidates };
 }
 
 async function main() {
@@ -197,11 +238,11 @@ async function main() {
   const feSourcePath = candidates.find(isFrontendSourcePath);
   if (!feSourcePath) process.exit(0); // fe-dev cwd but writing docs / config / non-FE — pass
 
-  const { foundPath, frozen, missingHeadings, candidates: lookupPaths } = checkDesignContract(
+  const { foundPath, frozen, issues, candidates: lookupPaths } = checkDesignContract(
     ctx.projectRoot, ctx.taskId, ctx.worktreeRoot
   );
 
-  if (frozen && missingHeadings.length === 0) process.exit(0);
+  if (frozen && issues.length === 0) process.exit(0);
 
   let reason;
   if (!foundPath) {
@@ -210,8 +251,8 @@ async function main() {
   } else if (!frozen) {
     reason = 'Found ' + foundPath + ' but its header does not declare `Status: Frozen`.';
   } else {
-    reason = 'Found ' + foundPath + ' and it is Frozen, but it is missing required sections: ' +
-      missingHeadings.map(h => '## ' + h).join(', ') + '.';
+    reason = 'Found ' + foundPath + ' and it is Frozen, but required sections are missing or empty: ' +
+      issues.join(', ') + '.';
   }
 
   process.stderr.write(
@@ -221,7 +262,7 @@ async function main() {
     '  ' + reason + '\n\n' +
     '  Per .claude/agents/_templates/fe-dev.md § Design Contract Hard Rules:\n' +
     '    "Never start UI implementation while `docs/uiux/refs/<task-id>.md` is `Draft`."\n' +
-    '    The Frozen refs file must also include Design Element Manifest + Implementation Trace Matrix.\n\n' +
+    '    The Frozen refs file must also include non-empty Design Element Manifest + Implementation Trace Matrix rows.\n\n' +
     '  Per CLAUDE.md §10 Hard Rules:\n' +
     '    "Design-implementation symmetry — artifact absence is a closure-blocker,\n' +
     '     not a vacuous pass."\n\n' +

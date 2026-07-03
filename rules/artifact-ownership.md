@@ -30,7 +30,7 @@ Per-role ownership of every artifact path the kit writes. Each row lists: path p
 - `docs/uiux/handoffs/<task-id>.md` — UI/UX Designer
 - `docs/uiux/completeness-reports/<task-id>.md` — BA (Phase 3 — design completeness against handoff)
 - `docs/uiux/post-implementation-reports/<task-id>.md` — BA (Phase 5 — implementation completeness against design-confirmed handoff; UI tasks only; gates `ready-for-deploy` transition for UI-bearing tasks per `.claude/rules/parallel-execution.md` §4 Step 6)
-- `docs/uiux/refs/<task-id>.md` and `docs/uiux/refs/<task-id>/` — Frontend Developer
+- `docs/uiux/refs/<task-id>.md` and `docs/uiux/refs/<task-id>/` — Frontend Developer (frozen per-task design contract; UI/UX Designer does not write this path)
 - `docs/uiux/visual-specs/<task-id>.md` — QA Author
 - `docs/qa-reports/<task-id>.md` — QA Exec
 - `docs/deploy-reports/<task-id>.md` — DevOps

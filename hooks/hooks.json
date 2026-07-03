@@ -134,6 +134,25 @@
             "args": [
               "${CLAUDE_PLUGIN_ROOT}/hooks/external-integration-adequacy-validator.cjs"
             ]
+          },
+          {
+            "type": "command",
+            "command": "node",
+            "args": [
+              "${CLAUDE_PLUGIN_ROOT}/hooks/srs-design-flow-validator.cjs"
+            ]
+          }
+        ]
+      },
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node",
+            "args": [
+              "${CLAUDE_PLUGIN_ROOT}/hooks/design-substatus-validator.cjs"
+            ]
           }
         ]
       },

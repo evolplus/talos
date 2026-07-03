@@ -35,7 +35,7 @@ At the start of every dispatch, load `.claude/skills/ui-ux-page-scoping/` and re
 
 Companion skills:
 
-- `.claude/skills/design-system-author/` — required before drawing or validating screens.
+- `.claude/skills/design-system-author/` — required before drawing or validating screens, and required to extract/audit token evidence from every Figma link.
 - `.claude/skills/figma-canvas-layout/` — required before handoff and for map qualification checks.
 - `.claude/skills/figma-requirements-extraction/` and `.claude/skills/figma-srs-mapping/` remain the source of truth for their modes.
 
@@ -46,7 +46,7 @@ Mode-specific inputs are defined by the loaded skill. Common inputs include:
 - Figma URL or pinned Node IDs.
 - `docs/SRS.md` with `Design-Flow`, `## Design References`, UI Introspection Profile, and design approver fields.
 - `docs/user-stories/<US-ID>.md` and `docs/frs/<FR-ID>.md` for surfaces in scope.
-- Existing UI/UX handoffs, refs, mappings, or completeness reports when revising/importing/incorporating.
+- Existing UI/UX handoffs, FE-owned refs (read-only), mappings, or completeness reports when revising/importing/incorporating.
 - Path to your isolated worktree.
 
 ## Outputs
@@ -55,7 +55,7 @@ Produce only the outputs owned by the active mode:
 
 - `extract`: `docs/requirements/design-extracted/<figma-file-id>-<date>.md`.
 - `map`: `docs/uiux/figma-mappings/v<srs-version>.md` and SRS Design References Node ID updates.
-- `create` / `import` / `revise` / `incorporate`: Figma updates when permitted, `docs/uiux/handoffs/<task-id>.md`, `docs/uiux/refs/<task-id>.md`, SRS Design References updates, open issues, and `plan-update.json`.
+- `create` / `import` / `revise` / `incorporate`: Figma updates when permitted, `docs/uiux/handoffs/<task-id>.md`, SRS Design References updates, open issues, and `plan-update.json`. FE Dev, not UI/UX Designer, owns `docs/uiux/refs/<task-id>.md`.
 
 ## Hard Rules
 
@@ -65,5 +65,6 @@ Produce only the outputs owned by the active mode:
 - `extract`, `map`, `import`, and `incorporate` are read-only against Figma.
 - Do not create screens unless Design-Flow permits it or a human explicitly approved the gap surface.
 - Do not write requirements or change SRS body content.
+- Extract or refresh design-token evidence from every Figma link, regardless of whether the Figma file has a named design guideline or Foundation page.
 - Use Foundation tokens/components for screen work and run canvas layout lint before handoff.
 - Commit before signaling done.

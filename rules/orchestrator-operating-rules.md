@@ -133,9 +133,10 @@ When the classified path is A, before doing anything else, the Orchestrator must
    - BA Phase 1.X returns `plan-update.json` with `notes: "Design-Flow A. Dispatch UI/UX Designer in map mode against <url> before sign-off."` → dispatch UI/UX Designer in `map` mode AGAINST THE URL; the designer produces `docs/uiux/figma-mappings/v<srs-version>.md` and pins SRS §3.4.1 Node IDs. SRS Status stays `In-Review` until the mapping reaches `Mapping-Status: qualified` and BA Phase 2 step 3.5 passes. Then re-dispatch BA Mode D to flip Status to `Signed-off`.
    - BA returns `NEEDS_CONTEXT` asking the user to pick Design-Flow B vs C → surface the prompt to the user. Do NOT proceed with any sub-agent dispatch until the user answers. On answer, re-dispatch BA Mode D with `selected_design_flow: B | C`; BA sets the SRS header and continues to Phase 2.
 
-   **Post-sign-off — Design-Flow A.** Designs already qualified pre-sign-off. The lifecycle short-circuits:
-   - FE-eligible task with SRS Status `Signed-off`, `Design-Flow: A`, mapping `qualified`, Figma file version unchanged since sign-off → set the task's design sub-status DIRECTLY to `design-confirmed`. FE Dev becomes eligible immediately, no Designer dispatch needed.
-   - Figma file version changed since sign-off (Approver edited Figma) → dispatch UI/UX Designer in `incorporate` mode to absorb edits + regenerate the affected task's handoff. Sub-status → `design-ready-for-review` → BA Phase 3 → confirmation → `design-confirmed`.
+   **Post-sign-off — Design-Flow A.** Designs are mapped pre-sign-off, but the task handoff still has to be produced:
+   - FE-eligible task with SRS Status `Signed-off`, `Design-Flow: A`, mapping `qualified`, and no `docs/uiux/handoffs/<task-id>.md` → dispatch UI/UX Designer in `import` mode against the pinned Node IDs. Sub-status → `design-ready-for-review` → BA Phase 3 → approver confirmation → `design-confirmed`.
+   - FE-eligible task with existing handoff, confirmed Figma version unchanged, completeness report `qualified`, and approver confirmation recorded → FE Dev becomes eligible.
+   - Figma file version changed since confirmation (Approver edited Figma) → dispatch UI/UX Designer in `incorporate` mode to absorb edits + regenerate the affected task's handoff. Sub-status → `design-ready-for-review` → BA Phase 3 → confirmation → `design-confirmed`.
 
    **Post-sign-off — Design-Flow B or C.** Existing 5-step lifecycle from `.claude/rules/parallel-execution.md` §4:
    - SRS has UI requirements without pinned Figma nodes AND `Design-Flow: B` → dispatch UI/UX Designer in `create` mode.

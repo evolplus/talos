@@ -1,6 +1,6 @@
 ---
 name: figma-srs-mapping
-description: How to scan a Figma file provided in the SRS and produce a structured mapping of Figma frames/layers to SRS surfaces (User Stories + FRs). Consult when UI/UX Designer is in `map` mode — invoked by BA Phase 1.X pre-sign-off when a Figma URL is present in the requirements. Mapping qualifies designs BEFORE SRS sign-off so FE work is never blocked on design review later.
+description: How to scan a Figma file provided in the SRS and produce a structured mapping of Figma frames/layers to SRS surfaces (User Stories + FRs). Consult when UI/UX Designer is in `map` mode — invoked by BA Phase 1.X pre-sign-off when a Figma URL is present in the requirements. Mapping qualifies surface coverage BEFORE SRS sign-off; task-scoped import handoffs still run before FE work.
 agents: [ui-ux-designer]
 sdlc_phase: pre-design
 owner: Platform Eng
@@ -11,9 +11,9 @@ status: active
 
 ## When to use
 
-You are the UI/UX Designer in `map` mode. BA Phase 1.X detected a Figma URL in the requirements and dispatched you BEFORE SRS sign-off. Your job is to verify that the existing Figma file already covers the SRS scope — produce a structured mapping, identify gaps, and qualify the design at sign-off time so the design lifecycle short-circuits when FE work later begins.
+You are the UI/UX Designer in `map` mode. BA Phase 1.X detected a Figma URL in the requirements and dispatched you BEFORE SRS sign-off. Your job is to verify that the existing Figma file already covers the SRS scope — produce a structured mapping, identify gaps, and qualify surface coverage at sign-off time. This mapping does not replace the post-sign-off task handoff: every Flow A UI task still runs `import` mode to produce `docs/uiux/handoffs/<task-id>.md` and a Design Element Manifest before FE work begins.
 
-This skill replaces the old "Designer dispatch happens after sign-off" flow for the Figma-provided case (Design-Flow A per `.claude/rules/parallel-execution.md` §4). The post-sign-off lifecycle still applies for Design-Flow B (no Figma → agent designs) and Design-Flow C (no Figma → agent + human edits) — see those modes\' respective procedures.
+This skill replaces the old "Designer first sees Figma after sign-off" flow for the Figma-provided case (Design-Flow A per `.claude/rules/parallel-execution.md` §4). Design-Flow A still uses the post-sign-off lifecycle starting at `import` rather than `create`; Design-Flow B (no Figma → agent designs) and Design-Flow C (no Figma → agent + human edits) use their respective procedures.
 
 ## Inputs and outputs
 

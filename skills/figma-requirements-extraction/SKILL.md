@@ -1,6 +1,6 @@
 ---
 name: figma-requirements-extraction
-description: "Extract requirements and design-system evidence from a Figma file (screens, components, states, exact copy, form fields, interaction flows, design guideline tokens, accessibility hints) and write to docs/requirements/design-extracted/<figma-file-id>-<ISO-date>.md as additional source corpus for BA synthesis + srs-source-validator coverage check. Use when a PRD references Figma URLs and Design-Flow: A is in effect — runs PRE-BA so BA's first US/FR pass and Design-Guideline selection are informed by what the design already specifies. Strictly read-only against Figma (consumer pattern); strictly inferred-vs-confirmed discipline (no invention)."
+description: "Extract requirements and design-system evidence from a Figma file (screens, components, states, exact copy, form fields, interaction flows, design token evidence, accessibility hints) and write to docs/requirements/design-extracted/<figma-file-id>-<ISO-date>.md as additional source corpus for BA synthesis + srs-source-validator coverage check. Use when a PRD references Figma URLs and Design-Flow: A is in effect — runs PRE-BA so BA's first US/FR pass and Design-Guideline selection are informed by what the design already specifies. Strictly read-only against Figma (consumer pattern); strictly inferred-vs-confirmed discipline (no invention)."
 agents: [ui-ux-designer]
 sdlc_phase: ingestion
 owner: Platform Eng
@@ -15,7 +15,7 @@ You are the UI/UX Designer dispatched in `extract` mode. The Orchestrator has de
 
 The kit's pattern is: BA's first US/FR synthesis at Phase 1.X must be informed by FULL source corpus. Textual PRD + design-extracted requirements + conversational additions are the three branches. Without design-extracted input, BA invents details that Figma already specifies (or worse, misses details Figma specifies that the textual PRD omits) — every subsequent dispatch then re-discovers the gap.
 
-You produce a structured markdown enumerating WHAT THE DESIGN SHOWS. You do NOT author requirements (that's BA's role); you produce evidence that BA synthesizes into the SRS. When the Figma file has no explicit design guideline, you still extract reusable visual-system evidence — color palette, typography, spacing, radius, elevation, component patterns, and layout grid — so BA can set `Design-Guideline: from-figma` instead of forcing a generic preset.
+You produce a structured markdown enumerating WHAT THE DESIGN SHOWS. You do NOT author requirements (that's BA's role); you produce evidence that BA synthesizes into the SRS. When the Figma file has no explicit design guideline, you still extract reusable visual-system evidence — color palette, typography, spacing, radius, elevation, component patterns, and layout grid — so BA can set `Design-Guideline: from-figma` instead of forcing a generic preset. This token extraction is unconditional for every Figma-backed project: formal variables/styles are preferred, but absence of a design guideline is not a reason to skip token evidence.
 
 ## Inputs and outputs
 
@@ -88,7 +88,7 @@ Walk Figma Prototype connections (the connector arrows between frames). For each
 - Build a list of flows: "Login → Dashboard" / "Repository List → Repository Detail (drill-in)" / etc.
 - Flag flows with no explicit destination in Figma as gaps.
 
-### Step 6 — Extract design guideline evidence
+### Step 6 — Extract design token evidence
 
 Build a confirmed visual-system inventory from the scoped page. Prefer formal Figma variables/styles/components when present; otherwise infer only from repeated values in the scoped frames. Do not create or modify Figma styles in this mode.
 
@@ -308,6 +308,7 @@ Commit the file with conventional-commits convention (`feat(requirements): extra
 
 - **READ-ONLY against Figma.** This skill uses Figma MCP in consumer mode only. No frame edits, no comment additions, no version changes.
 - **NO INVENTION.** Sections 1–7 contain ONLY what the canvas literally shows or repeated visual values/effects/components observed on scoped nodes. Section 8 contains inferred requirements but explicitly flags them as proposals BA must anchor or OQ. Empty sections stay empty (do not fabricate sample data).
+- **TOKEN EXTRACTION IS MANDATORY FOR FIGMA LINKS.** Every Figma extraction must produce Section 6 design token evidence, even when the Figma file has no named design guideline, no Foundation page, and no formal variables/styles. In that case, capture repeated observed values with confidence and source locations; do not leave Section 6 empty unless the scoped page contains no usable visual evidence.
 - **DESIGN GUIDELINE EXTRACTION IS EVIDENCE, NOT AUTHORING.** You may recommend `from-figma` from observed evidence, but you do not create the Foundation page, rename styles, normalize values, or invent missing token categories in extract mode.
 - **VERBATIM COPY.** Section 3 captures text exactly as it appears — no normalization, no fixing typos, no spelling corrections, no translation. The audit-log value depends on faithfulness.
 - **PARAMETERIZED STRINGS marked clearly.** When copy contains `{placeholders}`, flag as PARAMETERIZED so BA's FR specifies the parameter source.

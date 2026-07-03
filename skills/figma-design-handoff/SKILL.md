@@ -1,6 +1,6 @@
 ---
 name: figma-design-handoff
-description: UI/UX Designer post-sign-off design workflow for `create`, `import`, `revise`, and `incorporate` modes. Produces or refreshes Figma-backed handoff artifacts, refs, SRS Design References Node IDs, and plan updates while respecting Design-Flow A/B/C, Foundation tokens/components, page scoping, canvas lint, and human-edited Figma reconciliation.
+description: UI/UX Designer post-sign-off design workflow for `create`, `import`, `revise`, and `incorporate` modes. Produces or refreshes Figma-backed handoff artifacts, SRS Design References Node IDs, and plan updates while respecting Design-Flow A/B/C, Foundation tokens/components, page scoping, canvas lint, and human-edited Figma reconciliation. FE Dev owns `docs/uiux/refs/<task-id>.md`.
 agents: [ui-ux-designer]
 sdlc_phase: design
 owner: Platform Eng
@@ -49,14 +49,14 @@ Load these skills when their condition applies:
 1. Figma updates for `create` / `revise` only.
 2. Updated `docs/SRS.md` `## Design References` rows for Node IDs, Figma URL, page-scope fields, and design sub-status.
 3. `docs/uiux/handoffs/<task-id>.md`.
-4. `docs/uiux/refs/<task-id>.md` and reference snapshots when needed for QA.
+4. Reference snapshots under `docs/uiux/handoffs/<task-id>/` when needed for BA/QA review.
 5. Open issues for missing states, stale designs, unsupported variants, or SRS/design conflicts.
 6. Worktree `plan-update.json` with `track: "uiux"`.
 
 ## Common Procedure
 
 1. Run `ui-ux-page-scoping` and record the resolved page root.
-2. Run or verify `design-system-author` Foundation before screen work. The Foundation source comes from SRS `Design-Guideline:`: preset slug, `from-figma`, or `none`. Screens must consume Foundation tokens/components rather than hardcoded one-off styling.
+2. Run or verify `design-system-author` Foundation before screen work. The Foundation source comes from SRS `Design-Guideline:`: preset slug, `from-figma`, or `none`. Screens must consume Foundation tokens/components rather than hardcoded one-off styling. For any Figma-backed dispatch, extract or refresh design-token evidence from the Figma link first, regardless of whether the file contains a named design guideline.
 3. Read the relevant US/FR files. Build the required surface/state/platform matrix from SRS §3.4.1, user-story Main Flow, Business Rules, Post-conditions, and FR Error Handling.
 4. Perform the mode-specific procedure below.
 5. Run `figma-canvas-layout` lint on the scoped page and fix blocking layout issues when the mode permits Figma writes. Do not mark handoff ready when `create` / `revise` / `incorporate` leaves overlapping top-level screen frames.
@@ -95,7 +95,7 @@ Use when BA returned a design completeness report with `unqualified`.
 2. Address every flagged item in the existing Figma file.
 3. Preserve existing Node IDs when possible. If IDs change, update SRS §3.4.1 and call out the change in the handoff.
 4. Regenerate the Design Element Manifest from the revised Figma frames.
-5. Regenerate the handoff and refs.
+5. Regenerate the handoff.
 6. Leave unresolved items as open issues; do not mark design-ready while blocking gaps remain.
 
 ## Mode: incorporate
@@ -105,7 +105,7 @@ Use when a human approver/designer edited Figma directly after handoff.
 1. Treat current Figma as authoritative.
 2. Read the new version and compare it to the previous handoff.
 3. Regenerate the Design Element Manifest from the new version.
-4. Regenerate handoff and refs without undoing human edits.
+4. Regenerate handoff without undoing human edits.
 5. Add `## Human Edit Reconciliation Notes` for every changed node/property, including added/removed manifest entries.
 6. If human edits conflict with SRS requirements, do not silently fix them. Raise open issues for BA and the human approver.
 
@@ -160,7 +160,8 @@ Rules:
 - Mode: `create` | `import` | `revise` | `incorporate`.
 - Figma file URL, version, last-modified, page Node ID, and page name.
 - Design-may-be-stale flag.
-- Design guideline source: preset slug, `from-figma`, `none`, or `N/A`; cite extraction artifact path when `from-figma`.
+- Design guideline source: preset slug, `from-figma`, `none`, or `N/A`; cite extraction artifact path for every Figma-backed handoff, not only when `from-figma`.
+- Design system source: token evidence from the Figma link, including which values are formal styles/variables, inferred repeated values, preset/default fallbacks, and deviations.
 - Surface table: SRS requirement ID, surface name, platform, Figma node ID, source, design status.
 - Component inventory per surface.
 - Design Element Manifest with required fields/items/copy/actions and decorative exclusions.
@@ -177,6 +178,7 @@ Rules:
 - Never write requirements or change SRS body content.
 - Never hand off screens that skip required SRS states without a visible gap.
 - Never hand off a UI task without `## Design Element Manifest`. Component inventory alone is insufficient.
+- Never hand off a Figma-backed UI task without token evidence from the Figma link. A missing Figma design guideline means "infer repeated values with confidence," not "skip token extraction."
 - Never bypass Foundation tokens/components for screen work.
 - Never hand off overlapping top-level screen frames in `create` / `revise` / `incorporate`; route to `NEEDS_CONTEXT` when the current mode cannot write the cleanup.
 - Commit before signaling done.

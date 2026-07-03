@@ -34,15 +34,21 @@ Foundation is structured as five Figma sections. **Before authoring those sectio
 
 The kit ships a catalog of named presets at `references/presets/<slug>/`. Each preset is a pre-authored Foundation: tokens, type scale, component minimum set, layout grid. For Design-Flow A, the SRS may instead declare `Design-Guideline: from-figma`, meaning the existing Figma file itself is the Foundation source and the Designer must build or audit against the design-extracted token evidence.
 
+For every Figma-backed dispatch, the UI/UX Designer still captures token evidence from the Figma link regardless of the declared `Design-Guideline:` value. A preset or `none` value decides the Foundation source; it does not waive extraction of the live Figma palette, typography, spacing, radius, elevation, component-pattern, and grid evidence. The handoff must make clear which values are preset/defaulted and which values came from Figma.
+
 #### Procedure
 
 1. **Read the SRS header.** `docs/SRS.md` declares the chosen Foundation source in the `Design-Guideline:` field (set by BA Phase 1.X step 10b at sign-off time). Possible values:
    - A preset slug → e.g., `modern-saas-admin`, `ios-consumer`, `default`.
-   - `from-figma` → Design-Flow A extracted the design guideline from the provided Figma file. Build/audit Foundation from `docs/requirements/design-extracted/<figma-file-id>-*.md` Section 6.
+   - `from-figma` → Design-Flow A extracted enough design-token evidence from the provided Figma file to use it as the Foundation source. Build/audit Foundation from `docs/requirements/design-extracted/<figma-file-id>-*.md` Section 6.
    - `none` → no preset; author Foundation from the SKILL.md defaults (Sections 1–5 below).
    - Missing field → halt with `NEEDS_CONTEXT` and ask the Orchestrator to dispatch BA Mode D to set the field. Do NOT pick a preset unilaterally; the choice is BA + operator territory.
 
-2. **If `Design-Guideline: from-figma`, load extraction evidence.** Read the latest `docs/requirements/design-extracted/<figma-file-id>-*.md` for each Figma URL in SRS §3.4.1 and extract `## Section 6 — Design guideline extraction (Flow A)`:
+2. **For every Figma URL, load or require token evidence.** Read the latest `docs/requirements/design-extracted/<figma-file-id>-*.md` for each Figma URL in SRS §3.4.1 and inspect `## Section 6 — Design guideline extraction (Flow A)`. If no extraction exists for a Figma-backed project, halt and ask the Orchestrator to dispatch UI/UX Designer in `extract` mode before design handoff/implementation proceeds.
+   - This applies even when `Design-Guideline:` is a preset slug or `none`; those choices do not erase the need to inventory what the Figma file actually uses.
+   - If the live Figma file version is newer than the extraction evidence, halt with `NEEDS_CONTEXT` and ask whether to re-run extraction.
+
+3. **If `Design-Guideline: from-figma`, use extraction evidence as the Foundation source.**
    - Use formal Figma styles/variables/components first when Section 6 identifies them.
    - When no formal styles exist, use medium/high-confidence repeated values from Section 6 as token candidates.
    - Build Sections 1–5 from the extracted palette, typography, spacing, radius, elevation/effects, component patterns, and layout grid evidence.
@@ -50,16 +56,16 @@ The kit ships a catalog of named presets at `references/presets/<slug>/`. Each p
    - If a required token category is absent, fill the missing category from SKILL.md defaults and record the fallback in `## Design System Source` and `## Foundation Changes`.
    - If Section 6 is missing, low-confidence, or contradictory, halt with `NEEDS_CONTEXT`; do not silently switch to a preset.
 
-3. **If a preset slug is declared, load the preset.** Read every file under `.claude/skills/design-system-author/references/presets/<slug>/`:
+4. **If a preset slug is declared, load the preset.** Read every file under `.claude/skills/design-system-author/references/presets/<slug>/`:
    - `preset.md` — when-to-use, dos / don'ts (apply throughout your authoring).
    - `tokens.json` — color + spacing + radius + elevation + motion + z-index tokens. **Apply these values verbatim to the Figma Foundation page's Sections 1, 3, 4 — do NOT invent your own values.**
    - `typography.md` — type scale + font stack + rules. **Apply to Section 2.**
    - `components.md` — required component set + variants + states + preset-specific additions. **Apply to Section 5.**
    - `layout-grid.md` — column system + breakpoints + container widths + vertical rhythm rules. **Apply to your page-level layouts and document in `## Foundation Changes` if you need to deviate.**
 
-4. **Honour source-specific rules.** `preset.md` carries Dos / Don'ts for preset sources; Section 6 carries source evidence and gaps for `from-figma`. These ARE Foundation rules — bake them into your component variants + screen authoring. Example: a preset may forbid `text-transform: uppercase`; a `from-figma` extraction may show all cards use 12px radius and 24px internal padding. Both are enforced via the lint at Step 3 below.
+5. **Honour source-specific rules.** `preset.md` carries Dos / Don'ts for preset sources; Section 6 carries source evidence and gaps for `from-figma`. These ARE Foundation rules — bake them into your component variants + screen authoring. Example: a preset may forbid `text-transform: uppercase`; a `from-figma` extraction may show all cards use 12px radius and 24px internal padding. Both are enforced via the lint at Step 3 below.
 
-5. **Note deviations explicitly.** If the SRS implies a Foundation value that conflicts with the declared Foundation source (e.g., SRS §3.4.1 specifies a custom brand color), document the deviation in the handoff doc's `## Foundation Changes` section. Do NOT silently override the source; the explicit annotation lets FE Dev + QA-Author know which values are preset-stock, Figma-extracted, or project-customized.
+6. **Note deviations explicitly.** If the SRS implies a Foundation value that conflicts with the declared Foundation source (e.g., SRS §3.4.1 specifies a custom brand color), document the deviation in the handoff doc's `## Foundation Changes` section. Do NOT silently override the source; the explicit annotation lets FE Dev + QA-Author know which values are preset-stock, Figma-extracted, or project-customized.
 
 #### When to clone a preset
 
@@ -180,9 +186,10 @@ Each component MUST:
 
 1. **Run Foundation-source selection (Step 0 above) FIRST.** Read SRS `Design-Guideline:`; load the preset or `from-figma` extraction evidence for comparison. (Don't mutate Figma — source-load is read-only here too.)
 2. **Inventory existing tokens** in the file. Look for Figma color styles, text styles, effect styles, named components.
-3. If a Foundation page exists → document its contents in the handoff doc `## Design System Inventory` section. Diff its values against the loaded source. Off-source values become `figma-design-guideline-divergence` entries in the handoff lint (non-blocking in `import` mode but visible).
-4. If NO Foundation page exists OR tokens are sparse → file an open-issue with category `figma-design-system-gap` describing what's missing relative to the declared source. Do NOT auto-create a Foundation page in `import` mode (read-only against Figma).
-5. **Run the token-compliance lint** — flag every hardcoded color/text-size/spacing in the screens as `non-tokenized-value` entries in the handoff doc.
+3. Capture live token evidence from the pinned/scoped frames even if the file lacks a Foundation page or named styles. Compare the live evidence to the latest extraction Section 6 and record differences in `## Design System Source`.
+4. If a Foundation page exists → document its contents in the handoff doc `## Design System Inventory` section. Diff its values against the loaded source. Off-source values become `figma-design-guideline-divergence` entries in the handoff lint (non-blocking in `import` mode but visible).
+5. If NO Foundation page exists OR tokens are sparse → file an open-issue with category `figma-design-system-gap` describing what's missing relative to the declared source. Do NOT auto-create a Foundation page in `import` mode (read-only against Figma).
+6. **Run the token-compliance lint** — flag every hardcoded color/text-size/spacing in the screens as `non-tokenized-value` entries in the handoff doc.
 6. Lint violations in `import` are non-blocking (brownfield-onboarding flavor — document what exists, don't fix unilaterally).
 
 ### `revise` mode (BA Phase 3 returned unqualified)

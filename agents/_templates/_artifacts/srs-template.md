@@ -191,7 +191,7 @@ EXAMPLE -->
 
 #### 3.4.1 Design References
 
-*Required when the feature has a UI surface.* Lists every UI surface, platform(s), Figma reference, and whether visual fidelity is critical. `Figma File` and `Figma Node ID` cells **may be empty at sign-off** — the UI/UX Designer fills them in post-sign-off via the design lifecycle (or PRE-sign-off via `map` mode for Design-Flow A).
+*Required when the feature has a UI surface.* Lists every UI surface, platform(s), Figma reference, and whether visual fidelity is critical. For Design-Flow B/C, `Figma File` and `Figma Node ID` cells may be empty at SRS sign-off because the UI/UX Designer fills them during the post-sign-off design lifecycle. For Design-Flow A, every in-scope UI surface must be mapped and pinned before sign-off via `map` mode.
 
 ##### Figma source headers (required when any Figma URL is recorded)
 

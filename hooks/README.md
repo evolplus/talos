@@ -15,8 +15,23 @@ All hooks are **fail-open**: if a hook crashes or its event JSON is malformed, i
 | `open-issues-triage-gate.cjs` | UserPromptSubmit | Reminds when any open-issues entry is `State: open` |
 | `privacy-check.cjs` | PreToolUse | Blocks reads/writes/searches against sensitive paths |
 | `plan-update-validator.cjs` | PreToolUse (Write) | Validates `plan-update.json` schema |
+| `acceptance-scenarios-validator.cjs` | PreToolUse (Write) | Blocks US/FR writes that lack a Given/When/Then Acceptance Scenarios section |
+| `self-containment-validator.cjs` | PreToolUse (Write) | Blocks kit artifacts that back-reference upstream sources instead of being self-contained |
+| `external-integration-adequacy-validator.cjs` | PreToolUse (Write/Edit) | Blocks SRS sign-off when external integration adequacy files are missing or non-adequate |
+| `srs-design-flow-validator.cjs` | PreToolUse (Write/Edit) | Blocks Flow A SRS sign-off states when Figma extraction/mapping evidence is incomplete |
+| `design-substatus-validator.cjs` | PreToolUse (Write/Edit) | Blocks task files from setting `design-confirmed` before handoff + BA completeness evidence exists |
+| `integration-dod-validator.cjs` | PreToolUse (Write) | Blocks glue/cross-track tasks whose DoD lacks integration/runtime verification |
+| `qa-runtime-evidence-validator.cjs` | PreToolUse (Write) | Blocks BE/be+fe QA reports that claim PASS with code-exists-only evidence |
 | `master-plan-write-guard.cjs` | PreToolUse (Write/Edit/MultiEdit/NotebookEdit) | Blocks direct writes to anything under `docs/plan/` (master-plan.md, phase.md, task files) from sub-agents |
 | `kit-role-dispatch-guard.cjs` | PreToolUse (Task) | Blocks `subagent_type: general-purpose` dispatches when the prompt contains kit-role signals (BA Mode X, SA extract, QA-Author, etc.). Enforces CLAUDE.md §10 "Role-specialized dispatch required" |
+| `source-code-write-guard.cjs` | PreToolUse (Write/Edit/MultiEdit/NotebookEdit) | Blocks Orchestrator source-code writes and enforces declared source roots for sub-agent worktrees |
+| `orchestrator-write-guard.cjs` | PreToolUse (Write/Edit/MultiEdit/NotebookEdit) | Blocks Orchestrator writes outside its allow-list of router-owned paths |
+| `orchestrator-bash-guard.cjs` | PreToolUse (Bash) | Blocks state-mutating Bash from Orchestrator/main-repo context |
+| `plan-update-location-guard.cjs` | PreToolUse (Write/Edit/MultiEdit/NotebookEdit) | Blocks `plan-update*.json` outside `.worktrees/<role>-<task-id>/` |
+| `fe-dev-design-contract-guard.cjs` | PreToolUse (Write/Edit/MultiEdit/NotebookEdit) | Blocks FE Dev source writes until `docs/uiux/refs/<task-id>.md` is Frozen and has non-empty manifest/trace rows |
+| `ui-task-readiness-guard.cjs` | PreToolUse (Write) | Blocks `ready-for-deploy` proposals for UI tasks until handoff/refs/visual-spec/test artifacts are present and content-complete |
+| `docker-scope-guard.cjs` | PreToolUse (Bash) | Blocks Docker mutations outside the project-scoped compose/container set |
+| `task-completion-commit-check.cjs` | PreToolUse (Write) | Blocks completion proposals when the sub-agent worktree has uncommitted changes |
 | `post-bash-security-audit.cjs` | PreToolUse (Bash, `--snapshot`) + PostToolUse (Bash) | Post-tool-run security audit: sensitive-path tamper detection (`.git/hooks`, `.claude/**`, shell rc files), dependency-install audit (install scripts, off-registry deps, typosquats), command red flags (`curl\|sh`, etc.). Findings file a `State: open` entry in `docs/open-issues.md` (§6 gate) + warn the agent via additionalContext. Detection-only — never blocks. |
 | `pre-install-dependency-verifier.cjs` | PreToolUse (Bash) | Verifies packages against trusted sources (OSV.dev advisories + deps.dev metadata) BEFORE download/install. Tiered: known malware (MAL-*) blocks; CVEs, brand-new packages/versions, and unverifiable git/URL specs warn. Fail-open when sources unreachable. Covers npm/yarn/pnpm/bun/npx, pip/poetry/uv/pipx/uvx, cargo, go, gem, composer. |
 | `session-init-summary.cjs` (extended) | SessionStart | …also flags interrupted dispatches (surviving dispatch-journal entries + orphan worktrees) per CLAUDE.md §14.3 |
@@ -156,6 +171,18 @@ When a match fires AND `subagent_type === 'general-purpose'`, the hook exits 2 w
 - Dispatch prompts that refer to roles by capability only ("write a SRS") rather than by role name
 - Cross-cutting work that legitimately spans multiple roles (rare; usually a routing mistake)
 
+## srs-design-flow-validator.cjs (PreToolUse)
+
+Refuses `Write`/`Edit` to `docs/SRS.md` when `Status:` is `Ready-for-Sign-off`, `Source-Validated`, or `Signed-off`, `Design-Flow: A`, and the required Figma evidence is incomplete.
+
+Checks: SRS `Version:` exists, each Figma URL has a paired `docs/requirements/design-extracted/<figma-file-id>-*.md` with Section 6 design-token evidence, `docs/uiux/figma-mappings/v<version>.md` exists with `Mapping-Status: qualified | orphans-only`, no `gap-surface` remains, fuzzy-match decisions are not awaiting confirmation, and Flow A Design References rows have pinned Figma Node IDs.
+
+## design-substatus-validator.cjs (PreToolUse)
+
+Refuses task-file `Write`/`Edit` under `docs/plan/*/tasks/T-*.md` when the resulting header sets `Design sub-status: design-confirmed` before the design evidence exists.
+
+Checks: `docs/uiux/handoffs/<task-id>.md` exists, has `## Design Element Manifest` with at least one `DEM-*` row and Design System Source/token evidence; `docs/uiux/completeness-reports/<task-id>.md` exists with a qualified verdict.
+
 ## source-code-write-guard.cjs (PreToolUse)
 
 Refuses `Write`, `Edit`, `MultiEdit`, `NotebookEdit` on source-code paths that lie **outside any `.worktrees/<role>-<task-id>/` directory** — i.e., the Orchestrator's main-repo cwd. Block-by-default; no env var required to engage.
@@ -290,6 +317,8 @@ Two env vars bypass hook enforcement:
 | `CLAUDE_ALLOW_ORCHESTRATOR_BASH=1` | `orchestrator-bash-guard.cjs` (Orchestrator state-mutating Bash) | Operator, per-session, for one-off operator-explicit Bash ops; document rationale |
 | `CLAUDE_ALLOW_GENERAL_PURPOSE=1` | `kit-role-dispatch-guard.cjs` (Task-tool general-purpose block) | User, per-session, for one-off cross-cutting work that genuinely has no kit role |
 | `CLAUDE_SKIP_DOCKER_SCOPE_CHECK=1` | `docker-scope-guard.cjs` (project-scoped container guard) | Operator, per-session, when intentionally operating cross-project; document rationale |
+| `CLAUDE_SKIP_DESIGN_CONTRACT_CHECK=1` | `fe-dev-design-contract-guard.cjs` (FE Dev Frozen design contract gate) | Operator, per-session, for non-UI FE tasks only; document rationale |
+| `CLAUDE_SKIP_UI_READINESS_CHECK=1` | `ui-task-readiness-guard.cjs` (UI ready-for-deploy artifact gate) | Operator, per-session, for explicit override only; document rationale |
 | `CLAUDE_SKIP_COMMIT_CHECK=1` | `task-completion-commit-check.cjs` (commit-before-done) | Sub-agent, per-dispatch, when no-op return is intentional; document rationale |
 
 These are documented escape hatches, not security boundaries. An agent that has Bash access can `export` these. The prose rule says agents don't set them; the hook honors them when set. If you need a stricter posture, consider an outer-process check (e.g., a CI step that re-runs the hook against the actual commit).

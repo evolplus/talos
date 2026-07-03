@@ -17,6 +17,8 @@ ROLE_GUARD="$HOOKS_DIR/kit-role-dispatch-guard.cjs"
 SCENARIOS_VALIDATOR="$HOOKS_DIR/acceptance-scenarios-validator.cjs"
 SELF_CONTAINMENT="$HOOKS_DIR/self-containment-validator.cjs"
 EXT_ADEQUACY="$HOOKS_DIR/external-integration-adequacy-validator.cjs"
+SRS_DESIGN_FLOW="$HOOKS_DIR/srs-design-flow-validator.cjs"
+DESIGN_SUBSTATUS="$HOOKS_DIR/design-substatus-validator.cjs"
 PLAN_CONSISTENCY="$HOOKS_DIR/plan-consistency-validator.cjs"
 ORCH_WRITE_GUARD="$HOOKS_DIR/orchestrator-write-guard.cjs"
 ORCH_BASH_GUARD="$HOOKS_DIR/orchestrator-bash-guard.cjs"
@@ -1282,6 +1284,186 @@ EOF
 run_exit "ext-adequacy: allows bold **Status:** Signed-off when all adequate" 0 \
     "$EXT_ADEQUACY" "$SRS_MD_SIGNED" "CLAUDE_PROJECT_DIR=$FIX_ROOT/md-ext-allow"
 
+# ---------------- srs-design-flow-validator.cjs ----------------
+echo
+echo "srs-design-flow-validator.cjs:"
+
+srs_payload_from_file() {
+  local file="$1"
+  python3 - "$file" <<'PY'
+import json, sys
+content = open(sys.argv[1], encoding='utf-8').read()
+print(json.dumps({
+  'tool_name': 'Write',
+  'tool_input': {'file_path': 'docs/SRS.md', 'content': content}
+}))
+PY
+}
+
+mkdir -p "$FIX_ROOT/srs-flow-ok/docs/requirements/design-extracted" "$FIX_ROOT/srs-flow-ok/docs/uiux/figma-mappings"
+cat > "$FIX_ROOT/srs-flow-ok/docs/requirements/design-extracted/abc123-2026-06-04.md" <<'EOF'
+# Design-extracted requirements
+
+## Section 6 — Design guideline extraction (Flow A)
+
+- Candidate Design-Guideline: from-figma
+EOF
+cat > "$FIX_ROOT/srs-flow-ok/docs/uiux/figma-mappings/v1.0.md" <<'EOF'
+# Figma to SRS Mapping
+
+- Mapping-Status: qualified
+
+## Mapping Table
+
+| SRS Surface | US/FR ID | Figma Frame | Node ID | Status |
+|---|---|---|---|---|
+| Login | US-001 | Login | 1:2 | qualified |
+
+## Gaps
+
+### SRS surfaces without Figma match (BLOCKING sign-off)
+
+None
+
+### Figma frames without SRS match (informational)
+
+None
+
+## Decisions awaiting human confirmation
+
+None
+EOF
+cat > "$FIX_ROOT/srs-flow-ok/payload-valid.md" <<'EOF'
+# SRS
+
+**Version:** 1.0
+**Status:** Ready-for-Sign-off
+**Design-Flow:** A
+
+#### 3.4.1 Design References
+
+Figma-File-URL: https://figma.com/file/abc123/Project?node-id=12%3A0
+
+| Req ID | Surface | Platform | Figma File | Figma Node ID (frame within design page) | Visual-Critical |
+|---|---|---|---|---|---|
+| US-001 | Login | web | Project | 1:2 | yes |
+EOF
+
+mkdir -p "$FIX_ROOT/srs-flow-missing-map/docs/requirements/design-extracted"
+cp "$FIX_ROOT/srs-flow-ok/docs/requirements/design-extracted/abc123-2026-06-04.md" \
+   "$FIX_ROOT/srs-flow-missing-map/docs/requirements/design-extracted/abc123-2026-06-04.md"
+
+mkdir -p "$FIX_ROOT/srs-flow-gaps/docs/requirements/design-extracted" "$FIX_ROOT/srs-flow-gaps/docs/uiux/figma-mappings"
+cp "$FIX_ROOT/srs-flow-ok/docs/requirements/design-extracted/abc123-2026-06-04.md" \
+   "$FIX_ROOT/srs-flow-gaps/docs/requirements/design-extracted/abc123-2026-06-04.md"
+cat > "$FIX_ROOT/srs-flow-gaps/docs/uiux/figma-mappings/v1.0.md" <<'EOF'
+# Figma to SRS Mapping
+
+- Mapping-Status: gaps
+
+## Mapping Table
+
+| SRS Surface | US/FR ID | Figma Frame | Node ID | Status |
+|---|---|---|---|---|
+| Login | US-001 | (missing) | - | gap-surface |
+
+## Decisions awaiting human confirmation
+
+None
+EOF
+
+cat > "$FIX_ROOT/srs-flow-ok/payload-flow-b.md" <<'EOF'
+# SRS
+
+**Version:** 1.0
+**Status:** Ready-for-Sign-off
+**Design-Flow:** B
+EOF
+
+cat > "$FIX_ROOT/srs-flow-ok/payload-draft-flow-a.md" <<'EOF'
+# SRS
+
+**Version:** 1.0
+**Status:** In-Review
+**Design-Flow:** A
+EOF
+
+run_exit "srs-flow: allows Flow A signoff with extraction and qualified mapping" 0 \
+    "$SRS_DESIGN_FLOW" "$(srs_payload_from_file "$FIX_ROOT/srs-flow-ok/payload-valid.md")" "CLAUDE_PROJECT_DIR=$FIX_ROOT/srs-flow-ok"
+run_exit "srs-flow: blocks Flow A signoff when mapping missing" 2 \
+    "$SRS_DESIGN_FLOW" "$(srs_payload_from_file "$FIX_ROOT/srs-flow-ok/payload-valid.md")" "CLAUDE_PROJECT_DIR=$FIX_ROOT/srs-flow-missing-map"
+run_exit "srs-flow: blocks Flow A signoff when mapping has gaps" 2 \
+    "$SRS_DESIGN_FLOW" "$(srs_payload_from_file "$FIX_ROOT/srs-flow-ok/payload-valid.md")" "CLAUDE_PROJECT_DIR=$FIX_ROOT/srs-flow-gaps"
+run_exit "srs-flow: skips non-Flow-A signoff" 0 \
+    "$SRS_DESIGN_FLOW" "$(srs_payload_from_file "$FIX_ROOT/srs-flow-ok/payload-flow-b.md")" "CLAUDE_PROJECT_DIR=$FIX_ROOT/srs-flow-ok"
+run_exit "srs-flow: skips Flow A while still In-Review" 0 \
+    "$SRS_DESIGN_FLOW" "$(srs_payload_from_file "$FIX_ROOT/srs-flow-ok/payload-draft-flow-a.md")" "CLAUDE_PROJECT_DIR=$FIX_ROOT/srs-flow-missing-map"
+
+# ---------------- design-substatus-validator.cjs ----------------
+echo
+echo "design-substatus-validator.cjs:"
+
+task_payload_from_file() {
+  local file="$1" task="${2:-T-010}"
+  python3 - "$file" "$task" <<'PY'
+import json, sys
+content = open(sys.argv[1], encoding='utf-8').read()
+task = sys.argv[2]
+print(json.dumps({
+  'tool_name': 'Write',
+  'tool_input': {
+    'file_path': f'docs/plan/phase-01/tasks/{task}.md',
+    'content': content
+  }
+}))
+PY
+}
+
+mkdir -p "$FIX_ROOT/design-substatus-ok/docs/uiux/handoffs" "$FIX_ROOT/design-substatus-ok/docs/uiux/completeness-reports"
+cat > "$FIX_ROOT/design-substatus-ok/docs/uiux/handoffs/T-010.md" <<'EOF'
+# Handoff - T-010
+
+## Design System Source
+
+Token evidence from Figma: colors, typography, spacing, radius.
+
+## Design Element Manifest
+
+| Manifest ID | Frame / State | Figma Node ID | Role | Visible text / value | Implementation requirement | Test/accessibility hook | Notes |
+|---|---|---|---|---|---|---|---|
+| DEM-001 | Login / Default | 1:2 | input.field | Email | Render email field | login-email | Static |
+EOF
+cat > "$FIX_ROOT/design-substatus-ok/docs/uiux/completeness-reports/T-010.md" <<'EOF'
+# Design Completeness - T-010
+
+Summary verdict: qualified
+EOF
+cat > "$FIX_ROOT/design-substatus-task-confirmed.md" <<'EOF'
+# T-010 - Login
+
+- Phase: phase-01/
+- Track: fe
+- Status: not-started
+- Design sub-status: design-confirmed
+EOF
+cat > "$FIX_ROOT/design-substatus-task-review.md" <<'EOF'
+# T-010 - Login
+
+- Phase: phase-01/
+- Track: fe
+- Status: not-started
+- Design sub-status: design-ready-for-review
+EOF
+
+mkdir -p "$FIX_ROOT/design-substatus-missing/docs"
+
+run_exit "design-substatus: allows design-confirmed with handoff and qualified report" 0 \
+    "$DESIGN_SUBSTATUS" "$(task_payload_from_file "$FIX_ROOT/design-substatus-task-confirmed.md")" "CLAUDE_PROJECT_DIR=$FIX_ROOT/design-substatus-ok"
+run_exit "design-substatus: blocks design-confirmed when handoff/report missing" 2 \
+    "$DESIGN_SUBSTATUS" "$(task_payload_from_file "$FIX_ROOT/design-substatus-task-confirmed.md")" "CLAUDE_PROJECT_DIR=$FIX_ROOT/design-substatus-missing"
+run_exit "design-substatus: skips non-confirmed design sub-status" 0 \
+    "$DESIGN_SUBSTATUS" "$(task_payload_from_file "$FIX_ROOT/design-substatus-task-review.md")" "CLAUDE_PROJECT_DIR=$FIX_ROOT/design-substatus-missing"
+
 # ============== Bug 6: integration-dod-validator ==============
 INT_DOD_FIX="$(mktemp -d)"
 INT_DOD_TP="docs/plan/phase-02-worker-core/tasks/T-100.md"
@@ -1749,7 +1931,24 @@ FE_GUARD="$HOOKS_DIR/fe-dev-design-contract-guard.cjs"
 # Build a fixture project with a Frozen design contract for T-100, no contract for T-200.
 FE_FIX="$(mktemp -d)"
 mkdir -p "$FE_FIX/.claude" "$FE_FIX/docs/uiux/refs"
-printf '%s\n' '# Design contract — T-100' '- Status: Frozen' '- Figma-File-Version: abc' > "$FE_FIX/docs/uiux/refs/T-100.md"
+cat > "$FE_FIX/docs/uiux/refs/T-100.md" <<'EOF'
+# Design contract - T-100
+
+- Status: Frozen
+- Figma-File-Version: abc
+
+## Design Element Manifest
+
+| Manifest ID | Frame / State | Figma Node ID | Role | Visible text / value | Implementation requirement | Test/accessibility hook | Notes |
+|---|---|---|---|---|---|---|---|
+| DEM-001 | Login / Default | 1:2 | input.field | Email | Render email field | login-email | Static |
+
+## Implementation Trace Matrix
+
+| Manifest ID | Code location | Selector | Status |
+|---|---|---|---|
+| DEM-001 | frontend/src/Login.tsx | login-email | implemented |
+EOF
 printf '%s\n' '# Design contract — T-300' '- Status: Draft' > "$FE_FIX/docs/uiux/refs/T-300.md"
 
 fe_w() {
@@ -1812,9 +2011,49 @@ printf '%s\n' '# T-066 — Auth middleware' '- Phase: phase-22' '- Track: be' '-
 # Counter-case: a REAL surface that happens to carry a parenthetical platform
 # tag must STILL be detected as UI-bearing (the fix must not over-strip).
 printf '%s\n' '# T-300 — Live view' '- Phase: phase-22' '- Track: be' '- Status: in-progress' '- Linked Surface: Spectator Live View (web)' > "$UI_FIX/docs/plan/phase-22/tasks/T-300.md"
-mkdir -p "$UI_FIX/docs/uiux/refs" "$UI_FIX/docs/uiux/visual-specs" "$UI_FIX/docs/test-cases/by-task/T-180"
-echo "# T-180" > "$UI_FIX/docs/uiux/refs/T-180.md"
-echo "# T-180" > "$UI_FIX/docs/uiux/visual-specs/T-180.md"
+mkdir -p "$UI_FIX/docs/uiux/refs" "$UI_FIX/docs/uiux/handoffs" "$UI_FIX/docs/uiux/visual-specs" "$UI_FIX/docs/test-cases/by-task/T-180"
+cat > "$UI_FIX/docs/uiux/handoffs/T-180.md" <<'EOF'
+# UI/UX Handoff - T-180
+
+- Source: imported
+- Mode: import
+
+## Design System Source
+
+Token evidence from Figma extraction: colors, typography, spacing, and radius.
+
+## Design Element Manifest
+
+| Manifest ID | Frame / State | Figma Node ID | Role | Visible text / value | Implementation requirement | Test/accessibility hook | Notes |
+|---|---|---|---|---|---|---|---|
+| DEM-001 | Group / Default | 1:2 | button.action | Save | Render save action | group-save | Static |
+EOF
+cat > "$UI_FIX/docs/uiux/refs/T-180.md" <<'EOF'
+# Design contract - T-180
+
+- Status: Frozen
+
+## Design Element Manifest
+
+| Manifest ID | Frame / State | Figma Node ID | Role | Visible text / value | Implementation requirement | Test/accessibility hook | Notes |
+|---|---|---|---|---|---|---|---|
+| DEM-001 | Group / Default | 1:2 | button.action | Save | Render save action | group-save | Static |
+
+## Implementation Trace Matrix
+
+| Manifest ID | Code location | Selector | Status |
+|---|---|---|---|
+| DEM-001 | frontend/src/Group.tsx | group-save | implemented |
+EOF
+cat > "$UI_FIX/docs/uiux/visual-specs/T-180.md" <<'EOF'
+# Visual Spec - T-180
+
+## Design Element Assertions
+
+| Manifest ID | Assertion | Evidence |
+|---|---|---|
+| DEM-001 | Save action is visible and labeled exactly | visual |
+EOF
 echo "# api" > "$UI_FIX/docs/test-cases/by-task/T-180/api.md"
 
 # Helper: build plan-update.json Write event
@@ -1831,10 +2070,10 @@ print(json.dumps({
 }))"
 }
 
-# === Block: UI task, all 3 artifacts missing ===
+# === Block: UI task, all 4 artifacts missing ===
 run_exit "ui-ready: T-168 no artifacts blocks ready-for-deploy" 2 "$UI_READY" "$(ui_pu T-168 ready-for-deploy "$UI_FIX/.worktrees/fe-dev-T-168")"
 
-# === Allow: UI task with all 3 artifacts ===
+# === Allow: UI task with all 4 artifacts ===
 run_exit "ui-ready: T-180 with all artifacts allows" 0 "$UI_READY" "$(ui_pu T-180 ready-for-deploy "$UI_FIX/.worktrees/fe-dev-T-180")"
 
 # === Allow: BE-only task even without artifacts ===

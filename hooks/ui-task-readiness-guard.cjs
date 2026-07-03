@@ -4,12 +4,15 @@
 // `to_status: ready-for-deploy` for a UI-bearing task when the kit's mandatory
 // closure artifacts are absent:
 //   - docs/uiux/refs/<task-id>.md           (FE Dev's per-task design contract)
+//   - docs/uiux/handoffs/<task-id>.md       (UI/UX Designer's task handoff)
 //   - docs/uiux/visual-specs/<task-id>.md   (QA-Author by-task's UI spec)
 //   - docs/test-cases/by-task/<task-id>/    (QA-Author by-task's TC pack)
 // The refs and visual-spec files must also contain the implementation-level
 // design sections that prevent Figma field/item omission:
-//   - refs:        ## Design Element Manifest + ## Implementation Trace Matrix
-//   - visual spec: ## Design Element Assertions
+//   - refs:        Status: Frozen + non-empty ## Design Element Manifest +
+//                  non-empty ## Implementation Trace Matrix
+//   - handoff:     non-empty ## Design Element Manifest + token evidence
+//   - visual spec: non-empty ## Design Element Assertions
 //
 // Motivation (per the 2026-06-04 FR-022 batch-UI silent-drop incident):
 //   The kit defines a multi-gate chain between `design-confirmed` and Phase
@@ -19,8 +22,8 @@
 //   that an artifact-producing dispatch is skipped, the downstream gate that
 //   would have checked against that artifact instead vacuously passes.
 //
-//   For T-168, NONE of {docs/uiux/refs/T-168.md, docs/uiux/visual-specs/T-168.md,
-//   docs/test-cases/by-task/T-168/} existed at the moment FE Dev proposed
+//   For T-168, NONE of {docs/uiux/refs/T-168.md, docs/uiux/handoffs/T-168.md,
+//   docs/uiux/visual-specs/T-168.md, docs/test-cases/by-task/T-168/} existed at the moment FE Dev proposed
 //   `ready-for-deploy`. The kit's safety net assumed-artifacts-exist; it lacked
 //   a coherence gate that says "for every UI task, these N artifacts MUST exist
 //   on disk BEFORE the task can transition `ready-for-deploy → in-test`."
@@ -49,6 +52,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const { stripFencedCodeBlocks } = require('./lib/strip-fences.cjs');
 
 function findProjectRoot(start) {
   // Walk up from `start` until we hit a `.git` dir or a `.claude` dir; that's
@@ -145,6 +149,80 @@ function isUITask(meta) {
   return false;
 }
 
+function readsFrozen(content) {
+  if (typeof content !== 'string') return false;
+  const lines = stripFencedCodeBlocks(content).split(/\r?\n/);
+  const head = [];
+  for (let i = 0; i < Math.min(lines.length, 80); i++) {
+    head.push(lines[i]);
+    if (/^##\s+/.test(lines[i])) break;
+  }
+  return /^\s*-?\s*\**Status\**\s*:\s*Frozen\b/im.test(head.join('\n'));
+}
+
+function hasHeading(content, heading) {
+  if (typeof content !== 'string') return false;
+  const stripped = stripFencedCodeBlocks(content);
+  const escaped = heading.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp('^#{2,6}\\s+' + escaped + '\\s*$', 'im').test(stripped);
+}
+
+function getSection(content, heading) {
+  if (typeof content !== 'string') return '';
+  const escaped = heading.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const re = new RegExp('^#{2,6}\\s+' + escaped + '\\s*$', 'i');
+  const lines = stripFencedCodeBlocks(content).split(/\r?\n/);
+  let start = -1;
+  for (let i = 0; i < lines.length; i++) {
+    if (re.test(lines[i])) { start = i; break; }
+  }
+  if (start === -1) return '';
+  const out = [lines[start]];
+  for (let i = start + 1; i < lines.length; i++) {
+    if (/^#{1,6}\s+/.test(lines[i])) break;
+    out.push(lines[i]);
+  }
+  return out.join('\n');
+}
+
+function sectionHasDemRow(content, heading) {
+  return /\bDEM-\d+\b/i.test(getSection(content, heading));
+}
+
+function hasOpenTraceStatus(content) {
+  const section = getSection(content, 'Implementation Trace Matrix');
+  return /\b(planned|not implemented|todo|tbd)\b/i.test(section);
+}
+
+function hasDesignSystemSource(content) {
+  const stripped = stripFencedCodeBlocks(content || '');
+  return /design\s+system\s+source/i.test(stripped) &&
+    /(token|color|typograph|spacing|radius|elevation|from-figma|figma-backed|extraction artifact)/i.test(stripped);
+}
+
+function contentIssues(check, content) {
+  const issues = [];
+  if (check.mustBeFrozen && !readsFrozen(content)) {
+    issues.push('header does not declare Status: Frozen');
+  }
+  for (const rule of check.sectionRules || []) {
+    if (!hasHeading(content, rule.heading)) {
+      issues.push('missing ## ' + rule.heading);
+      continue;
+    }
+    if (rule.requireDemRows && !sectionHasDemRow(content, rule.heading)) {
+      issues.push('## ' + rule.heading + ' has no DEM-* rows');
+    }
+    if (rule.rejectOpenTraceStatuses && hasOpenTraceStatus(content)) {
+      issues.push('## ' + rule.heading + ' still contains planned/not implemented/TBD trace status');
+    }
+  }
+  if (check.requiresDesignSystemSource && !hasDesignSystemSource(content)) {
+    issues.push('missing Design System Source / token-evidence detail');
+  }
+  return issues;
+}
+
 function checkArtifacts(projectRoot, worktreeRoot, taskId) {
   // For each required artifact, check whether it exists at any of:
   //   - worktree/<artifact>
@@ -155,14 +233,30 @@ function checkArtifacts(projectRoot, worktreeRoot, taskId) {
       relPaths: ['docs/uiux/refs/' + taskId + '.md'],
       kind: 'file',
       doc: 'FE Dev produces this per task. parallel-execution.md §4 Step 5.',
-      requiredHeadings: ['Design Element Manifest', 'Implementation Trace Matrix'],
+      mustBeFrozen: true,
+      sectionRules: [
+        { heading: 'Design Element Manifest', requireDemRows: true },
+        { heading: 'Implementation Trace Matrix', requireDemRows: true, rejectOpenTraceStatuses: true },
+      ],
+    },
+    {
+      label: 'UI/UX task handoff',
+      relPaths: ['docs/uiux/handoffs/' + taskId + '.md'],
+      kind: 'file',
+      doc: 'UI/UX Designer produces this before design-confirmed. parallel-execution.md §4 Step 2/3.',
+      sectionRules: [
+        { heading: 'Design Element Manifest', requireDemRows: true },
+      ],
+      requiresDesignSystemSource: true,
     },
     {
       label: 'QA-Author visual spec',
       relPaths: ['docs/uiux/visual-specs/' + taskId + '.md'],
       kind: 'file',
       doc: 'QA-Author by-task produces this. sub-agent-registry.md §3.4.',
-      requiredHeadings: ['Design Element Assertions'],
+      sectionRules: [
+        { heading: 'Design Element Assertions', requireDemRows: true },
+      ],
     },
     {
       label: 'QA-Author by-task TC pack',
@@ -202,16 +296,13 @@ function checkArtifacts(projectRoot, worktreeRoot, taskId) {
       if (hit) break;
     }
     if (hit) {
-      const missingHeadings = [];
-      if (c.requiredHeadings && c.requiredHeadings.length && c.kind === 'file') {
+      let issues = [];
+      if (c.kind === 'file') {
         let content = '';
         try { content = fs.readFileSync(hit, 'utf8'); } catch { content = ''; }
-        for (const heading of c.requiredHeadings) {
-          const re = new RegExp('^#{2,6}\\s+' + heading.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\s*$', 'im');
-          if (!re.test(content)) missingHeadings.push(heading);
-        }
+        issues = contentIssues(c, content);
       }
-      if (missingHeadings.length) incomplete.push({ ...c, hit, missingHeadings });
+      if (issues.length) incomplete.push({ ...c, hit, issues });
       else found.push({ ...c, hit });
     } else missing.push(c);
   }
@@ -298,7 +389,7 @@ async function main() {
   process.stderr.write(
     'ui-task-readiness-guard: BLOCKED — plan-update.json proposing ' +
     '`to_status: ready-for-deploy` for UI task ' + taskId + ' but mandatory closure artifacts are missing or incomplete.\n\n' +
-    '  Missing artifacts (' + missing.length + '/3):\n' +
+    '  Missing artifacts (' + missing.length + '/4):\n' +
     missing.map(c =>
       '    - ' + c.label + '\n' +
       '        Expected: ' + c.relPaths.join(' OR ') + '\n' +
@@ -308,12 +399,12 @@ async function main() {
     incomplete.map(c =>
       '    - ' + c.label + '\n' +
       '        Found: ' + c.hit + '\n' +
-      '        Missing sections: ' + c.missingHeadings.map(h => '## ' + h).join(', ')
+      '        Issues: ' + c.issues.join(', ')
     ).join('\n') + '\n\n' +
     '  Per CLAUDE.md §10 Hard Rule "Design-implementation symmetry":\n' +
     '    For UI-bearing tasks, the absence of any of these artifacts is a\n' +
     '    closure-blocker, NOT a vacuous pass. The same applies to refs/visual\n' +
-    '    specs that exist but lack Design Element Manifest / Assertions sections.\n' +
+    '    handoffs/specs that exist but lack non-empty Design Element Manifest / Assertions rows.\n' +
     '    The kit cannot satisfy discipline by skipping the field/item-level\n' +
     '    contract that FE Dev must implement.\n\n' +
     '  Background — 2026-06-04 FR-022 batch-UI incident:\n' +
@@ -325,6 +416,7 @@ async function main() {
     '    2. Surface the missing-artifact set in the Orchestrator return.\n' +
     '    3. Orchestrator dispatches the owning agent(s) to produce the artifact(s):\n' +
     '         FE design contract → re-dispatch fe-dev (with Frozen step and manifest trace)\n' +
+    '         UI/UX handoff → re-dispatch ui-ux-designer import/revise/incorporate as appropriate\n' +
     '         Visual spec / by-task TC pack → dispatch qa-author in `by-task` mode\n' +
     '    4. Once the artifact set is complete, re-emit plan-update.json.\n\n' +
     '  Escape hatch (operator-explicit only): export CLAUDE_SKIP_UI_READINESS_CHECK=1\n' +
