@@ -2,7 +2,7 @@
 
 This file holds CLAUDE.md §13. Tunes how aggressively the Orchestrator dispatches sub-agents per loop iteration of `orchestrator-operating-rules.md` §9.
 
-For workflow contract entry-point, see `CLAUDE.md`. Tiers are orthogonal to safety: they tune throughput / parallelism, not invariants. The kit's hard rules (sign-off gates, worktree isolation, plan-state coherence, gate-field write ownership, format-boundary contracts, commit-before-done, project-scoped containers, role-specialized dispatch, human-in-the-loop confirmation gates) hold across every tier.
+For workflow contract entry-point, see `CLAUDE.md`. Tiers are orthogonal to safety: they tune throughput / parallelism, not invariants. The kit's hard rules (sign-off gates, worktree isolation, plan-state coherence, gate-field write ownership, format-boundary contracts, commit-before-ready-to-finalize, project-scoped containers, role-specialized dispatch, human-in-the-loop confirmation gates) hold across every tier.
 
 ---
 
@@ -81,7 +81,7 @@ The following remain absolute regardless of tier:
 - **Stage 4 brownfield human confirmation** — extracted artifacts stay `Source: extracted` until human confirms (brownfield-onboarding.md §12).
 - **Worktree isolation** — one agent per worktree, every dispatch (worktree-isolation.md §5). Aggressive tier creates MORE worktrees concurrently, but each remains isolated.
 - **Plan-state coherence** — Orchestrator is sole writer to `docs/plan/`. Aggressive tier ingests `plan-update.json` from MORE concurrent worktrees per turn, but the ingestion still serializes through the Orchestrator.
-- **All §10 hard rules** — including gate-field write ownership, format-boundary contracts, commit-before-done, project-scoped containers, role-specialized dispatch, API contract format declaration, self-containment, external-integration adequacy.
+- **All §10 hard rules** — including gate-field write ownership, format-boundary contracts, commit-before-ready-to-finalize, project-scoped containers, role-specialized dispatch, API contract format declaration, self-containment, external-integration adequacy.
 - **Hook layer** — every hook fires regardless of tier. Tier doesn't bypass safety; it tunes throughput.
 
 If a safety check would block the aggressive-mode batch, the Orchestrator halts the affected dispatch and continues with the rest — the tier does not cause cascading retries on safety failures.

@@ -68,4 +68,4 @@ Produce only the outputs owned by your active mode:
 - Do not approve third-party dependencies yourself.
 - Do not write implementation code, tests, or master-plan tasks.
 - Keep produced artifacts self-contained for downstream agents.
-- Commit before signaling done.
+- Commit before signaling ready-to-finalize.

@@ -28,7 +28,7 @@ The Orchestrator MUST NOT handle debug-shaped requests inline (Path D) — issue
 
 When the classified path is A, before doing anything else, the Orchestrator must, in order:
 
-0. **Pre-flight git setup (runs once per project, every invocation).** Before classification or any other action, ensure the workspace is a git repository and committer identity is configured. The kit's commit discipline (`.claude/skills/git-commit/SKILL.md`) + the per-role "commit before signaling done" Hard Rule + the `task-completion-commit-check.cjs` hook all assume a working git context.
+0. **Pre-flight git setup (runs once per project, every invocation).** Before classification or any other action, ensure the workspace is a git repository and committer identity is configured. The kit's commit discipline (`.claude/skills/git-commit/SKILL.md`) + the per-role "commit before signaling ready-to-finalize" Hard Rule + the `task-completion-commit-check.cjs` hook all assume a working git context.
 
    - **Run `git rev-parse --is-inside-work-tree`.** If the exit code is non-zero (not a repo):
      - Run `git init --initial-branch=main`. (Older git versions: `git init` then `git symbolic-ref HEAD refs/heads/main`.)
@@ -38,7 +38,7 @@ When the classified path is A, before doing anything else, the Orchestrator must
      ```
      Status: NEEDS_CONTEXT
      Reason: Git committer identity is not configured.
-     Question: The kit dispatches sub-agents that MUST commit their work before signaling done. Git needs to know who's committing.
+     Question: The kit dispatches sub-agents that MUST commit their work before signaling ready-to-finalize. Git needs to know who's committing.
      Suggested resolution: Run `git config user.name "<your name>"` and `git config user.email "<your email>"` in the project root, then re-invoke.
      Recommended: Use a project-scoped identity (drop `--global`) so AI-generated commits don't pollute the operator's broader git history.
      ```
@@ -66,17 +66,19 @@ When the classified path is A, before doing anything else, the Orchestrator must
    For each journal entry (and each orphan `.worktrees/<role>-<task-id>/` with no journal entry), reconcile per
    `.claude/rules/crash-recovery.md` §14.4:
 
-   - **First check for a completed-but-uningested dispatch.** If the journaled worktree contains `plan-update.json`, the
-     sub-agent finished but the session died before Step 7 ingestion. Do NOT roll back — ingest it via the normal Step 7
-     path, then delete the journal entry. (CLAUDE.md §14.8 Hard Rule.)
+   - **First check for a ready-to-finalize dispatch.** If the journaled worktree contains `plan-update.json`, the
+     sub-agent reached ready-to-finalize but the session died before or during Step 7 finalization. Do NOT roll back and
+     do NOT treat the task as done from plan status alone — run the normal Step 7 finalization transaction, then delete
+     the journal entry.
+     (CLAUDE.md §14.8 Hard Rule.)
    - **Otherwise reconcile (re-entrant):** (1) set the task `in-progress → interrupted` with an append-only
-     status-history row; (2) `git worktree remove --force .worktrees/<role>-<task-id>/` + `git branch -D
-     agent/<role>/<task-id>`; (3) for a logical-isolation role, `git restore --source=<baseline.head> --staged
+     status-history row; (2) `git worktree remove --force .worktrees/<role>-<task-id>/` (and delete any legacy
+     `agent/<role>/<task-id>` branch only if one exists from an older kit run); (3) for a logical-isolation role, `git restore --source=<baseline.head> --staged
      --worktree -- <baseline.owned_paths>` to discard partial doc writes on main (if the role committed to main
      mid-task, HALT with NEEDS_CONTEXT — never `git reset` shared history automatically); (4) transition the task
      `interrupted → not-started`; (5) `rm .claude/dispatch-journal/<role>-<task-id>.json`.
    - **Log** to the session-start summary:
-     `[orchestrator] Reconciled interrupted dispatch <role>/<task-id>: worktree+branch discarded, docs rolled back to <sha>, task → not-started`.
+     `[orchestrator] Reconciled interrupted dispatch <role>/<task-id>: local worktree discarded, docs rolled back to <sha>, task → not-started`.
    - **Restart is automatic.** The reset-to-`not-started` task is picked up by Step 4 eligibility on this same turn and
      re-dispatched from a clean baseline (CLAUDE.md §14.5). No special restart path.
 
@@ -231,13 +233,18 @@ When the classified path is A, before doing anything else, the Orchestrator must
 
    - **Write the dispatch journal FIRST.** Before the worktree-add and before the status `→ in-progress` write, write
      `.claude/dispatch-journal/<role>-<task-id>.json` per `.claude/rules/crash-recovery.md` §14.2 (role, subagent_type,
-     isolation, worktree, branch, `dispatched_at`, `status_before`, and `baseline` = current main HEAD + the role's
+     isolation, worktree, `worktree_mode`, `dispatched_at`, `status_before`, and `baseline` = current main HEAD + the role's
      owned `docs/` paths). This is the intent log that makes the dispatch recoverable if the session dies mid-work.
-   - **Create the worktree on disk.** Run `git worktree add -b agent/<role>/<task-id> .worktrees/<role>-<task-id>/ <base-ref>` (typically `<base-ref>` is `HEAD` or the relevant phase branch). If the worktree already exists from a prior run (`git worktree list | grep <role>-<task-id>`), reuse it.
+   - **Create the local detached worktree on disk.** Run `git worktree add --detach .worktrees/<role>-<task-id>/ <base-ref>` (typically `<base-ref>` is `HEAD` or the relevant phase branch). Do not create `agent/<role>/<task-id>` branches. If the worktree already exists from a prior run (`git worktree list | grep <role>-<task-id>`), reuse it only after §14 crash-recovery says it is safe; otherwise reconcile and recreate.
    - **Pass the absolute worktree path into the dispatch prompt.** The dispatch prompt MUST include a section like:
      ```
      Your physical worktree is at: <absolute-path>/.worktrees/<role>-<task-id>/
      Use this absolute path as the prefix for ALL source-code writes.
+     This worktree is local-only and detached. You may commit inside it to make
+     the worktree clean before plan-update.json, but you MUST NOT git push,
+     git merge, git pull, git rebase, or git cherry-pick its history. The
+     Orchestrator promotes validated file content to main by path-scoped
+     ingestion, then discards the worktree.
      FE Dev writes under `frontend/` (frontend/src/** or frontend/<app>/**);
      BE Dev writes under `backend/` (backend/src/** or backend/<service>/**)
      per SRS §3.4.5 Source Layout; tests under e2e/specs/**. The source-code-write-guard
@@ -261,16 +268,20 @@ When the classified path is A, before doing anything else, the Orchestrator must
      worktree, never request the escape hatch as a first resort).
    - **Don't create worktrees for doc-writing roles.** A `git worktree add` for BA / SA / TL / QA-Author / UI/UX Designer dispatches is permitted (physical isolation never hurts) but not required. The default is to skip the worktree-add for these — they write doc paths directly under `docs/` from the main cwd. Skipping saves ~200ms per dispatch and keeps `.worktrees/` clean of inert directories.
 
-   Cleanup happens at §9 Step 7 (sub-agent return): the Orchestrator runs `git worktree remove .worktrees/<role>-<task-id>/` after ingesting `plan-update.json` and merging role-owned artifacts.
+   Cleanup happens at §9 Step 7 (sub-agent return): the Orchestrator runs `git worktree remove .worktrees/<role>-<task-id>/` after ingesting `plan-update.json` and promoting validated role-owned artifacts by path.
 
 5. For each eligible task, create an isolated worktree per `.claude/rules/worktree-isolation.md` §5 (for code-writing roles per Step 4.6) and dispatch the
    appropriate sub-agent.
 6. Commit master plan updates from the main repo (the Orchestrator's cwd). The `master-plan-write-guard.cjs` hook detects sub-agent context by `.worktrees/<role>-<task-id>/` path segment and blocks only those; main-repo writes to `docs/plan/` are allowed by default. No env-var setup is required. Escape hatch `CLAUDE_ALLOW_PLAN_WRITE=1` exists for rare kit-dogfooding scenarios.
-7. On sub-agent return: validate output against exit criteria, ingest `plan-update.json`, commit master plan update,
-   merge role-owned artifacts (BE before FE when both return for the same feature), clean up worktree and **delete the dispatch journal entry** `.claude/dispatch-journal/<role>-<task-id>.json` as the FINAL cleanup
-   action, after `plan-update.json` is ingested, the master-plan transition committed, role-owned artifacts merged, and
-   the worktree removed. Deleting it last preserves §14's re-entrancy invariant (a crash before this point leaves the
-   dispatch reconcilable).
+7. On sub-agent return: validate output against exit criteria, then run the **dispatch finalization transaction**:
+   (1) read `plan-update.json` but do not commit the task status yet; (2) promote validated role-owned artifacts from the
+   worktree to main by path-scoped ingestion (BE before FE when both return for the same feature); (3) apply the
+   `docs/plan/` updates proposed by `plan-update.json`; (4) stage promoted artifacts + plan updates together; (5) create
+   ONE main-worktree finalization commit containing both the artifact content and the master-plan transition; (6) clean up
+   the worktree; (7) **delete the dispatch journal entry** `.claude/dispatch-journal/<role>-<task-id>.json` as the FINAL
+   cleanup action. Never commit a `ready-for-deploy`, `in-test`, `done`, or `failed` task transition before the matching
+   artifacts have been promoted to main. Deleting the journal last preserves §14's re-entrancy invariant (a crash before
+   this point leaves the dispatch finalizable or reconcilable).
 
 7.5. **Post-Implementation Verification dispatch (UI tasks only).** Before committing a FE Dev `→ ready-for-deploy` transition to the master plan, check the task file. If the task is UI-bearing (`track: fe` / `be+fe`, OR `Design sub-status:` set, OR `Linked Surface:` non-null), dispatch BA in `post-implementation` mode (subagent_type: `ba`, dispatch parameter `mode: post-implementation`, with `task_id` + FE Dev worktree path). BA produces `docs/uiux/post-implementation-reports/<task-id>.md` with verdict `qualified` or `unqualified`. Verdict-handling matrix:
 

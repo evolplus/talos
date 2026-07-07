@@ -18,7 +18,7 @@ Without this rule, the orchestrator advances the project one operator prompt at 
 
 The loop is safe to run unattended because **every iteration durably checkpoints to disk** and **the orchestrator re-reads project state from disk each iteration** rather than holding the run in its context window:
 
-- Each iteration ends with the master-plan transition committed (`docs/plan/`), role-owned artifacts merged, the worktree removed, and the dispatch-journal entry deleted (§9 Step 7).
+- Each iteration ends with a finalization commit containing both validated role-owned artifacts and the master-plan transition (`docs/plan/`), followed by worktree removal and dispatch-journal deletion (§9 Step 7).
 - Project state is fully recoverable from `docs/SRS.md` + `docs/plan/` (`.claude/rules/master-plan-discipline.md`).
 - Therefore **"the invocation ran out of tokens mid-loop" is identical to a crash** — there is no special token-exhaustion handling to get right. The next invocation runs §9 Step 0.6 reconciliation (`.claude/rules/crash-recovery.md` §14), rolls back any interrupted dispatch, and resumes from the exact same eligible-task frontier.
 
@@ -39,7 +39,7 @@ The operator starts the loop with the `/sdlc-loop` slash command (`.claude/comma
 1. **Read state from disk** — §9 Steps 1–3.7: SRS Status; `docs/open-issues.md`; `docs/plan/` (master + the relevant phase/task files); the iteration-plan flag (Step 3.5); the architecture-validation gate (Step 3.7).
 2. **Evaluate halt conditions FIRST** (§15.5). If any fires, halt, surface, and exit the loop — do NOT dispatch this iteration.
 3. **Identify the eligible batch** — §9 Step 4, honoring the active workload tier (§13.4): at `aggressive`, every eligible-parallel task + cross-phase pipelining in one turn; at `standard`, up to 3; at `conservative`, one.
-4. **Dispatch + ingest** — §9 Steps 4.5 (availability), 4.6 (journal + worktree for code roles), 5 (dispatch), 7 (validate exit criteria, ingest `plan-update.json`, commit the master-plan transition, merge role-owned artifacts, clean up worktree + journal). Run the PIV gate (Step 7.5) for UI tasks.
+4. **Dispatch + finalize** — §9 Steps 4.5 (availability), 4.6 (journal + local detached worktree for code roles), 5 (dispatch), 7 (validate exit criteria, promote validated role-owned artifacts by path-scoped ingestion, apply `plan-update.json`, commit artifacts + master-plan transition together, clean up worktree + journal). Run the PIV gate (Step 7.5) for UI tasks.
 5. **Record the iteration outcome** — did any task transition? Did any task fail or return an error? (feeds the §15.5 circuit breaker).
 6. **Loop** — return to step 1.
 
@@ -76,7 +76,7 @@ To stop the loop spinning or burning budget on wedged work:
 
 ### 15.8 Hard rules
 
-- **The loop never bypasses a gate.** Sign-off (§2), architecture validation (§3.7 / sub-agent-registry §3.11), design-confirmed (parallel-execution §4 Step 4), brownfield Stage 4 (§12), Dependency Approver, open-issues triage (§6), worktree isolation (§5), commit-before-done, role-specialized dispatch (§10) — all hold inside the loop. The loop's autonomy is "keep dispatching eligible work," never "skip a confirmation."
+- **The loop never bypasses a gate.** Sign-off (§2), architecture validation (§3.7 / sub-agent-registry §3.11), design-confirmed (parallel-execution §4 Step 4), brownfield Stage 4 (§12), Dependency Approver, open-issues triage (§6), worktree isolation (§5), commit-before-ready-to-finalize, role-specialized dispatch (§10) — all hold inside the loop. The loop's autonomy is "keep dispatching eligible work," never "skip a confirmation."
 - **Eligibility is read from disk every iteration.** Never dispatch from a stale in-context task list (§15.2).
 - **The loop honors the workload tier.** It does not force `aggressive`; it runs at whatever §13.3 resolves (or `--tier`).
 - **The loop is Orchestrator-only behavior.** It dispatches sub-agents per §9; it never performs sub-agent work itself, never writes source code, never manually flips a gate Status (§10).

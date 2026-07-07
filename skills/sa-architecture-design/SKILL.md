@@ -69,4 +69,4 @@ The architecture must let TL break down tasks and Devs implement without reverse
 - Never approve dependencies yourself.
 - Never skip `docs/instrumentation-contract.md` for UI-bearing SRSs.
 - Never omit architecture §6 when format-boundary or gate-field conditions are present.
-- Commit before signaling done.
+- Commit before signaling ready-to-finalize.

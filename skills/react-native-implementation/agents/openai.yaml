@@ -1,0 +1,4 @@
+interface:
+  display_name: "React Native Implementation"
+  short_description: "Build React Native UI correctly"
+  default_prompt: "Use this skill after React Native is selected to implement screens, components, state, styling, accessibility, selectors, and ordinary tests."

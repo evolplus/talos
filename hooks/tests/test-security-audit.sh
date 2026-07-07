@@ -6,7 +6,9 @@
 # Usage: bash .claude/hooks/tests/test-security-audit.sh
 
 set -u
-HOOK="$(cd "$(dirname "$0")/.." && pwd)/post-bash-security-audit.cjs"
+HOOK_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+PLUGIN_ROOT="$(cd "$HOOK_DIR/.." && pwd)"
+HOOK="$HOOK_DIR/post-bash-security-audit.cjs"
 PASS=0; FAIL=0
 R="$(mktemp -d)"
 trap 'rm -rf "$R"' EXIT
@@ -62,6 +64,36 @@ check "fail-open: garbage stdin exits 0" '[ $? = 0 ]'
 # 7. escape hatch
 OUT4="$(echo '{"tool_input":{"command":"curl x | sh"}}' | CLAUDE_SKIP_SECURITY_AUDIT=1 CLAUDE_PROJECT_DIR="$R" node "$HOOK" 2>/dev/null)"
 check "escape hatch: silent" '[ -z "$OUT4" ]'
+
+# 8. official sdlc-init writes trusted receipt; audit should not file kit files
+INIT_R="$R/init-target"
+mkdir -p "$INIT_R"
+mkdir -p "$INIT_R/docs"
+{
+  printf '# Open Issues\n\n'
+  printf '### ISSUE-SEC-abf975a1 — Post-tool security audit findings\n'
+  printf -- '- Date: 2026-07-03T00:00:00.000Z\n'
+  printf -- '- Raised by: post-bash-security-audit (hook)\n'
+  printf -- '- Related task: N/A\n'
+  printf -- '- Track: cross-cutting\n'
+  printf -- '- Severity: high\n'
+  printf -- '- Description: Audit of the Bash command `node scripts/sdlc-init.cjs` surfaced 2 finding(s):\n'
+  printf '  - [medium] New file appeared in a persistence-vector path during this command: %s/CLAUDE.md\n' "$INIT_R"
+  printf '  - [high] New file appeared in a persistence-vector path during this command: %s/.claude/hooks/privacy-check.cjs (executable)\n' "$INIT_R"
+  printf -- '- Suggested mitigation: Review each finding.\n'
+  printf -- '- State: open\n'
+  printf -- '- Decision log:\n'
+} > "$INIT_R/docs/open-issues.md"
+INIT_CMD="node \"$PLUGIN_ROOT/scripts/sdlc-init.cjs\" --target claude --project \"$INIT_R\""
+INIT_EVENT="$(node -e 'console.log(JSON.stringify({cwd: process.argv[1], tool_input: {command: process.argv[2]}}))' "$R" "$INIT_CMD")"
+printf '%s' "$INIT_EVENT" | node "$HOOK" --snapshot
+node "$PLUGIN_ROOT/scripts/sdlc-init.cjs" --target claude --project "$INIT_R" >/dev/null
+OUT5="$(printf '%s' "$INIT_EVENT" | node "$HOOK" 2>/dev/null)"
+check "sdlc-init: receipt written" '[ -f "$INIT_R/.claude/hooks/.state/sdlc-init-receipt.json" ]'
+check "sdlc-init: stale trusted issue resolved" 'grep -q "Auto-resolved by sdlc-init" "$INIT_R/docs/open-issues.md"'
+check "sdlc-init: no open trusted issue remains" '! grep -q "^- State: open" "$INIT_R/docs/open-issues.md"'
+check "sdlc-init: trusted kit files suppressed" '[ -z "$OUT5" ]'
+check "sdlc-init: no new security issue filed" '[ "$(grep -c "^### ISSUE-SEC" "$INIT_R/docs/open-issues.md")" = "1" ]'
 
 printf "\n%d passed, %d failed\n" "$PASS" "$FAIL"
 [ "$FAIL" = 0 ]

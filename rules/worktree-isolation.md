@@ -13,7 +13,7 @@ For workflow contract entry-point, see `CLAUDE.md`. For master plan write discip
 **v0.3.2 update — logical-ownership-first model.** This section originally described full physical isolation (every sub-agent runs from its own `.worktrees/<role>-<task-id>/` cwd). Claude Code's Task tool does not accept a `cwd` parameter, so sub-agents inherit the harness cwd (project root) regardless of `isolation: worktree` (which uses a Claude-internal path that doesn't match the kit's `.worktrees/`). The kit now operates in a **two-tier** model:
 
 - **Logical isolation by role-ownership** (default for doc-writing roles: BA, SA, TL, QA-Author, UI/UX Designer). Sub-agents write directly to their owned paths under `docs/` from the main cwd. The `orchestrator-write-guard.cjs` hook consults `.claude/hooks/lib/role-ownership.cjs` to allow any kit-role-owned path. The owning role's prose Hard Rules in their agent template are the gate against cross-role writes. This is the **primary** discipline going forward.
-- **Physical isolation by worktree** (required for code-writing roles: BE Dev, FE Dev, QA-Exec, DevOps). The Orchestrator runs `git worktree add .worktrees/<role>-<task-id>/` BEFORE dispatch (per `.claude/rules/orchestrator-operating-rules.md` §9 Step 4.6). The sub-agent's dispatch prompt names the absolute worktree path; the sub-agent uses it as the prefix for all source-code writes, which themselves land under the project's declared source roots (`frontend/**`, `backend/**` per SRS §3.4.5 Source Layout — e.g. `<worktree>/frontend/web/src/**`). The `source-code-write-guard.cjs` hook blocks source-code paths NOT inside any `.worktrees/<role>-<task-id>/` segment. This preserves merge-conflict isolation where logical role-ownership is ambiguous (BE Dev and FE Dev both write to `src/`).
+- **Physical isolation by local worktree** (required for code-writing roles: BE Dev, FE Dev, QA-Exec, DevOps). The Orchestrator runs `git worktree add --detach .worktrees/<role>-<task-id>/ <base-ref>` BEFORE dispatch (per `.claude/rules/orchestrator-operating-rules.md` §9 Step 4.6). The detached worktree is a local scratch execution area, not a branch to push or merge. The sub-agent's dispatch prompt names the absolute worktree path; the sub-agent uses it as the prefix for all source-code writes, which themselves land under the project's declared source roots (`frontend/**`, `backend/**` per SRS §3.4.5 Source Layout — e.g. `<worktree>/frontend/web/src/**`). The `source-code-write-guard.cjs` hook blocks source-code paths NOT inside any `.worktrees/<role>-<task-id>/` segment. This preserves conflict isolation where logical role-ownership is ambiguous (BE Dev and FE Dev both write to `src/`).
 
 When this section's prose references "the worktree" or "the sub-agent's cwd," substitute "logical role-ownership" for doc-writing roles and "physical worktree" for code-writing roles. The layout diagram below shows the physical worktree shape; doc-writing roles use the layout less and less in practice — their writes land directly under `docs/<role-owned-path>/`.
 
@@ -37,8 +37,8 @@ All sub-agents operate under **isolation** to enable safe parallel work — logi
 
 **Rules:**
 
-1. The Orchestrator creates a worktree per dispatched sub-agent on a dedicated branch: `agent/<role>/<task-id>`.
-2. Sub-agents commit their work in their own worktree. They do **not** push to the shared branch directly.
+1. The Orchestrator creates a local detached worktree per dispatched sub-agent: `git worktree add --detach .worktrees/<role>-<task-id>/ <base-ref>`.
+2. Sub-agents may commit inside their own detached worktree so `git status` is clean before `plan-update.json`. These commits are local-only evidence/checkpoints; they are **not** integration branches, are **never pushed**, and are **never merged/cherry-picked** into main.
 3. **The `docs/plan/` hierarchy is special.** Sub-agents do **not** edit anything under `docs/plan/` in their worktrees. Instead, they emit a
    `plan-update.json` proposal in their worktree:
 
@@ -62,13 +62,16 @@ All sub-agents operate under **isolation** to enable safe parallel work — logi
    writer** to anything under `docs/plan/` on the main branch.
 
    **Location invariant.** `plan-update.json` lives ONLY at `.worktrees/<role>-<task-id>/plan-update.json`. No suffixed variants (`plan-update-T-001.json`), no root-level writes, no copies under `docs/`. The `plan-update-location-guard.cjs` hook refuses any write to a `plan-update*.json` path outside `.worktrees/`; the Orchestrator's §9 Step 0.5 pre-flight cleans up any existing stragglers at root. If you're a sub-agent and your write is refused, verify your cwd is inside your worktree. A single `plan-update.json` typically results in the Orchestrator updating 1–3 files: always the task file (`docs/plan/phase-NN-name/tasks/T-NNN.md`), sometimes the phase file (`docs/plan/phase-NN-name/phase.md`) when the per-task summary changes, and rarely the top `docs/plan/master-plan.md` (only when the running-tasks set changes — i.e., the task entered or left `in-progress`). See `.claude/rules/master-plan-discipline.md` §8 for the file schemas.
-5. Role-owned artifacts (architecture, API contracts, test cases, code) are merged from worktrees via fast-forward or
-   PR-style merge by the Orchestrator after exit-criteria validation.
+5. Role-owned artifacts (architecture, API contracts, test cases, code) are promoted from worktrees by **path-scoped ingestion**, never by `git merge`, `git cherry-pick`, or `git push`.
+   - The Orchestrator validates exit criteria, then copies/applies only the approved file paths from `.worktrees/<role>-<task-id>/` into the main worktree.
+   - The Orchestrator commits the promoted result on main with the task traceability and attribution trailers from the sub-agent's local commits/report.
+   - The worktree's detached Git history is discarded with the worktree. It must not become a branch on the remote.
+   - The `local-worktree-git-guard.cjs` hook blocks branch-backed `.worktrees/` creation, `git push` from/against `.worktrees/`, and merge/cherry-pick/rebase/pull commands involving local worktrees or `agent/*` / `local-agent/*` branches.
    **Ingestion vs git-merge.** The TL's `plan-proposal/` tree is **consumed via ingestion**, not git-merged: the Orchestrator reads the proposal, writes new files into `docs/plan/` from its main-repo cwd (the `master-plan-write-guard.cjs` hook allows by default; only `.worktrees/...` writes to `docs/plan/` are blocked), then **deletes** `plan-proposal/` along with the worktree at cleanup (rule 7). The proposal tree never lands on main. Same principle for any other transient handoff artifact (e.g., per-agent `plan-update.json`).
 
-6. **Merge order:** Designer's `docs/uiux/handoffs/<task-id>.md` and BA's `docs/uiux/completeness-reports/<task-id>.md`
-   merge before FE Dev starts (logically enforced by the design lifecycle gate). For BE+FE features, BE Dev merges
-   before FE Dev so the API contract is on main when FE pulls.
+6. **Promotion order:** Designer's `docs/uiux/handoffs/<task-id>.md` and BA's `docs/uiux/completeness-reports/<task-id>.md`
+   are promoted to main before FE Dev starts (logically enforced by the design lifecycle gate). For BE+FE features, BE Dev artifacts are promoted
+   before FE Dev so the API contract is on main when FE starts.
 7. Worktree cleanup is the Orchestrator's responsibility once the task closes.
 
 ### Command scoping for code-writing roles (Bash surface)

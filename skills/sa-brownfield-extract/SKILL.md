@@ -65,4 +65,4 @@ Use this skill only for SA `extract` mode during brownfield onboarding Stage 2. 
 - Do not write SRS or plan content.
 - Do not collapse API/message contracts into prose-only architecture. If a route, RPC, or brokered message is observable, write a contract stub under `docs/api-contracts/` or halt with a named extraction gap.
 - Do not treat a one-sided message observation as complete. A broker flow needs producer, payload, topic/queue, consumer handler, ack/commit, retry/DLQ, idempotency, and side effects when observable; unknown items become TODOs and open issues.
-- Commit before signaling done.
+- Commit before signaling ready-to-finalize.

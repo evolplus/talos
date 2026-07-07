@@ -355,6 +355,154 @@ function writeInstallReceipt(options) {
   fs.writeFileSync(receiptPath, `${JSON.stringify(receipt, null, 2)}\n`, 'utf8');
 }
 
+function recordCurrentReceiptFile(options, relPath) {
+  const file = path.join(options.projectRoot, relPath);
+  if (fs.existsSync(file)) {
+    recordInstallReceiptFile(options, file);
+  }
+}
+
+function refreshInstallReceiptFiles(options) {
+  if (options.dryRun || !options.receiptFiles || (options.target !== 'claude' && options.target !== 'both')) {
+    return;
+  }
+
+  if (!options.skipAgents) {
+    const claudeTarget = path.join(options.projectRoot, INSTRUCTION_TARGETS.claude.fileName);
+    if (fs.existsSync(claudeTarget)) {
+      const block = findManagedBlock(readText(claudeTarget), INSTRUCTION_TARGETS.claude);
+      if (block.state === 'present') {
+        recordInstallReceiptFile(options, claudeTarget);
+      }
+    }
+  }
+
+  if (!options.skipSettings) {
+    recordCurrentReceiptFile(options, path.join('.claude', 'settings.json'));
+  }
+
+  if (!options.skipHooks && fs.existsSync(HOOKS_SOURCE)) {
+    const targetRoot = path.join(options.projectRoot, '.claude', 'hooks');
+    for (const sourceFile of listHookFiles(HOOKS_SOURCE)) {
+      const rel = path.relative(HOOKS_SOURCE, sourceFile);
+      const targetFile = path.join(targetRoot, rel);
+      if (!fs.existsSync(targetFile)) {
+        continue;
+      }
+      const sourceBuffer = fs.readFileSync(sourceFile);
+      const targetBuffer = fs.readFileSync(targetFile);
+      if (buffersEqual(sourceBuffer, targetBuffer)) {
+        recordInstallReceiptFile(options, targetFile);
+      }
+    }
+  }
+}
+
+function receiptMap(options) {
+  const out = new Map();
+  if (!options.receiptFiles) {
+    return out;
+  }
+  for (const file of options.receiptFiles.values()) {
+    out.set(file.path, file.sha256);
+  }
+  return out;
+}
+
+function parseHeaderFieldFromBlock(block, field) {
+  const re = new RegExp(String.raw`^-\s*${field}\s*:\s*(.+?)\s*$`, 'im');
+  const match = block.match(re);
+  return match ? match[1].trim().replace(/[.,;:!?]+$/, '').toLowerCase() : null;
+}
+
+function extractSecurityFindingFiles(block) {
+  const files = [];
+  for (const line of block.split(/\r?\n/)) {
+    const newMatch = line.match(/New file appeared in a persistence-vector path during this command: (.+?)(?: \(executable\))?$/);
+    const modifiedMatch = line.match(/Sensitive file MODIFIED during this command: (.+)$/);
+    const match = newMatch || modifiedMatch;
+    if (match) {
+      files.push(match[1].trim());
+    }
+  }
+  return files;
+}
+
+function isTrustedInitSecurityIssue(block, options, trustedFiles) {
+  if (!/^### ISSUE-SEC-\S+\s+.*Post-tool security audit findings/im.test(block)) {
+    return false;
+  }
+  if (parseHeaderFieldFromBlock(block, 'State') !== 'open') {
+    return false;
+  }
+
+  const files = extractSecurityFindingFiles(block);
+  if (files.length === 0) {
+    return false;
+  }
+
+  return files.every((file) => {
+    const resolved = path.resolve(file);
+    const rel = relativeToProjectPosix(resolved, options.projectRoot);
+    if (rel.startsWith('..') || path.isAbsolute(rel)) {
+      return false;
+    }
+    const expectedHash = trustedFiles.get(rel);
+    return Boolean(expectedHash) && sha256File(resolved) === expectedHash;
+  });
+}
+
+function markIssueResolved(block, now) {
+  let next = block.replace(/^-\s*State\s*:\s*open\s*$/im, '- State: resolved');
+  const note = `  - ${now}: Auto-resolved by sdlc-init; every security-audit finding matched the trusted Evo Talos initialization receipt.`;
+  if (/^-\s*Decision log\s*:\s*$/im.test(next)) {
+    next = next.replace(/^-\s*Decision log\s*:\s*$/im, `- Decision log:\n${note}`);
+  } else {
+    next = `${next.replace(/\s*$/, '')}\n- Decision log:\n${note}\n`;
+  }
+  return next;
+}
+
+function resolveTrustedSdlcInitSecurityIssues(options, result) {
+  if (options.dryRun || !options.receiptFiles || options.receiptFiles.size === 0) {
+    return;
+  }
+
+  const issuesPath = path.join(options.projectRoot, 'docs', 'open-issues.md');
+  if (!fs.existsSync(issuesPath)) {
+    return;
+  }
+
+  const trustedFiles = receiptMap(options);
+  const current = readText(issuesPath);
+  const parts = current.split(/\n(?=### ISSUE-)/);
+  const now = new Date().toISOString();
+  const resolvedIds = [];
+  const nextParts = parts.map((part) => {
+    if (!isTrustedInitSecurityIssue(part, options, trustedFiles)) {
+      return part;
+    }
+    const idMatch = part.match(/^### (ISSUE-SEC-\S+)/m);
+    if (idMatch) {
+      resolvedIds.push(idMatch[1]);
+    }
+    return markIssueResolved(part, now);
+  });
+
+  if (resolvedIds.length === 0) {
+    return;
+  }
+
+  const next = nextParts.join('\n');
+  if (next !== current) {
+    writeText(issuesPath, next, options);
+    recordChange(
+      result,
+      `Resolved trusted sdlc-init security audit issue(s) in docs/open-issues.md: ${resolvedIds.join(', ')}.`
+    );
+  }
+}
+
 function normalizeHeading(text) {
   return text
     .replace(/\[[^\]]+\]\([^)]+\)/g, '')
@@ -904,7 +1052,9 @@ function main() {
     recordUnchanged(result, 'Skipped .claude/settings.json injection for Codex target.');
     recordUnchanged(result, 'Skipped .claude/hooks sync for Codex target.');
   }
+  refreshInstallReceiptFiles(options);
   writeInstallReceipt(options);
+  resolveTrustedSdlcInitSecurityIssues(options, result);
 
   printResult(options.projectRoot, result);
   if (result.errors.length > 0) {

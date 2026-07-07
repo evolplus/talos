@@ -1,0 +1,4 @@
+interface:
+  display_name: "Flutter Platform Integration"
+  short_description: "Handle Flutter platform work"
+  default_prompt: "Use this skill for Flutter platform channels, plugins, permissions, flavors, dart-define config, deep links, push, secure storage, native files, or platform-specific behavior."

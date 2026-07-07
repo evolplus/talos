@@ -62,14 +62,14 @@ SRS is Signed-off.
 - The Orchestrator must check `Generated-From-SRS-Hash` against the current SRS hash before dispatching any sub-agent.
   If the file's hash is `bootstrap` AND SRS is now Signed-off, dispatch Agent Generator in default mode to regenerate (this is the standard "specialization timing" path). If the file's hash is a real SRS sha256 but doesn't match current SRS, also regenerate (SRS changed since last generation).
 
-### 3.0a Commit-Before-Done Discipline (cross-role exit criterion)
+### 3.0a Commit-Before-Ready-To-Finalize Discipline (cross-role exit criterion)
 
-Every SDLC role's exit criteria — in addition to the role-specific exits below — includes one universal item: **Git commit completed for all dispatch work, per [`.claude/skills/git-commit/SKILL.md`](../skills/git-commit/SKILL.md), before signaling done**. Concretely:
+Every SDLC role's exit criteria — in addition to the role-specific exits below — includes one universal item: **Git commit completed for all dispatch work, per [`.claude/skills/git-commit/SKILL.md`](../skills/git-commit/SKILL.md), before signaling ready-to-finalize**. Concretely:
 
-- **SDLC roles** (BA / SA / TL / QA-Author / BE Dev / FE Dev / DevOps / QA-Exec / UI/UX Designer): the `task-completion-commit-check.cjs` hook refuses `plan-update.json` writes when `git status --porcelain` is non-empty in the agent's cwd. Agents commit their worktree-local artifacts before emitting the dispatch return signal.
+- **SDLC roles** (BA / SA / TL / QA-Author / BE Dev / FE Dev / DevOps / QA-Exec / UI/UX Designer): the `task-completion-commit-check.cjs` hook refuses `plan-update.json` writes when `git status --porcelain` is non-empty in the agent's cwd. Agents commit their worktree-local artifacts before emitting the ready-to-finalize signal.
 - **Non-SDLC roles** (Researcher / Debugger / Code Reviewer / OQ Resolver / Codebase Archaeologist): the hook doesn't fire (no `plan-update.json`); the prose Hard Rule in each non-SDLC template + Orchestrator's return-time validation (§9 Step 7) enforce the same discipline.
 - **Agent Generator**: commits generated `.claude/agents/<role>.md` files before returning, via the prose Hard Rule in `_meta/agent-generator.md`.
-- **Orchestrator**: commits master-plan transitions on main per §9 Step 7 (unchanged); is bound by the same discipline.
+- **Orchestrator**: commits promoted artifacts and master-plan transitions together on main per §9 Step 7; is bound by the same discipline.
 
 The pre-flight Step 0 (orchestrator-operating-rules.md §9 Step 0) guarantees a working git context exists before any dispatch; this rule guarantees every dispatch leaves a clean worktree behind.
 

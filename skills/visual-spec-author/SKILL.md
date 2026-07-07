@@ -81,4 +81,4 @@ Rules:
 - Do not invent tokens, selectors, or states.
 - Do not collapse multiple Figma fields/items into a generic "component present" assertion. Every manifest row gets an assertion or an explicit gap.
 - Do not treat degraded mode as failure by itself; report unverifiable properties clearly.
-- Commit before signaling done as part of QA-Author dispatch.
+- Commit before signaling ready-to-finalize as part of QA-Author dispatch.

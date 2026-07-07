@@ -185,9 +185,9 @@ function summarizeInterruptedDispatches() {
       try { rec = JSON.parse(fs.readFileSync(path.join(journalDir, name), 'utf8')); } catch { rec = {}; }
       const wtName = (rec.worktree || '').replace(/^\.worktrees\//, '').replace(/\/$/, '');
       if (wtName) journaledWorktrees.add(wtName);
-      // A worktree carrying plan-update.json is a completed dispatch awaiting
-      // ingestion (§14.4 edge case) — flag it differently so the Orchestrator
-      // ingests rather than rolls back.
+      // A worktree carrying plan-update.json is a dispatch awaiting
+      // finalization (§14.4 edge case) — flag it differently so the
+      // Orchestrator finalizes rather than rolls back or trusts plan status.
       let hasPlanUpdate = false;
       if (rec.worktree) {
         try { hasPlanUpdate = fs.existsSync(path.join(ROOT, rec.worktree, 'plan-update.json')); } catch {}
@@ -223,7 +223,7 @@ function summarizeInterruptedDispatches() {
   const lines = ['⚠ INTERRUPTED DISPATCHES detected — Orchestrator MUST run §9 Step 0.6 reconciliation before any new dispatch:'];
   for (const j of journals) {
     const tag = j.hasPlanUpdate
-      ? 'has plan-update.json → INGEST (completed, not rolled back)'
+      ? 'has plan-update.json → FINALIZE FIRST (promote artifacts + plan in one commit)'
       : 'no plan-update.json → ROLL BACK + restart';
     lines.push(`  · journal ${j.role}/${j.taskId} (dispatched ${j.dispatchedAt}) — ${tag}`);
   }

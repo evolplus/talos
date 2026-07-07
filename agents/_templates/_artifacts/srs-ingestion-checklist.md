@@ -114,9 +114,9 @@ Supported values map to skill references:
 
 | Header value | FE Dev reference |
 |---|---|
-| `React Native` | `fe-framework-coding-standard/references/react-native.md` |
+| `React Native` | `fe-framework-coding-standard/references/react-native.md` routing card -> React Native implementation / performance / platform-integration skills as applicable |
 | `ReactJS` | `fe-framework-coding-standard/references/reactjs.md` |
-| `Flutter` | `fe-framework-coding-standard/references/flutter.md` |
+| `Flutter` | `fe-framework-coding-standard/references/flutter.md` routing card -> Flutter implementation / performance / platform-integration skills as applicable |
 | `Vue.js` | `fe-framework-coding-standard/references/vuejs.md` |
 | `Angular` | `fe-framework-coding-standard/references/angular.md` |
 | `Next.js` | `fe-framework-coding-standard/references/nextjs.md` |

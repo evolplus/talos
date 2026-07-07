@@ -62,4 +62,4 @@ Use the literal marker so QA-Exec can grep it:
 - Do not invent selectors.
 - Pass 1 specs with TODO markers are intentionally unrunnable.
 - Every executable TC must have a spec file.
-- Commit before signaling done.
+- Commit before signaling ready-to-finalize.

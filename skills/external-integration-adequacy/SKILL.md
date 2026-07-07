@@ -56,4 +56,4 @@ For each placeholder:
 - Never leave TODO markers without matching §7 gaps.
 - Keep files self-contained; body sections must not say `see <vendor URL>`.
 - Do not discover/propose new dependencies in this mode.
-- Commit before signaling done.
+- Commit before signaling ready-to-finalize.

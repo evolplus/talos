@@ -71,7 +71,7 @@ Document the answer here and update the skill's procedure to include a signing c
 
 ### Kit default
 
-Every commit on a worktree branch references its master-plan task:
+Every task-scoped worktree commit references its master-plan task:
 
 - In-subject: `feat(billing)(T-014): add voucher application flow`
 - In-footer: `Refs: T-014`
@@ -95,8 +95,8 @@ The traceability rule is a hard rule in CLAUDE.md §10. Commits without `Refs:` 
 
 - **No secrets in commit history.** Static defense: `.gitignore`. Dynamic defense: the privacy-check hook at runtime. Both layers are required; neither is sufficient alone.
 - **No PII in commit messages.** Never include user / customer / partner identifiers (names, emails, internal account IDs, addresses, phone numbers). Reference by ticket or task ID; the durable git log should not become a PII broadcaster.
-- **No force-pushing to shared branches.** Sub-agents push only to their own worktree branch (`agent/<role>/<task-id>`); the Orchestrator merges per `.claude/rules/worktree-isolation.md` §5.
-- **Squash on merge** is the kit's default. The Orchestrator's merge of a sub-agent worktree branch into main is squashed; the squashed commit retains the attribution trailers from the sub-agent's commit chain. (If the project chooses merge-commit or rebase-merge, document here.)
+- **No pushing from local agent worktrees.** Sub-agents do not push `.worktrees/<role>-<task-id>/` commits to any remote. The Orchestrator promotes validated file content by path-scoped ingestion per `.claude/rules/worktree-isolation.md` §5.
+- **No branch merge from local agent worktrees.** The kit does not squash-merge, merge-commit, rebase-merge, or cherry-pick a sub-agent worktree branch into main. Main receives a fresh Orchestrator commit containing the validated promoted files and attribution/traceability trailers.
 
 ### Organization-specific **(policy)**
 

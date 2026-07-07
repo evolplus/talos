@@ -118,4 +118,4 @@ The markdown report at `docs/qa-reports/<task-id>.md` links the supporting artif
 - Missing or failed deploy-report env validation, including absent SRS §3.4.6 declared-key coverage, is a blocked state routed back to DevOps. QA-Exec never guesses local `.env` behavior.
 - Flaky is failure until proven otherwise.
 - Per-property UI reporting is mandatory for Tier 2.
-- Commit before signaling done.
+- Commit before signaling ready-to-finalize.

@@ -1,6 +1,6 @@
 ---
 name: fe-framework-coding-standard
-description: Standardized frontend implementation guidance for FE Dev using the SRS-declared Frontend-Framework. Use when coding, refactoring, or reviewing UI work in React Native, ReactJS, Flutter, Vue.js, Angular, or Next.js; FE Dev reads docs/SRS.md Frontend-Framework plus §3.4.2/§3.4.5 for multi-app projects, then selects the matching reference so file placement, state flow, styling, accessibility, instrumentation, and tests match the chosen stack.
+description: Standardized frontend implementation guidance for FE Dev using the SRS-declared Frontend-Framework. Use when coding, refactoring, or reviewing UI work in React Native, ReactJS, Flutter, Vue.js, Angular, or Next.js; FE Dev reads docs/SRS.md Frontend-Framework plus §3.4.2/§3.4.5 for multi-app projects, then selects the matching reference and, for React Native or Flutter, the focused mobile companion skills for implementation, performance, or platform integration.
 agents: [fe-dev]
 sdlc_phase: implementation
 owner: Platform Eng
@@ -43,6 +43,11 @@ Read the matching reference before editing:
 | Angular | [`references/angular.md`](./references/angular.md) |
 | Next.js | [`references/nextjs.md`](./references/nextjs.md) |
 
+For mobile frameworks, the matching reference is a routing card:
+
+- React Native: always load `react-native-implementation`; load `react-native-performance` for slow/large/animated/image-heavy work; load `react-native-platform-integration` for native modules, permissions, deep links, app config, storage, or platform files.
+- Flutter: always load `flutter-implementation`; load `flutter-performance` for rebuild/jank/list/image/animation/startup work; load `flutter-platform-integration` for platform channels, plugins, permissions, flavors, deep links, storage, or native files.
+
 ## Universal implementation procedure
 
 1. Inspect nearby code before writing. Follow the project's existing folder structure, naming, state library, API client, design token system, formatter, lint rules, and test runner.
@@ -79,11 +84,17 @@ Read the matching reference before editing:
 
 ## References
 
-- [`references/react-native.md`](./references/react-native.md) - React Native and Expo implementation standard.
+- [`references/react-native.md`](./references/react-native.md) - React Native and Expo mobile skill routing card.
 - [`references/reactjs.md`](./references/reactjs.md) - ReactJS SPA/component implementation standard.
-- [`references/flutter.md`](./references/flutter.md) - Flutter widget, state, theme, and test standard.
+- [`references/flutter.md`](./references/flutter.md) - Flutter mobile skill routing card.
 - [`references/vuejs.md`](./references/vuejs.md) - Vue SFC, Composition API, routing, and store standard.
 - [`references/angular.md`](./references/angular.md) - Angular component, service, forms, RxJS, and module/standalone standard.
 - [`references/nextjs.md`](./references/nextjs.md) - Next.js routing, rendering, data, and client/server boundary standard.
+- [`../react-native-implementation/SKILL.md`](../react-native-implementation/SKILL.md) - React Native screen/component/state/accessibility implementation.
+- [`../react-native-performance/SKILL.md`](../react-native-performance/SKILL.md) - React Native render, list, image, animation, bridge, and startup performance.
+- [`../react-native-platform-integration/SKILL.md`](../react-native-platform-integration/SKILL.md) - React Native native modules, permissions, deep links, config, and platform files.
+- [`../flutter-implementation/SKILL.md`](../flutter-implementation/SKILL.md) - Flutter widget/page/state/theme/navigation/accessibility implementation.
+- [`../flutter-performance/SKILL.md`](../flutter-performance/SKILL.md) - Flutter rebuild, list, image, animation, isolate, and startup performance.
+- [`../flutter-platform-integration/SKILL.md`](../flutter-platform-integration/SKILL.md) - Flutter platform channels, plugins, permissions, flavors, config, and native files.
 - [`../design-system-author/SKILL.md`](../design-system-author/SKILL.md) - design token and component source of truth.
 - [`../ui-test-execution/SKILL.md`](../ui-test-execution/SKILL.md) - UI test selector, fixture, and reporting discipline.

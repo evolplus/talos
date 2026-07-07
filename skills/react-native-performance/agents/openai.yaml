@@ -1,0 +1,4 @@
+interface:
+  display_name: "React Native Performance"
+  short_description: "Tune React Native performance"
+  default_prompt: "Use this skill for React Native slow screens, large lists, image-heavy UI, animations, startup, memory, render-cost, or bridge overhead."

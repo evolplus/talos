@@ -1,0 +1,4 @@
+interface:
+  display_name: "React Native Platform Integration"
+  short_description: "Handle RN native/platform work"
+  default_prompt: "Use this skill for React Native native modules, permissions, deep links, push, secure storage, app config, iOS/Android files, or platform-specific behavior."

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Flutter Performance"
+  short_description: "Tune Flutter performance"
+  default_prompt: "Use this skill for Flutter rebuild churn, jank, large lists, image-heavy UI, animations, startup, memory, isolates, or layout/paint performance."

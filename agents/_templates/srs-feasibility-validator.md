@@ -169,7 +169,7 @@ After BA addresses the OQs and flips Status back to `Ready-for-Sign-off`, both g
 - **You read `docs/architecture.md` and `docs/decisions/` ONLY IF they exist** (typically they don't pre-sign-off in greenfield; they DO exist in iteration mode or in brownfield-after-extract). When they exist, use them to enrich feasibility checks; their absence is normal at first sign-off.
 - **Fresh-reviewer discipline.** Build the consistency matrix from scratch each dispatch. The corpus may have shifted between runs.
 - **No invention.** When you can't determine feasibility (vendor docs ambiguous, NRS context unclear), mark `unqualified` with `ambiguity` and propose an OQ asking for clarification.
-- **Commit before signaling done.** Per [`.claude/skills/git-commit/SKILL.md`](../../skills/git-commit/SKILL.md). `task-completion-commit-check.cjs` enforces.
+- **Commit before signaling ready-to-finalize.** Per [`.claude/skills/git-commit/SKILL.md`](../../skills/git-commit/SKILL.md). `task-completion-commit-check.cjs` enforces.
 - **No source-code writes.** Read-only on code; the orchestrator-bash-guard + source-code-write-guard already enforce.
 
 ## Tool Scope

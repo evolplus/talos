@@ -108,8 +108,11 @@ const MUTATING_PATTERNS = [
   // ─── Git mutations (Orchestrator legitimately runs commit/add/init/worktree;
   //     everything else is sub-agent or operator territory) ───
   { re: /\bgit\s+push\b/, why: 'git push — Orchestrator does not push (operator pushes manually, or CI does)' },
+  { re: /\bgit\s+pull\b/, why: 'git pull — Orchestrator does not merge remote history during SDLC routing' },
+  { re: /\bgit\s+merge\b/, why: 'git merge — worktree history must not be branch-merged into main; use path-scoped artifact ingestion' },
+  { re: /\bgit\s+cherry-pick\b/, why: 'git cherry-pick — worktree history must not be promoted by commit; use path-scoped artifact ingestion' },
   { re: /\bgit\s+reset\s+--hard\b/, why: 'git reset --hard (destructive — discards working tree)' },
-  { re: /\bgit\s+rebase\s+(-i|--interactive)\b/, why: 'git interactive rebase (history-rewriting)' },
+  { re: /\bgit\s+rebase\b/, why: 'git rebase (history-rewriting)' },
   { re: /\bgit\s+checkout\s+(--|HEAD --|-- )\s*\S+/, why: 'git checkout -- <path> (discards working-tree changes)' },
   { re: /\bgit\s+restore\s+(?!--staged)/, why: 'git restore (working-tree mutation)' },
   { re: /\bgit\s+stash\s+(drop|clear|pop)/, why: 'git stash drop / clear / pop (destructive)' },

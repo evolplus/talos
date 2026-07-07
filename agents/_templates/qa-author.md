@@ -60,4 +60,4 @@ Mode-specific inputs are defined by the loaded skill. Common inputs include:
 - Never invent selectors. Use `docs/instrumentation-contract.md`; when unavailable in Pass 1, use `TODO: instrumentation-contract` plus a paired open issue.
 - Do not silently absorb drift between FRs and frozen API contracts; raise an open issue.
 - Do not run the tests you author.
-- Commit before signaling done.
+- Commit before signaling ready-to-finalize.

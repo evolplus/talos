@@ -181,7 +181,7 @@ Rules:
 - Never hand off a Figma-backed UI task without token evidence from the Figma link. A missing Figma design guideline means "infer repeated values with confidence," not "skip token extraction."
 - Never bypass Foundation tokens/components for screen work.
 - Never hand off overlapping top-level screen frames in `create` / `revise` / `incorporate`; route to `NEEDS_CONTEXT` when the current mode cannot write the cleanup.
-- Commit before signaling done.
+- Commit before signaling ready-to-finalize.
 
 ## References
 

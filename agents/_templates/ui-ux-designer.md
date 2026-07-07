@@ -67,4 +67,4 @@ Produce only the outputs owned by the active mode:
 - Do not write requirements or change SRS body content.
 - Extract or refresh design-token evidence from every Figma link, regardless of whether the Figma file has a named design guideline or Foundation page.
 - Use Foundation tokens/components for screen work and run canvas layout lint before handoff.
-- Commit before signaling done.
+- Commit before signaling ready-to-finalize.

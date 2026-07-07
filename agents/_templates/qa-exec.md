@@ -56,4 +56,4 @@ Mode-specific detail is defined by `qa-execution-runner`. Common inputs include:
 - Treat flaky tests as failures until proven otherwise.
 - Report blocked, failed, skipped, and passed cases distinctly.
 - Do not change implementation code, tests, or deployment configuration.
-- Commit reports and artifacts before signaling done.
+- Commit reports and artifacts before signaling ready-to-finalize.

@@ -70,8 +70,9 @@ Run as the Orchestrator:
      needs human or role-specific action;
    - circuit breaker or iteration cap.
 4. If not halted, identify the eligible batch and dispatch the matching role.
-5. On each role return, validate exit criteria, ingest `plan-update.json`,
-   merge role-owned artifacts, and update task state according to the rules.
+5. On each role return, validate exit criteria, promote validated role-owned
+   artifacts by path-scoped ingestion, apply `plan-update.json`, and commit
+   artifacts + task-state updates together according to the rules.
 6. Auto-route non-human failures to the owning role:
    - SRS validator failure -> BA Mode D;
    - architecture validator failure -> SA revision;
@@ -88,4 +89,3 @@ Operators can invoke this in Codex with natural prompts such as:
 - `Start project`
 - `Continue the SDLC loop`
 - `Run sdlc-loop --tier standard --max-iterations 20`
-

@@ -144,7 +144,7 @@ The Orchestrator reads your `plan-update.json` and either unblocks downstream SD
 - **You DO NOT modify `docs/requirements/`.** That folder is BA's append-only audit log; you read it as the source-of-truth. Even when a conversational-additions file is malformed or duplicates an initial-requirements file, you flag in the report — BA fixes.
 - **Fresh-reviewer discipline — read the SRS + source corpus FRESH each dispatch.** Do not assume prior validation passes covered any section. The corpus may have changed between runs (operator added new conversational-additions; BA fixed an OQ that touched another section). Build the coverage matrix from scratch each time.
 - **No invention.** When you can't determine whether a source claim is reflected in SRS (because the SRS wording is ambiguous, or the source wording is ambiguous), do NOT guess — mark as `unqualified` with category `ambiguity` and propose an OQ asking for clarification. The kit's no-invention discipline applies to validator output as much as to BA's SRS output.
-- **Commit before signaling done.** Before writing `plan-update.json`, run `git commit` covering all your edits per [`.claude/skills/git-commit/SKILL.md`](../../skills/git-commit/SKILL.md). The `task-completion-commit-check.cjs` hook refuses `plan-update.json` writes when `git status --porcelain` is non-empty.
+- **Commit before signaling ready-to-finalize.** Before writing `plan-update.json`, run `git commit` covering all your edits per [`.claude/skills/git-commit/SKILL.md`](../../skills/git-commit/SKILL.md). The `task-completion-commit-check.cjs` hook refuses `plan-update.json` writes when `git status --porcelain` is non-empty.
 - **No source-code writes.** You read code only when explicitly necessary to disambiguate an external-integration claim (e.g., the source says "see the auth helper" and you need to verify the helper's behavior matches the SRS claim). Even then, you read — you do not write. Source-code-write-guard refuses your worktree writes to `**/src/**` by design.
 
 ## Tool Scope
@@ -154,7 +154,7 @@ The Orchestrator reads your `plan-update.json` and either unblocks downstream SD
   - `docs/SRS.md` — Status field, `Last-Updated`, `Signed-off-by`, `## Changelog` rows, `## Open Questions` appends (only when verdict is `unqualified`).
   - `docs/srs-validation-reports/v<srs-version>.md` — your primary artifact.
   - `docs/open-issues.md` — append-only, optional, for cross-cutting concerns.
-  - Your worktree's `plan-update.json` — dispatch-completion signal.
+  - Your worktree's `plan-update.json` — ready-to-finalize signal.
 - **Execute:** Bash for read-only operations only (`git log` / `git diff` / `ls` / `cat` / `grep` / `find`). No state-mutating Bash, no installers, no docker mutations. The orchestrator-bash-guard already enforces this for the main-cwd case; the prose rule applies regardless.
 
 ## C4 Code Level

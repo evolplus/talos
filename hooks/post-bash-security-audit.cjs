@@ -130,8 +130,45 @@ const COMMAND_RED_FLAGS = [
 // Small utilities
 // ---------------------------------------------------------------------------
 
-function projectRoot() {
-  return process.env.CLAUDE_PROJECT_DIR || process.cwd();
+function commandLooksLikeSdlcInit(command) {
+  const text = String(command || '');
+  return (
+    /(?:^|\s)(?:node(?:\s+\S+)*\s+)?(?:"[^"]*sdlc-init\.cjs"|'[^']*sdlc-init\.cjs'|\S*sdlc-init\.cjs)(?:\s|$)/.test(text) ||
+    /(?:^|\s)(?:\.\/)?sdlc-init(?:\s|$)/.test(text) ||
+    /(?:^|\s)(?:npm|pnpm|yarn|bun)\s+(?:run\s+)?sdlc-init(?:\s|$)/.test(text) ||
+    /(?:^|\s)(?:npx|bunx|pnpm\s+dlx|yarn\s+dlx)\s+\S*sdlc-init(?:\s|$)/.test(text)
+  );
+}
+
+function sdlcInitProjectArg(command) {
+  if (!commandLooksLikeSdlcInit(command)) {
+    return null;
+  }
+
+  const match = String(command || '').match(/(?:^|\s)--project(?:=|\s+)("[^"]+"|'[^']+'|\S+)/);
+  if (!match) {
+    return null;
+  }
+
+  return match[1].replace(/^["']|["']$/g, '');
+}
+
+function projectRoot(event) {
+  if (process.env.CLAUDE_PROJECT_DIR) {
+    return process.env.CLAUDE_PROJECT_DIR;
+  }
+
+  const command = event && event.tool_input && event.tool_input.command;
+  const projectArg = sdlcInitProjectArg(command);
+  if (projectArg) {
+    return path.resolve((event && event.cwd) || process.cwd(), projectArg);
+  }
+
+  if (event && event.cwd) {
+    return event.cwd;
+  }
+
+  return process.cwd();
 }
 
 function stateDir(root) {
@@ -304,10 +341,6 @@ function checkSensitivePaths(root, prevSnap) {
     }
   }
   return { findings, current };
-}
-
-function commandLooksLikeSdlcInit(command) {
-  return /(?:^|\s)(?:node(?:\s+\S+)*\s+)?(?:"[^"]*sdlc-init\.cjs"|'[^']*sdlc-init\.cjs'|\S*sdlc-init\.cjs)(?:\s|$)/.test(command);
 }
 
 function relPosix(root, file) {
@@ -501,7 +534,7 @@ function main() {
   if (process.env.CLAUDE_SKIP_SECURITY_AUDIT === '1') return 0;
 
   const event = readEvent();
-  const root = projectRoot();
+  const root = projectRoot(event);
   const snapPath = path.join(stateDir(root), 'sensitive-baseline.json');
   const seenPath = path.join(stateDir(root), 'audit-seen.json');
 

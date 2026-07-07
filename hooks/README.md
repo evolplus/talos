@@ -28,6 +28,7 @@ All hooks are **fail-open**: if a hook crashes or its event JSON is malformed, i
 | `source-code-write-guard.cjs` | PreToolUse (Write/Edit/MultiEdit/NotebookEdit) | Blocks Orchestrator source-code writes and enforces declared source roots for sub-agent worktrees |
 | `orchestrator-write-guard.cjs` | PreToolUse (Write/Edit/MultiEdit/NotebookEdit) | Blocks Orchestrator writes outside its allow-list of router-owned paths |
 | `orchestrator-bash-guard.cjs` | PreToolUse (Bash) | Blocks state-mutating Bash from Orchestrator/main-repo context |
+| `local-worktree-git-guard.cjs` | PreToolUse (Bash) | Blocks pushing, pulling, merging, rebasing, or cherry-picking local `.worktrees/` Git history and blocks branch-backed `.worktrees/` creation |
 | `plan-update-location-guard.cjs` | PreToolUse (Write/Edit/MultiEdit/NotebookEdit) | Blocks `plan-update*.json` outside `.worktrees/<role>-<task-id>/` |
 | `fe-dev-design-contract-guard.cjs` | PreToolUse (Write/Edit/MultiEdit/NotebookEdit) | Blocks FE Dev source writes until `docs/uiux/refs/<task-id>.md` is Frozen and has non-empty manifest/trace rows |
 | `ui-task-readiness-guard.cjs` | PreToolUse (Write) | Blocks `ready-for-deploy` proposals for UI tasks until handoff/refs/visual-spec/test artifacts are present and content-complete |
@@ -255,16 +256,29 @@ Enforces the **pure-router invariant** on the Bash side: blocks state-mutating B
 - FS destructive: `rm -rf|-f`, `mv` (outside `/tmp`), `shred`
 - In-place edits: `sed -i`, `perl -i`, `awk -i`
 - Shell redirects to project paths: `> src/`, `> e2e/.../spec.ts`, `> docs/` (except plan/ + open-issues.md + iteration-plan/), `> .env`, `> package.json|Dockerfile|...`, `tee` to non-temp paths
-- Git mutations beyond commit: `git push`, `git reset --hard`, `git rebase -i`, `git checkout -- <path>`, `git clean`, `git stash drop/clear/pop`, `git filter-branch/repo`
+- Git mutations beyond commit/add/init/detached-worktree creation: `git push`, `git pull`, `git merge`, `git cherry-pick`, `git reset --hard`, `git rebase`, `git checkout -- <path>`, `git clean`, `git stash drop/clear/pop`, `git filter-branch/repo`
 - Permissions: `chmod`, `chown`, `chgrp`
 - Build artifacts: `npm/yarn/pnpm run build`, `cargo build`, `go build`, `mvn package`, `gradle build`, `make` (except `-n` dry-run)
 - Service mutations: `systemctl start/stop/restart`, `crontab -e|-r`
 
-**Pass-through:** read-only commands (`ls`, `cat`, `grep`, `find`, `git status/log/diff/show`, `docker ps/inspect/logs/port/stats`, `git commit/add/init/worktree add`) and any command not matching a mutating pattern.
+**Pass-through:** read-only commands (`ls`, `cat`, `grep`, `find`, `git status/log/diff/show`, `docker ps/inspect/logs/port/stats`, `git commit/add/init/worktree add --detach`) and any command not matching a mutating pattern. Branch-backed `.worktrees/` creation is refused by `local-worktree-git-guard.cjs`.
 
 **Override (rare — operator-explicit one-off):** `export CLAUDE_ALLOW_ORCHESTRATOR_BASH=1`. Hook emits stderr warning when active.
 
 **Known limitation:** Bash pattern matching is best-effort defense-in-depth, not airtight. Heredocs piped to shells, function definitions wrapping mutations, subshells with command substitution all can slip through. The prose rule in CLAUDE.md §10 is the authoritative control; this hook catches the most common operator-tempting mutations.
+
+## local-worktree-git-guard.cjs (PreToolUse)
+
+Enforces the local-only worktree invariant: `.worktrees/<role>-<task-id>/` is a detached scratch execution area, not a branch that can be pushed, pulled, merged, rebased, or cherry-picked into main.
+
+Blocks:
+- Branch-backed `.worktrees/` creation such as `git worktree add -b ... .worktrees/<role>-<task-id>/ ...`; use `git worktree add --detach .worktrees/<role>-<task-id>/ <base-ref>`.
+- `git push` / `git pull` / `git merge` / `git rebase` / `git cherry-pick` from a `.worktrees/...` cwd or command scoped to `.worktrees/...`.
+- `git push`, `git merge`, or `git cherry-pick` that references `agent/*` or `local-agent/*` branch names from any cwd.
+
+The intended promotion path is path-scoped ingestion: validate the sub-agent's output, copy/apply only approved file paths to main, commit the result on main, then remove the worktree. The worktree's local commits exist only to make completion auditable and clean.
+
+**Override (rare — operator-explicit repair only):** `export CLAUDE_ALLOW_LOCAL_WORKTREE_GIT=1`. Do not use for routine SDLC dispatches.
 
 ## plan-update-location-guard.cjs (PreToolUse)
 
@@ -326,7 +340,7 @@ Two env vars bypass hook enforcement:
 | `CLAUDE_SKIP_DOCKER_SCOPE_CHECK=1` | `docker-scope-guard.cjs` (project-scoped container guard) | Operator, per-session, when intentionally operating cross-project; document rationale |
 | `CLAUDE_SKIP_DESIGN_CONTRACT_CHECK=1` | `fe-dev-design-contract-guard.cjs` (FE Dev Frozen design contract gate) | Operator, per-session, for non-UI FE tasks only; document rationale |
 | `CLAUDE_SKIP_UI_READINESS_CHECK=1` | `ui-task-readiness-guard.cjs` (UI ready-for-deploy artifact gate) | Operator, per-session, for explicit override only; document rationale |
-| `CLAUDE_SKIP_COMMIT_CHECK=1` | `task-completion-commit-check.cjs` (commit-before-done) | Sub-agent, per-dispatch, when no-op return is intentional; document rationale |
+| `CLAUDE_SKIP_COMMIT_CHECK=1` | `task-completion-commit-check.cjs` (commit-before-ready-to-finalize) | Sub-agent, per-dispatch, when no-op return is intentional; document rationale |
 
 These are documented escape hatches, not security boundaries. An agent that has Bash access can `export` these. The prose rule says agents don't set them; the hook honors them when set. If you need a stricter posture, consider an outer-process check (e.g., a CI step that re-runs the hook against the actual commit).
 
@@ -367,7 +381,7 @@ The kit's only PostToolUse hook. PreToolUse guards gate *intent*; this hook audi
 
 **Dedupe**: finding fingerprints in `.claude/hooks/.state/audit-seen.json` prevent the same finding set from re-filing on every subsequent Bash run.
 
-**Trusted kit init/update receipt**: `sdlc-init` writes `.claude/hooks/.state/sdlc-init-receipt.json` with the hashes of sensitive files it intentionally changed. When the audited Bash command is a fresh `sdlc-init` run, the hook suppresses only matching sensitive-path findings. Extra changed files, stale/missing receipts, hash mismatches, deleted files, dependency findings, and command red flags still file open issues.
+**Trusted kit init/update receipt**: `sdlc-init` writes `.claude/hooks/.state/sdlc-init-receipt.json` with the hashes of sensitive files it intentionally changed. When the audited Bash command is a fresh `sdlc-init` run, including direct `sdlc-init` wrappers or `node .../scripts/sdlc-init.cjs --project <path>`, the hook suppresses only matching sensitive-path findings in the receipt. Re-running `sdlc-init` also auto-resolves older open `ISSUE-SEC-*` entries when every listed finding still matches the trusted receipt. Extra changed files, stale/missing receipts, hash mismatches, deleted files, dependency findings, and command red flags still file open issues.
 
 **Override per-session**: `export CLAUDE_SKIP_SECURITY_AUDIT=1`
 

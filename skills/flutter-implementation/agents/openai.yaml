@@ -1,0 +1,4 @@
+interface:
+  display_name: "Flutter Implementation"
+  short_description: "Build Flutter UI correctly"
+  default_prompt: "Use this skill after Flutter is selected to implement widgets, pages, state, navigation, theming, accessibility, keys/semantics, and ordinary tests."

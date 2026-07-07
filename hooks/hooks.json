@@ -196,6 +196,13 @@
             "args": [
               "${CLAUDE_PLUGIN_ROOT}/hooks/docker-scope-guard.cjs"
             ]
+          },
+          {
+            "type": "command",
+            "command": "node",
+            "args": [
+              "${CLAUDE_PLUGIN_ROOT}/hooks/local-worktree-git-guard.cjs"
+            ]
           }
         ]
       },

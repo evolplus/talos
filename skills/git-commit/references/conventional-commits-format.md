@@ -72,7 +72,7 @@ A commit may omit scope only if the change genuinely doesn't fit any scope (rare
 
 ## Task-tag (traceability)
 
-Every commit on a worktree branch is tied to a master-plan task. The kit supports two equivalent forms:
+Every task-scoped worktree commit is tied to a master-plan task. The kit supports two equivalent forms:
 
 - **In-subject form:** `feat(billing)(T-014): add voucher application flow`
 - **In-footer form:** subject is plain (`feat(billing): add voucher application flow`), and a `Refs: T-014` trailer appears in the footer.

@@ -110,7 +110,13 @@ Predefined Foundation starting points. Selected by SRS header `Design-Guideline:
 
 | Skill | When | Status |
 |---|---|---|
-| [`fe-framework-coding-standard`](./fe-framework-coding-standard/SKILL.md) | Implementing or reviewing frontend tasks after SRS `Frontend-Framework:` and §3.4.6 env config are declared - selects the matching React Native, ReactJS, Flutter, Vue.js, Angular, or Next.js coding standard, requires every Design Element Manifest field/item/copy/action, and forbids hardcoded backend/API URLs | active |
+| [`fe-framework-coding-standard`](./fe-framework-coding-standard/SKILL.md) | Implementing or reviewing frontend tasks after SRS `Frontend-Framework:` and §3.4.6 env config are declared - selects the matching React Native, ReactJS, Flutter, Vue.js, Angular, or Next.js standard, and routes React Native / Flutter to focused mobile companion skills | active |
+| [`react-native-implementation`](./react-native-implementation/SKILL.md) | React Native/Expo screens, components, navigation, state, styling, accessibility, instrumentation, and ordinary unit/component tests | active |
+| [`react-native-performance`](./react-native-performance/SKILL.md) | React Native/Expo slow screens, large lists, image-heavy UI, animation, startup, memory, render-cost, bridge/native-module performance review | active |
+| [`react-native-platform-integration`](./react-native-platform-integration/SKILL.md) | React Native/Expo native modules, permissions, deep links, push, secure storage, app lifecycle, Expo config, iOS/Android files, and platform-specific behavior | active |
+| [`flutter-implementation`](./flutter-implementation/SKILL.md) | Flutter widgets, pages, state, navigation, theming, accessibility, keys/semantics, and ordinary Dart/widget tests | active |
+| [`flutter-performance`](./flutter-performance/SKILL.md) | Flutter rebuild churn, jank, large lists, image-heavy UI, animation, startup, memory, isolate, layout/paint performance review | active |
+| [`flutter-platform-integration`](./flutter-platform-integration/SKILL.md) | Flutter platform channels, plugins, permissions, flavors, dart-define config, deep links, push, secure storage, lifecycle, native iOS/Android files, and platform-specific behavior | active |
 
 ## By SDLC phase
 
@@ -119,7 +125,7 @@ Predefined Foundation starting points. Selected by SRS header `Design-Guideline:
 | Cross-cutting (all phases) | sdlc-init, sdlc-loop, git-commit |
 | Planning (BA / SA / TL) | user-story-author, security-compliance-checklist, solution-defaults, sa-architecture-design, sa-brownfield-extract, external-integration-adequacy, adr-author, third-party-dependency-evaluation, task-sizing, c4-author, data-lifecycle-contracts, format-boundary-contracts |
 | Design (UI/UX Designer) | ui-ux-page-scoping, figma-requirements-extraction, figma-srs-mapping, figma-design-handoff, figma-canvas-layout, design-system-author |
-| Implementation (BE / FE) | api-contract-author, be-framework-coding-standard, fe-framework-coding-standard |
+| Implementation (BE / FE) | api-contract-author, be-framework-coding-standard, fe-framework-coding-standard, react-native-implementation, react-native-performance, react-native-platform-integration, flutter-implementation, flutter-performance, flutter-platform-integration |
 | QA (Author / Exec) | qa-author-by-us, qa-author-by-task, visual-spec-author, qa-execution-runner, test-case-author, ui-test-execution, playwright-author |
 | Deploy (DevOps) | local-deployment |
 | Post-release | — |

@@ -50,4 +50,4 @@ Use this skill for QA-Author `by-task` mode. Load `test-case-author` for TC form
 - Never invent missing API contract behavior.
 - Never write structural UI tests before visual spec exists.
 - Every executable TC needs a real spec file.
-- Commit before signaling done.
+- Commit before signaling ready-to-finalize.

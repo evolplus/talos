@@ -23,6 +23,7 @@ DESIGN_SUBSTATUS="$HOOKS_DIR/design-substatus-validator.cjs"
 PLAN_CONSISTENCY="$HOOKS_DIR/plan-consistency-validator.cjs"
 ORCH_WRITE_GUARD="$HOOKS_DIR/orchestrator-write-guard.cjs"
 ORCH_BASH_GUARD="$HOOKS_DIR/orchestrator-bash-guard.cjs"
+LOCAL_GIT_GUARD="$HOOKS_DIR/local-worktree-git-guard.cjs"
 PLAN_UPDATE_LOCATION_GUARD="$HOOKS_DIR/plan-update-location-guard.cjs"
 QA_EVIDENCE="$HOOKS_DIR/qa-runtime-evidence-validator.cjs"
 INT_DOD="$HOOKS_DIR/integration-dod-validator.cjs"
@@ -1995,7 +1996,11 @@ run_exit "orch-bash: blocks redirect to docs/SRS" 2 "$ORCH_BASH_GUARD" "$(bc 'ec
 run_exit "orch-bash: blocks redirect to .env"     2 "$ORCH_BASH_GUARD" "$(bc 'echo KEY=val > .env')"
 run_exit "orch-bash: blocks tee to package.json"  2 "$ORCH_BASH_GUARD" "$(bc 'cat config | tee package.json')"
 run_exit "orch-bash: blocks git push"             2 "$ORCH_BASH_GUARD" "$(bc 'git push origin main')"
+run_exit "orch-bash: blocks git pull"             2 "$ORCH_BASH_GUARD" "$(bc 'git pull origin main')"
+run_exit "orch-bash: blocks git merge"            2 "$ORCH_BASH_GUARD" "$(bc 'git merge feature/x')"
+run_exit "orch-bash: blocks git cherry-pick"      2 "$ORCH_BASH_GUARD" "$(bc 'git cherry-pick abc1234')"
 run_exit "orch-bash: blocks git reset --hard"     2 "$ORCH_BASH_GUARD" "$(bc 'git reset --hard HEAD~1')"
+run_exit "orch-bash: blocks git rebase"           2 "$ORCH_BASH_GUARD" "$(bc 'git rebase main')"
 run_exit "orch-bash: blocks git rebase -i"        2 "$ORCH_BASH_GUARD" "$(bc 'git rebase -i HEAD~3')"
 run_exit "orch-bash: blocks git checkout --"      2 "$ORCH_BASH_GUARD" "$(bc 'git checkout -- src/foo.ts')"
 run_exit "orch-bash: blocks git clean -fd"        2 "$ORCH_BASH_GUARD" "$(bc 'git clean -fd')"
@@ -2012,14 +2017,14 @@ run_exit "orch-bash: blocks docker system prune"  2 "$ORCH_BASH_GUARD" "$(bc 'do
 run_exit "orch-bash: sub-agent allows npm install"     0 "$ORCH_BASH_GUARD" "$(bc 'npm install lodash' '/repo/.worktrees/be-dev-T-001')"
 run_exit "orch-bash: sub-agent allows docker compose"  0 "$ORCH_BASH_GUARD" "$(bc 'docker compose up -d' '/repo/.worktrees/devops-T-002')"
 run_exit "orch-bash: sub-agent allows sed -i"          0 "$ORCH_BASH_GUARD" "$(bc 'sed -i s/foo/bar/ src/foo.ts' '/repo/.worktrees/be-dev-T-003')"
-run_exit "orch-bash: sub-agent allows git push"        0 "$ORCH_BASH_GUARD" "$(bc 'git push origin feature' '/repo/.worktrees/be-dev-T-004')"
+run_exit "orch-bash: sub-agent defers git push to local-worktree guard" 0 "$ORCH_BASH_GUARD" "$(bc 'git push origin feature' '/repo/.worktrees/be-dev-T-004')"
 run_exit "orch-bash: sub-agent allows redirect to src" 0 "$ORCH_BASH_GUARD" "$(bc 'echo x > src/foo.ts' '/repo/.worktrees/be-dev-T-001')"
 run_exit "orch-bash: deep nested worktree path"        0 "$ORCH_BASH_GUARD" "$(bc 'npm install' '/repo/.worktrees/be-dev-T-001/server')"
 
 # === Command-scoped worktree (cwd = root) — allow ===
 run_exit "orch-bash: cd worktree && build allowed"     0 "$ORCH_BASH_GUARD" "$(bc 'cd .worktrees/fe-dev-T-042 && npm run build')"
 run_exit "orch-bash: cd abs worktree && install"       0 "$ORCH_BASH_GUARD" "$(bc 'cd /repo/.worktrees/be-dev-T-001/server && npm install')"
-run_exit "orch-bash: git -C worktree push allowed"     0 "$ORCH_BASH_GUARD" "$(bc 'git -C .worktrees/be-dev-T-001 push origin feat')"
+run_exit "orch-bash: git -C worktree push deferred"    0 "$ORCH_BASH_GUARD" "$(bc 'git -C .worktrees/be-dev-T-001 push origin feat')"
 run_exit "orch-bash: make -C worktree allowed"         0 "$ORCH_BASH_GUARD" "$(bc 'make -C .worktrees/be-dev-T-001 build')"
 run_exit "orch-bash: --prefix worktree allowed"        0 "$ORCH_BASH_GUARD" "$(bc 'npm --prefix .worktrees/fe-dev-T-001 run build')"
 run_exit "orch-bash: pushd worktree allowed"           0 "$ORCH_BASH_GUARD" "$(bc 'pushd .worktrees/be-dev-T-001 && cargo build')"
@@ -2036,6 +2041,33 @@ run_exit "orch-bash: escape hatch allows docker compose" 0 "$ORCH_BASH_GUARD" "$
 run_exit "orch-bash: ignores non-Bash tool (Write)"    0 "$ORCH_BASH_GUARD" '{"tool_name":"Write","tool_input":{"file_path":"src/foo.ts","content":"x"}}'
 run_exit "orch-bash: ignores empty stdin"              0 "$ORCH_BASH_GUARD" ''
 run_exit "orch-bash: ignores malformed JSON"           0 "$ORCH_BASH_GUARD" 'not json'
+
+# ---------------- local-worktree-git-guard.cjs ----------------
+echo
+echo "local-worktree-git-guard.cjs:"
+
+run_exit "local-git: allows detached worktree add"      0 "$LOCAL_GIT_GUARD" "$(bc 'git worktree add --detach .worktrees/be-dev-T-001 HEAD')"
+run_exit "local-git: blocks branch-backed agent worktree add" 2 "$LOCAL_GIT_GUARD" "$(bc 'git worktree add -b agent/be-dev/T-001 .worktrees/be-dev-T-001 HEAD')"
+run_exit "local-git: blocks branch-backed .worktrees add" 2 "$LOCAL_GIT_GUARD" "$(bc 'git worktree add -b feature/be-dev-T-001 .worktrees/be-dev-T-001 HEAD')"
+run_exit "local-git: blocks reset branch-backed .worktrees add" 2 "$LOCAL_GIT_GUARD" "$(bc 'git worktree add -B feature/be-dev-T-001 .worktrees/be-dev-T-001 HEAD')"
+run_exit "local-git: blocks --branch agent worktree add" 2 "$LOCAL_GIT_GUARD" "$(bc 'git worktree add --branch agent/fe-dev/T-002 .worktrees/fe-dev-T-002 HEAD')"
+run_exit "local-git: allows normal git status in worktree" 0 "$LOCAL_GIT_GUARD" "$(bc 'git status -s' '/repo/.worktrees/be-dev-T-001')"
+run_exit "local-git: allows local commit in worktree"  0 "$LOCAL_GIT_GUARD" "$(bc 'git commit -m \"feat(api): add endpoint\"' '/repo/.worktrees/be-dev-T-001')"
+run_exit "local-git: blocks push from worktree cwd"    2 "$LOCAL_GIT_GUARD" "$(bc 'git push origin HEAD' '/repo/.worktrees/be-dev-T-001')"
+run_exit "local-git: blocks pull from worktree cwd"    2 "$LOCAL_GIT_GUARD" "$(bc 'git pull origin main' '/repo/.worktrees/be-dev-T-001')"
+run_exit "local-git: blocks merge in worktree cwd"     2 "$LOCAL_GIT_GUARD" "$(bc 'git merge main' '/repo/.worktrees/be-dev-T-001')"
+run_exit "local-git: blocks rebase in worktree cwd"    2 "$LOCAL_GIT_GUARD" "$(bc 'git rebase main' '/repo/.worktrees/be-dev-T-001')"
+run_exit "local-git: blocks cherry-pick in worktree cwd" 2 "$LOCAL_GIT_GUARD" "$(bc 'git cherry-pick abc1234' '/repo/.worktrees/be-dev-T-001')"
+run_exit "local-git: blocks git -C worktree push"      2 "$LOCAL_GIT_GUARD" "$(bc 'git -C .worktrees/be-dev-T-001 push origin HEAD')"
+run_exit "local-git: blocks git -C worktree merge"     2 "$LOCAL_GIT_GUARD" "$(bc 'git -C .worktrees/be-dev-T-001 merge main')"
+run_exit "local-git: blocks cd worktree then push"     2 "$LOCAL_GIT_GUARD" "$(bc 'cd .worktrees/fe-dev-T-042 && git push origin HEAD')"
+run_exit "local-git: blocks push of agent branch from root" 2 "$LOCAL_GIT_GUARD" "$(bc 'git push origin agent/be-dev/T-001')"
+run_exit "local-git: blocks merge of agent branch from root" 2 "$LOCAL_GIT_GUARD" "$(bc 'git merge agent/be-dev/T-001')"
+run_exit "local-git: allows push of non-agent branch from root (orchestrator guard handles root pushes)" 0 "$LOCAL_GIT_GUARD" "$(bc 'git push origin feature/foo')"
+run_exit "local-git: escape hatch allows blocked command" 0 "$LOCAL_GIT_GUARD" "$(bc 'git push origin HEAD' '/repo/.worktrees/be-dev-T-001')" "CLAUDE_ALLOW_LOCAL_WORKTREE_GIT=1"
+run_exit "local-git: ignores non-Bash tool"             0 "$LOCAL_GIT_GUARD" '{"tool_name":"Write","tool_input":{"file_path":"x","content":"x"}}'
+run_exit "local-git: ignores empty stdin"               0 "$LOCAL_GIT_GUARD" ''
+run_exit "local-git: ignores malformed JSON"            0 "$LOCAL_GIT_GUARD" 'not json'
 
 # ---------------- plan-update-location-guard.cjs ----------------
 echo

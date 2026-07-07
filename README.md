@@ -157,6 +157,8 @@ FE Dev selects the right coding-standard skill from SRS `Frontend-Framework`, or
 - Angular
 - Next.js
 
+React Native and Flutter then fan out into focused mobile companion skills: implementation, performance, and platform integration. This keeps normal UI work light while giving native/performance-heavy tasks sharper guardrails.
+
 ### Backend Tracks
 
 Backend work is split into:

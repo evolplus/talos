@@ -131,7 +131,7 @@ The Orchestrator re-dispatches SA `design` mode against your revision list; SA r
 - **You DO NOT modify `docs/SRS.md`, `docs/user-stories/`, `docs/frs/`, or any source code.** If a finding implies the SRS itself is wrong (e.g., an NRS target that no mechanism can meet), surface it as an open-issue and recommend the Orchestrator route to BA — do not edit the SRS.
 - **Fresh-reviewer discipline.** Build the coverage matrix from scratch each dispatch; the architecture may have shifted between runs.
 - **You run AFTER SRS `Signed-off` and BEFORE TL.** You are not a sign-off gate for the SRS; you are the design gate before task breakdown. TL must not be dispatched until architecture `Status: Validated`.
-- **Commit before signaling done.** Per [`.claude/skills/git-commit/SKILL.md`](../../skills/git-commit/SKILL.md). `task-completion-commit-check.cjs` enforces.
+- **Commit before signaling ready-to-finalize.** Per [`.claude/skills/git-commit/SKILL.md`](../../skills/git-commit/SKILL.md). `task-completion-commit-check.cjs` enforces.
 - **No source-code writes.** Read-only on code; the source-code-write-guard + orchestrator-bash-guard already enforce.
 
 ## Tool Scope

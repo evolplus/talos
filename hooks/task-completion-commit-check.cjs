@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 // .claude/hooks/task-completion-commit-check.cjs
-// PreToolUse hook: enforces the kit's "commit before signaling done"
-// invariant. When a sub-agent writes plan-update.json (the dispatch
-// completion signal per worktree-isolation.md §5), verify the agent's
+// PreToolUse hook: enforces the kit's "commit before signaling ready-to-finalize"
+// invariant. When a sub-agent writes plan-update.json (the ready-to-finalize
+// signal per worktree-isolation.md §5), verify the agent's
 // worktree has no uncommitted changes — otherwise the dispatch is
 // incomplete.
 //
@@ -99,10 +99,10 @@ async function main() {
   // Block
   process.stderr.write(
     `task-completion-commit-check: BLOCKED — you have ${actualDirty.length} uncommitted change(s)\n` +
-    `  in your worktree but you're about to write plan-update.json (the dispatch\n` +
-    `  completion signal). Per the kit's per-role Hard Rule "Commit before signaling done"\n` +
+    `  in your worktree but you're about to write plan-update.json (the\n` +
+    `  ready-to-finalize signal). Per the kit's per-role Hard Rule "Commit before signaling ready-to-finalize"\n` +
     `  + .claude/skills/git-commit/SKILL.md discipline, you MUST commit your work\n` +
-    `  BEFORE signaling done.\n\n` +
+    `  BEFORE signaling ready-to-finalize.\n\n` +
     `  Uncommitted changes:\n`
   );
   for (const line of actualDirty.slice(0, 30)) {

@@ -18,7 +18,7 @@ Any time an agent (or human) is about to run `git commit` in a worktree or the m
 ## Inputs and outputs
 
 - **Inputs:** the change to commit; the master-plan task ID (`T-NNN`) it serves if applicable; the agent role making the commit; for human-contributed work, the human's name + email
-- **Outputs:** a well-formed conventional commit on a worktree branch, with identity, traceability, and any required attribution trailers
+- **Outputs:** a well-formed conventional commit in the current local worktree, with identity, traceability, and any required attribution trailers
 
 ## Procedure
 
@@ -30,12 +30,12 @@ Any time an agent (or human) is about to run `git commit` in a worktree or the m
    - Blank line, then body (optional but encouraged for non-trivial commits)
    - Blank line, then footer trailers (task ref, attribution)
 5. **Verify message** against the regex in `conventional-commits-format.md`. If it doesn't match, rewrite — don't bypass with `--no-verify`.
-6. **Add the task reference.** Every commit on a worktree branch should reference its master-plan task (e.g., `Refs: T-014` in the footer, or scope-tagged like `feat(billing)(T-014): …`).
+6. **Add the task reference.** Every commit made for a master-plan task should reference that task (e.g., `Refs: T-014` in the footer, or scope-tagged like `feat(billing)(T-014): …`).
 7. **Add attribution trailers** where they apply (see [`references/compliance-policy.md`](./references/compliance-policy.md)):
    - `Co-authored-by: <name> <email>` when a human's contribution shaped this commit (notably the `design-human-edited` Figma flow per CLAUDE.md §4)
    - `Generated-By: <agent-role>` when an agent (Claude Code instance) is the primary author
 8. **Commit.** `git commit -m "..."` for single-line, or `git commit` to open the editor for multi-line.
-9. **Push to your worktree branch only.** Never `git push origin main` from a sub-agent. The Orchestrator merges from worktrees per `.claude/rules/worktree-isolation.md` §5.
+9. **Do not push or merge local worktree history.** A sub-agent worktree under `.worktrees/<role>-<task-id>/` is detached and local-only. Never run `git push`, `git pull`, `git merge`, `git rebase`, or `git cherry-pick` from it. The Orchestrator promotes validated file content to main by path-scoped ingestion per `.claude/rules/worktree-isolation.md` §5.
 
 ## Configuring identity
 
@@ -117,14 +117,14 @@ The privacy-check hook (`.claude/hooks/privacy-check.cjs`) refuses reads/writes 
 
 ### Traceability
 
-- **Every worktree-branch commit references its master-plan task** — `Refs: T-NNN` in the footer, or via the scope-tail `(T-NNN)` in the subject. Commits made outside of master-plan work (kit edits, infra scripts, non-SDLC reports) reference the relevant artifact path or note `Refs: none` in the footer.
+- **Every task-scoped commit references its master-plan task** — `Refs: T-NNN` in the footer, or via the scope-tail `(T-NNN)` in the subject. Commits made outside of master-plan work (kit edits, infra scripts, non-SDLC reports) reference the relevant artifact path or note `Refs: none` in the footer.
 - **Non-SDLC report commits** (researcher / debugger / code-reviewer / oq-resolver outputs) reference their report path: `Refs: docs/research-reports/<topic-slug>.md`.
 
 ### Hygiene
 
 - No secrets in commit history. If a secret ever lands in a commit, the secret is compromised — rotate immediately, then scrub history (`git filter-repo` or `BFG`). Prevention is far cheaper than remediation; the `.gitignore` + privacy-check hook are the prevention layer.
 - No PII (names, emails of users / customers, internal IDs) in commit messages. Commit history is durable and broadcasts widely; PII in `git log` is a leak.
-- No force-pushing to shared branches. Sub-agents commit to their own worktree branch (`agent/<role>/<task-id>`); the Orchestrator merges. Force-pushing rewrites history other contributors depend on.
+- No force-pushing to shared branches. Sub-agents do not push at all from `.worktrees/<role>-<task-id>/`; those detached commits stay local and are discarded after validated file-content promotion.
 
 ## Hard Rules
 
@@ -132,9 +132,9 @@ The privacy-check hook (`.claude/hooks/privacy-check.cjs`) refuses reads/writes 
 - Never commit a message that fails the conventional-commits regex. Rewrite — never bypass with `--no-verify`.
 - Never commit a `.env`, `*.pem`, `*.key`, or any other secret-class file. If `git status` shows one, stop and add it to `.gitignore` before continuing.
 - Never include PII or customer identifiers in commit messages or commit bodies. Reference issues / tickets by ID, not by user.
-- Never `git push --force` (or `--force-with-lease`) on a shared branch. Sub-agents push only to their own worktree branch.
+- Never `git push`, `git pull`, `git merge`, `git rebase`, or `git cherry-pick` from a sub-agent worktree. Local worktree commits are not integration history.
 - Never use a personal email for organizational work commits.
-- Every commit on a worktree branch carries either `Refs: T-NNN` (or scope-tail `(T-NNN)`) for master-plan work, or `Refs: <artifact-path>` for kit / docs work. No commits without traceability.
+- Every task-scoped worktree commit carries either `Refs: T-NNN` (or scope-tail `(T-NNN)`) for master-plan work, or `Refs: <artifact-path>` for kit / docs work. No commits without traceability.
 
 ## References
 
