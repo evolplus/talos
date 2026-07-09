@@ -62,7 +62,7 @@ Start or continue:
   -> SA architecture, ADRs, integration adequacy, and instrumentation contracts
   -> TL task planning
   -> BE/FE implementation
-  -> DevOps local deployment
+  -> DevOps deployment/readiness gates
   -> QA-Exec runtime verification
   -> iteration or done
 ```
@@ -186,6 +186,16 @@ Supported framework standards include:
 - QA-Author `by-task` - task-scoped API, structural, e2e, and rare task-functional cases.
 - Visual-spec generation for UI tasks.
 - QA-Exec runtime verification against the deployed local build, with reports and artifacts under `docs/qa-reports/`.
+
+### DevOps Tracks
+
+- Local deployment for QA-Exec and operator trial.
+- SSH remote operations for approved server command execution and package/software installation.
+- Dockerfile / Docker Compose deployment locally or on approved remote hosts.
+- Kubernetes deployment using project-root `.k8s/` config by reference.
+- Staging deployment with release, migration, rollback, secret/config, and observability gates.
+- Release-readiness, migration-safety, rollback-readiness, secrets/config audit, and observability-readiness checks.
+- Incident debugging for deployed-environment regressions, with read-only investigation by default.
 
 ## Artifact Model
 

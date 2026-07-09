@@ -105,6 +105,16 @@ Predefined Foundation starting points. Selected by SRS header `Design-Guideline:
 | Skill | When | Status |
 |---|---|---|
 | [`local-deployment`](./local-deployment/SKILL.md) | Every DevOps dispatch against a `ready-for-deploy` task — Docker-based environment composition, SRS §3.4.6 config-key validation, `.env`/template/compose `env_file` discovery without exposing secrets, port probing (never hardcode 3000), worktree override generation, health-check polling, deploy report populated with both `## Test Environment` (QA-Exec consumes) and `## Human Trial URLs` (operator opens in browser). | active |
+| [`ssh-remote-operations`](./ssh-remote-operations/SKILL.md) | DevOps remote VM/server operations through project-root `.ssh/config` — command execution, package/software installation, artifact staging, host preflight, health checks, rollback notes, and deploy evidence without reading SSH credentials. | active |
+| [`docker-deployment`](./docker-deployment/SKILL.md) | DevOps Dockerfile or docker-compose deployment beyond the local QA loop — image build/pull/tag checks, remote Compose releases via SSH, scoped Docker mutations, health checks, rollback commands, and redacted deploy reports. | active |
+| [`kubernetes-deployment`](./kubernetes-deployment/SKILL.md) | DevOps Kubernetes deployment — manifests, Kustomize, Helm, explicit kubeconfig/namespace/context, dry-run/diff, rollout status, rollback, and credential-safe handling of project-root `.k8s/`. | active |
+| [`staging-deployment`](./staging-deployment/SKILL.md) | DevOps promotion to staging/testing/UAT/pre-prod — target/build confirmation, readiness gates, bounded rollout, smoke checks, rollback evidence, and redacted staging deploy reports. | active |
+| [`release-readiness`](./release-readiness/SKILL.md) | DevOps pre-release gate — artifact provenance, QA/runtime evidence, dependency/security posture, migration/rollback/config/observability gates, compatibility, approvals, and a ready/blocked verdict. | active |
+| [`migration-safety`](./migration-safety/SKILL.md) | DevOps migration gate — schema/data/queue/index/storage migration classification, expand-contract compatibility, dry-run/preflight, backup/restore evidence, runtime impact, and failure handling. | active |
+| [`rollback-readiness`](./rollback-readiness/SKILL.md) | DevOps rollback gate — previous artifact/version, rollback command, data compatibility, feature flag fallback, validation checks, trigger thresholds, and owner/escalation evidence. | active |
+| [`secrets-config-audit`](./secrets-config-audit/SKILL.md) | DevOps secret/config readiness — required key names, safe templates, injection paths, unsafe storage findings, rotation/ownership metadata, and redacted config verdict without exposing values. | active |
+| [`observability-readiness`](./observability-readiness/SKILL.md) | DevOps observability gate — health endpoints, logs, metrics, traces, dashboards, alerts, smoke probes, correlation IDs, SLO signals, runbook links, and telemetry gap findings. | active |
+| [`incident-debugging`](./incident-debugging/SKILL.md) | DevOps deployed-environment incident diagnosis — read-only timeline/impact/root-cause evidence, mitigation/rollback options, safe telemetry handling, and follow-up routing. | active |
 
 ### FE Dev
 
@@ -127,8 +137,8 @@ Predefined Foundation starting points. Selected by SRS header `Design-Guideline:
 | Design (UI/UX Designer) | ui-ux-page-scoping, figma-requirements-extraction, figma-srs-mapping, figma-design-handoff, figma-canvas-layout, design-system-author |
 | Implementation (BE / FE) | api-contract-author, be-framework-coding-standard, fe-framework-coding-standard, react-native-implementation, react-native-performance, react-native-platform-integration, flutter-implementation, flutter-performance, flutter-platform-integration |
 | QA (Author / Exec) | qa-author-by-us, qa-author-by-task, visual-spec-author, qa-execution-runner, test-case-author, ui-test-execution, playwright-author |
-| Deploy (DevOps) | local-deployment |
-| Post-release | — |
+| Deploy (DevOps) | local-deployment, ssh-remote-operations, docker-deployment, kubernetes-deployment, staging-deployment, release-readiness, migration-safety, rollback-readiness, secrets-config-audit, observability-readiness |
+| Post-release | incident-debugging |
 
 ## Adding a new skill to the registry
 

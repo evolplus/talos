@@ -13,7 +13,7 @@ All hooks are **fail-open**: if a hook crashes or its event JSON is malformed, i
 | `session-init-summary.cjs` | SessionStart | Prints SRS / open-issues / master-plan state on every session start |
 | `srs-status-guard.cjs` | UserPromptSubmit | Reminds when SRS Status ≠ Signed-off |
 | `open-issues-triage-gate.cjs` | UserPromptSubmit | Reminds when any open-issues entry is `State: open` |
-| `privacy-check.cjs` | PreToolUse | Blocks reads/writes/searches against sensitive paths |
+| `privacy-check.cjs` | PreToolUse | Blocks reads/writes/searches against sensitive paths and credential-dumping Bash commands while allowing safe SSH/K8s config references |
 | `plan-update-validator.cjs` | PreToolUse (Write) | Validates `plan-update.json` schema |
 | `acceptance-scenarios-validator.cjs` | PreToolUse (Write) | Blocks US/FR writes that lack a Given/When/Then Acceptance Scenarios section |
 | `self-containment-validator.cjs` | PreToolUse (Write) | Blocks kit artifacts that back-reference upstream sources instead of being self-contained |
@@ -81,7 +81,7 @@ The file is stripped of fenced code blocks before parsing, so example/template e
 
 ## privacy-check.cjs (PreToolUse)
 
-Blocks `Read`, `Edit`, `Write`, `MultiEdit`, `NotebookEdit`, `Glob`, `Grep`, and `Bash` calls that touch sensitive paths.
+Blocks `Read`, `Edit`, `Write`, `MultiEdit`, `NotebookEdit`, `Glob`, `Grep`, and unsafe `Bash` calls that read or expose sensitive paths.
 
 **Patterns blocked** (extend the list at the top of the file):
 
@@ -89,10 +89,16 @@ Blocks `Read`, `Edit`, `Write`, `MultiEdit`, `NotebookEdit`, `Glob`, `Grep`, and
 - `secrets/`, `credentials/`, `private/` directories
 - `*.pem`, `*.key`, `*.p12`, `*.pfx`
 - `id_rsa`, `id_ed25519`, `id_ecdsa`, `id_dsa`
-- `~/.ssh/`, `~/.aws/credentials`, `~/.config/gcloud/`, `~/.kube/config`
+- `.ssh/`, `~/.ssh/`, `~/.aws/credentials`, `~/.config/gcloud/`, `~/.kube/config`
+- project-root `.k8s/` kubeconfig/credential/secret/token files
+- generic `kubeconfig`, `kubeconfig.yaml`, and `kube-config.*` files
+- Kubernetes Secret files such as `secret.yaml` or `secrets.json`
+- `.docker/config.json`
 - `.netrc`
 
 **Allowlisted** (always permitted): `.env.example`, `.env.template`, `.env.sample`
+
+**Operational Bash references allowed:** `ssh -F .ssh/config ...`, `scp -F .ssh/config ...`, `kubectl --kubeconfig .k8s/<config> ...`, `helm --kubeconfig .k8s/<config> ...`, and `KUBECONFIG=.k8s/<config> kubectl ...` are allowed because the command references the credential file without printing it. Commands that dump credentials, such as `cat .ssh/config`, `ssh -F .ssh/config host printenv`, or `kubectl --kubeconfig .k8s/config config view --raw`, are blocked.
 
 **Override per-session**: `export CLAUDE_PRIVACY_OK=1`
 
@@ -100,12 +106,12 @@ Blocks `Read`, `Edit`, `Write`, `MultiEdit`, `NotebookEdit`, `Glob`, `Grep`, and
 
 - `.envrc` (direnv) — frequently contains secret exports; not currently blocked
 - `.npmrc` (npm) — can contain private registry auth tokens
-- Bare `kubeconfig` / `kubeconfig.yaml` (no dot prefix) — some teams use this convention
 - `.terraformrc`, `.pypirc` — credential containers
+- Kubernetes Secret values embedded in ordinary manifest filenames, for example `deployment.yaml` containing `kind: Secret`; this hook is path/command based and cannot inspect file content before `Read`.
 
 The privacy hook is the runtime defense layer; the `.gitignore` baseline in `.claude/skills/git-commit/references/gitignore-template.md` is the static defense layer. Both are required; neither alone is sufficient.
 
-**Known limitation**: Bash command parsing is substring-only. `cat /tmp/copy-of-env.txt` slips through; `cat ./.env` is caught. The hook covers the common case; adversarial cases require code review.
+**Known limitation**: Bash command parsing is still heuristic. `cat /tmp/copy-of-env.txt` slips through; `cat ./.env`, `cat .ssh/config`, and `kubectl config view --raw` are caught. The hook covers the common case; adversarial cases require code review.
 
 ## plan-update-validator.cjs (PreToolUse on Write)
 
