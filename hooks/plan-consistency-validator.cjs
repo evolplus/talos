@@ -24,7 +24,7 @@
 const fs = require('fs');
 const path = require('path');
 const { stripFencedCodeBlocks } = require('./lib/strip-fences.cjs');
-const { parseHeaderField } = require('./lib/parse-header.cjs');
+const { parseHeaderField, headerPrelude } = require('./lib/parse-header.cjs');
 
 const ROOT = process.env.CLAUDE_PROJECT_DIR || process.cwd();
 
@@ -106,7 +106,7 @@ function readTaskStatus(taskFilePath) {
   const content = readFileSafe(taskFilePath);
   if (!content) return null;
   const stripped = stripFencedCodeBlocks(content);
-  const head = stripped.slice(0, 4000);
+  const head = headerPrelude(stripped, 4000);
   return parseHeaderField(head, 'Status');
 }
 

@@ -20,7 +20,7 @@
 const fs = require('fs');
 const path = require('path');
 const { stripFencedCodeBlocks } = require('./lib/strip-fences.cjs');
-const { parseHeaderField } = require('./lib/parse-header.cjs');
+const { parseHeaderField, headerPrelude } = require('./lib/parse-header.cjs');
 
 const ROOT = process.env.CLAUDE_PROJECT_DIR || process.cwd();
 const SRS_PATH = path.join(ROOT, 'docs/SRS.md');
@@ -35,7 +35,7 @@ function readSrs() {
   }
   // Status header lives near the top of the file. parseHeaderField tolerates
   // markdown bold (**Status:**) and other variants the kit templates use.
-  const head = content.slice(0, 4000);
+  const head = headerPrelude(content, 4000);
   return {
     exists: true,
     status: parseHeaderField(head, 'Status'),

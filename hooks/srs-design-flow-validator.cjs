@@ -22,7 +22,7 @@
 const fs = require('fs');
 const path = require('path');
 const { stripFencedCodeBlocks } = require('./lib/strip-fences.cjs');
-const { parseHeaderField } = require('./lib/parse-header.cjs');
+const { parseHeaderField, headerPrelude } = require('./lib/parse-header.cjs');
 
 const SRS_PATH_RE = /(^|\/)docs\/SRS\.md$/i;
 const SIGNOFF_STATUSES = new Set(['ready-for-sign-off', 'source-validated', 'signed-off']);
@@ -75,7 +75,7 @@ function computeFinalContent(toolName, toolInput, root) {
 }
 
 function parseSrsHeader(content, label) {
-  const stripped = stripFencedCodeBlocks(content).slice(0, 6000);
+  const stripped = headerPrelude(stripFencedCodeBlocks(content), 6000);
   return parseHeaderField(stripped, label);
 }
 
@@ -192,7 +192,7 @@ function inspectMapping(root, version) {
     return { path: rel, violations: ['Cannot read Flow A mapping artifact: ' + rel + '.'] };
   }
   const stripped = stripFencedCodeBlocks(content);
-  const status = normalize(parseHeaderField(stripped.slice(0, 6000), 'Mapping-Status'));
+  const status = normalize(parseHeaderField(headerPrelude(stripped, 6000), 'Mapping-Status'));
   if (!status) {
     violations.push(rel + ' is missing Mapping-Status.');
   } else if (status === 'gaps') {

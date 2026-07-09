@@ -24,7 +24,7 @@
 const fs = require('fs');
 const path = require('path');
 const { stripFencedCodeBlocks } = require('./lib/strip-fences.cjs');
-const { parseHeaderField } = require('./lib/parse-header.cjs');
+const { parseHeaderField, headerPrelude } = require('./lib/parse-header.cjs');
 
 const ROOT = process.env.CLAUDE_PROJECT_DIR || process.cwd();
 const ARCH_PATH = path.join(ROOT, 'docs/architecture.md');
@@ -38,7 +38,7 @@ function readArch() {
   } catch (e) {
     return { exists: false, error: e.message };
   }
-  const head = content.slice(0, 4000);
+  const head = headerPrelude(content, 4000);
   return {
     exists: true,
     status: parseHeaderField(head, 'Status'),

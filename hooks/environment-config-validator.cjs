@@ -14,7 +14,7 @@
 const fs = require('fs');
 const path = require('path');
 const { stripFencedCodeBlocks } = require('./lib/strip-fences.cjs');
-const { parseHeaderField } = require('./lib/parse-header.cjs');
+const { parseHeaderField, headerPrelude } = require('./lib/parse-header.cjs');
 
 const SRS_PATH_RE = /(^|\/)docs\/SRS\.md$/i;
 const SIGNOFF_STATUSES = new Set(['ready-for-sign-off', 'source-validated', 'signed-off']);
@@ -67,7 +67,7 @@ function computeFinalContent(toolName, toolInput, root) {
 }
 
 function header(content, label) {
-  return parseHeaderField(stripFencedCodeBlocks(content).slice(0, 8000), label);
+  return parseHeaderField(headerPrelude(stripFencedCodeBlocks(content), 8000), label);
 }
 
 function isPresentRuntimeValue(v) {

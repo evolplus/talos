@@ -20,7 +20,7 @@
 const fs = require('fs');
 const path = require('path');
 const { stripFencedCodeBlocks } = require('./lib/strip-fences.cjs');
-const { parseHeaderField } = require('./lib/parse-header.cjs');
+const { parseHeaderField, headerPrelude } = require('./lib/parse-header.cjs');
 
 const ROOT = process.env.CLAUDE_PROJECT_DIR || process.cwd();
 
@@ -243,8 +243,7 @@ function summarizeWorkloadTier() {
   // Try SRS header
   const srsContent = readSafe('docs/SRS.md');
   if (srsContent) {
-    const { parseHeaderField } = require('./lib/parse-header.cjs');
-    const fromHeader = (parseHeaderField(srsContent.slice(0, 4000), 'Workload-Tier') || '').toLowerCase().trim();
+    const fromHeader = (parseHeaderField(headerPrelude(srsContent, 4000), 'Workload-Tier') || '').toLowerCase().trim();
     if (fromHeader === 'aggressive' || fromHeader === 'standard' || fromHeader === 'conservative') {
       return `Workload tier: ${fromHeader} (via SRS header)`;
     }
@@ -288,13 +287,33 @@ function summarizeGit() {
     const lines = out.split('\n').filter(Boolean);
     if (lines.length > 0) dirty = ` / ${lines.length} uncommitted change(s) on main`;
   } catch {}
-  return `Git: repo OK, identity: ${identity}${dirty}`;
+  let trunk = '';
+  try {
+    const head = execSync('git rev-parse --verify HEAD', {
+      cwd: ROOT,
+      stdio: ['ignore', 'pipe', 'ignore'],
+    }).toString().trim();
+    const main = execSync('git rev-parse --verify main', {
+      cwd: ROOT,
+      stdio: ['ignore', 'pipe', 'ignore'],
+    }).toString().trim();
+    if (head && main && head !== main) {
+      const ahead = Number(execSync('git rev-list --count main..HEAD', {
+        cwd: ROOT,
+        stdio: ['ignore', 'pipe', 'ignore'],
+      }).toString().trim() || '0');
+      if (ahead > 0) {
+        trunk = ` / ⚠ HEAD is ahead of main by ${ahead} commit(s); reconcile main before dispatch`;
+      }
+    }
+  } catch {}
+  return `Git: repo OK, identity: ${identity}${dirty}${trunk}`;
 }
 
 function summarizeSrs() {
   const c = readSafe('docs/SRS.md');
   if (c === null) return 'SRS: docs/SRS.md not found';
-  const head = c.slice(0, 4000);
+  const head = headerPrelude(c, 4000);
   const status = parseHeaderField(head, 'Status') || '(missing Status header)';
   const lastUpdated = parseHeaderField(head, 'Last-Updated');
   const date = lastUpdated ? `, Last-Updated: ${lastUpdated}` : '';

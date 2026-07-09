@@ -1,8 +1,7 @@
 'use strict';
 
 // hooks/lib/parse-header.cjs
-// Pure function: given a markdown string and a header-field label, return the
-// field's value as a single non-whitespace token (or null if absent).
+// Helpers for parsing kit-format markdown headers.
 //
 // Tolerant of the markdown variants the kit's templates actually use, so hook
 // parsing doesn't drift from how authors write the docs.
@@ -21,6 +20,16 @@
 //
 // Callers should pre-process with stripFencedCodeBlocks() so a "format reference"
 // fenced block at the top of the doc doesn't shadow the real header value.
+
+function stripHtmlComments(content) {
+  if (typeof content !== 'string') return '';
+  return content.replace(/<!--[\s\S]*?(?:-->|$)/g, '');
+}
+
+function headerPrelude(content, maxChars) {
+  const limit = Number.isFinite(maxChars) && maxChars > 0 ? maxChars : 4000;
+  return stripHtmlComments(content).slice(0, limit);
+}
 
 function parseHeaderField(content, label, opts) {
   if (typeof content !== 'string' || typeof label !== 'string' || !label) {
@@ -45,7 +54,7 @@ function parseHeaderField(content, label, opts) {
     `^[\\s\\-*]*\\*{0,2}${escaped}\\s*:\\s*\\*{0,2}\\s*(\\S+)`,
     flags
   );
-  const m = content.match(rx);
+  const m = stripHtmlComments(content).match(rx);
   if (!m) return null;
   // Strip surrounding markdown bold/italic markers + trailing sentence punctuation
   return m[1]
@@ -54,4 +63,4 @@ function parseHeaderField(content, label, opts) {
     .replace(/[.,;:!?]+$/, '');
 }
 
-module.exports = { parseHeaderField };
+module.exports = { parseHeaderField, stripHtmlComments, headerPrelude };

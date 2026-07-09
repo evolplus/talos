@@ -79,6 +79,38 @@ function tokenize(cmd) {
   return tokens;
 }
 
+function collectPositionals(args, flagsWithValues) {
+  const out = [];
+  let i = 0;
+  while (i < args.length) {
+    const a = args[i];
+    if (a === '--') {
+      out.push(...args.slice(i + 1));
+      break;
+    }
+    if (a.startsWith('--')) {
+      const flag = a.split('=')[0];
+      if (flagsWithValues.has(flag) && !a.includes('=') && i + 1 < args.length) {
+        i += 2;
+      } else {
+        i++;
+      }
+      continue;
+    }
+    if (a.startsWith('-') && a !== '-') {
+      if (flagsWithValues.has(a) && i + 1 < args.length) {
+        i += 2;
+      } else {
+        i++;
+      }
+      continue;
+    }
+    out.push(a);
+    i++;
+  }
+  return out;
+}
+
 // True read-only docker subcommands (after `docker`).
 const READ_ONLY_SUBCMDS = new Set([
   'ps', 'inspect', 'logs', 'port', 'top', 'stats', 'version', 'info', 'events',
@@ -110,6 +142,10 @@ const MUTATION_VERBS = new Set([
   'stop', 'kill', 'rm', 'restart', 'pause', 'unpause', 'rename', 'update', 'commit',
   'cp', 'exec', 'attach', 'start',  // start is technically idempotent but still a mutation
 ]);
+const EXEC_FLAGS_WITH_VALUES = new Set([
+  '--detach-keys', '--env', '-e', '--env-file', '--user', '-u', '--workdir', '-w',
+]);
+const CP_FLAGS_WITH_VALUES = new Set([]);
 // Resource-level mutations: docker {network,volume,image} rm NAME
 const RESOURCE_MUTATIONS = {
   network: new Set(['rm', 'remove', 'create', 'connect', 'disconnect']),
@@ -171,6 +207,12 @@ function checkDockerCommand(cmd, slug) {
 
   // Single-verb mutation: docker stop foo, docker rm bar, etc.
   if (MUTATION_VERBS.has(sub)) {
+    if (sub === 'exec') {
+      return checkExecMutationTargets(args.slice(1), slug);
+    }
+    if (sub === 'cp') {
+      return checkCopyMutationTargets(args.slice(1), slug);
+    }
     return checkMutationTargets(sub, args.slice(1), slug);
   }
 
@@ -245,6 +287,53 @@ function checkCompose(args, slug) {
   return { allow: true };
 }
 
+function checkContainerTargets(verb, targets, slug) {
+  if (targets.length === 0) return { allow: true };
+  const isHex = /^[0-9a-f]{6,64}$/i;
+  const violators = targets.filter(t => !t.startsWith(`${slug}-`) && !isHex.test(t));
+  if (violators.length > 0) {
+    return {
+      allow: false,
+      reason: 'mutation-on-non-scoped-container',
+      detail: `\`docker ${verb} ${violators.join(' ')}\` — these container name(s) don't start with the project slug "${slug}-". Out-of-scope mutations are forbidden.`,
+    };
+  }
+  return { allow: true };
+}
+
+function checkExecMutationTargets(restArgs, slug) {
+  // docker exec [OPTIONS] CONTAINER COMMAND [ARG...]
+  // Only CONTAINER is a docker target; COMMAND and ARG tokens are paths or
+  // process args and must not be scope-checked as container names.
+  const positionals = collectPositionals(restArgs, EXEC_FLAGS_WITH_VALUES);
+  if (positionals.length === 0) return { allow: true };
+  return checkContainerTargets('exec', [positionals[0]], slug);
+}
+
+function containerFromCopyEndpoint(endpoint) {
+  if (!endpoint || endpoint === '-') return null;
+  const idx = endpoint.indexOf(':');
+  if (idx <= 0) return null;
+  const candidate = endpoint.slice(0, idx);
+  if (candidate.startsWith('.') || candidate.startsWith('/') || candidate.includes('/')) {
+    return null;
+  }
+  return candidate;
+}
+
+function checkCopyMutationTargets(restArgs, slug) {
+  // docker cp [OPTIONS] SRC_PATH|- DEST_PATH|-
+  // A docker target is present only on endpoints shaped like CONTAINER:path.
+  // Host paths, including destination paths, must not be treated as containers.
+  const positionals = collectPositionals(restArgs, CP_FLAGS_WITH_VALUES);
+  if (positionals.length < 2) return { allow: true };
+  const containers = positionals
+    .slice(0, 2)
+    .map(containerFromCopyEndpoint)
+    .filter(Boolean);
+  return checkContainerTargets('cp', containers, slug);
+}
+
 function checkMutationTargets(verb, restArgs, slug) {
   // Filter out flags; keep positional container names/IDs.
   const targets = [];
@@ -276,16 +365,7 @@ function checkMutationTargets(verb, restArgs, slug) {
   // — a sub-agent that obtains a container ID could in theory target anything,
   // but the kit's discipline (Hard Rule) covers that; runtime hook focuses on
   // the obvious naming-based cases.
-  const isHex = /^[0-9a-f]{6,64}$/i;
-  const violators = targets.filter(t => !t.startsWith(`${slug}-`) && !isHex.test(t));
-  if (violators.length > 0) {
-    return {
-      allow: false,
-      reason: 'mutation-on-non-scoped-container',
-      detail: `\`docker ${verb} ${violators.join(' ')}\` — these container name(s) don't start with the project slug "${slug}-". Out-of-scope mutations are forbidden.`,
-    };
-  }
-  return { allow: true };
+  return checkContainerTargets(verb, targets, slug);
 }
 
 function checkResourceMutation(resource, restArgs, slug) {

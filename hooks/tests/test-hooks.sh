@@ -783,6 +783,26 @@ run_stdout_contains "shows running task count"     "$SESSION_INIT" '{}' "1 runni
 run_stdout_contains "handles missing files"   "$SESSION_INIT" '{}' "docs/SRS.md not found"    "CLAUDE_PROJECT_DIR=$FIX_ROOT/session-empty"
 run_exit "always exits 0"                     0 "$SESSION_INIT" '{}' "CLAUDE_PROJECT_DIR=$FIX_ROOT/session-rich"
 
+if command -v git >/dev/null 2>&1; then
+  GIT_FIX="$FIX_ROOT/session-head-ahead"
+  mkdir -p "$GIT_FIX/docs"
+  cat > "$GIT_FIX/docs/SRS.md" <<EOF
+Status: Signed-off
+EOF
+  git -C "$GIT_FIX" init -b main >/dev/null 2>&1 || git -C "$GIT_FIX" init >/dev/null 2>&1
+  git -C "$GIT_FIX" checkout -B main >/dev/null 2>&1
+  git -C "$GIT_FIX" config user.name "Kit Test" >/dev/null
+  git -C "$GIT_FIX" config user.email "kit-test@example.com" >/dev/null
+  git -C "$GIT_FIX" add docs/SRS.md >/dev/null
+  git -C "$GIT_FIX" commit -m "test: initial" >/dev/null
+  git -C "$GIT_FIX" checkout -b qa/report >/dev/null 2>&1
+  printf '\nUpdate\n' >> "$GIT_FIX/docs/SRS.md"
+  git -C "$GIT_FIX" add docs/SRS.md >/dev/null
+  git -C "$GIT_FIX" commit -m "test: qa report" >/dev/null
+  run_stdout_contains "warns when HEAD is ahead of main ref" \
+      "$SESSION_INIT" '{}' "HEAD is ahead of main by 1 commit(s)" "CLAUDE_PROJECT_DIR=$GIT_FIX"
+fi
+
 # ---------------- kit-role-dispatch-guard.cjs ----------------
 echo
 echo "kit-role-dispatch-guard.cjs:"
@@ -1392,6 +1412,24 @@ EOF
 run_stdout_silent "srs-status-guard: silent on bold **Status:** Signed-off" \
     "$SRS_GUARD" '{}' "CLAUDE_PROJECT_DIR=$FIX_ROOT/md-srs-signed"
 
+mkdir -p "$FIX_ROOT/md-srs-long-comment/docs"
+LONG_HTML_COMMENT="$(printf '%05000d' 0 | tr '0' 'x')"
+cat > "$FIX_ROOT/md-srs-long-comment/docs/SRS.md" <<EOF
+# [Project Name]: [Feature Title]
+
+**Version:** 1.5 <!-- $LONG_HTML_COMMENT -->
+**Domain:** Spectator
+**Status:** Signed-off <!-- FLIPPED Source-Validated -> Signed-off with a long audit note -->
+**Signed-off-by:** srs-feasibility-validator
+**Workload-Tier:** conservative
+EOF
+run_stdout_silent "srs-status-guard: silent when comment pushes Status past old scan window" \
+    "$SRS_GUARD" '{}' "CLAUDE_PROJECT_DIR=$FIX_ROOT/md-srs-long-comment"
+run_stdout_contains "session-init: reports Status after huge header comment" \
+    "$SESSION_INIT" '{}' "SRS: Signed-off" "CLAUDE_PROJECT_DIR=$FIX_ROOT/md-srs-long-comment"
+run_stdout_contains "session-init: reads Workload-Tier after huge header comment" \
+    "$SESSION_INIT" '{}' "Workload tier: conservative (via SRS header)" "CLAUDE_PROJECT_DIR=$FIX_ROOT/md-srs-long-comment"
+
 # srs-status-guard: bold **Status:** Draft → emits reminder with parsed status
 mkdir -p "$FIX_ROOT/md-srs-draft/docs"
 cat > "$FIX_ROOT/md-srs-draft/docs/SRS.md" <<'EOF'
@@ -1740,6 +1778,10 @@ run_exit "allows compose up with -p slug" 0 "$DOCKER_GUARD" "$(db 'docker compos
 run_exit "allows compose down with -p slug" 0 "$DOCKER_GUARD" "$(db 'docker compose -p stats-overflow down')" "$PSLUG"
 run_exit "allows docker stop of scoped container" 0 "$DOCKER_GUARD" "$(db 'docker stop stats-overflow-api-1')" "$PSLUG"
 run_exit "allows docker rm of scoped container" 0 "$DOCKER_GUARD" "$(db 'docker rm stats-overflow-db-1')" "$PSLUG"
+run_exit "allows docker exec scoped container with command args" 0 "$DOCKER_GUARD" "$(db 'docker exec stats-overflow-api-1 cat /app/.next/server/app/page.js')" "$PSLUG"
+run_exit "allows docker exec scoped container with option values" 0 "$DOCKER_GUARD" "$(db 'docker exec -u root -w /app stats-overflow-api-1 grep -R admin .')" "$PSLUG"
+run_exit "allows docker cp from scoped container to host path" 0 "$DOCKER_GUARD" "$(db 'docker cp stats-overflow-api-1:/app/.next/server/app/page.js ./page.js')" "$PSLUG"
+run_exit "allows docker cp from host path to scoped container" 0 "$DOCKER_GUARD" "$(db 'docker cp ./page.js stats-overflow-api-1:/tmp/page.js')" "$PSLUG"
 run_exit "allows non-docker command" 0 "$DOCKER_GUARD" "$(db 'ls -la')" "$PSLUG"
 run_exit "allows docker build (local image cache only)" 0 "$DOCKER_GUARD" "$(db 'docker build -t foo .')" "$PSLUG"
 
@@ -1749,13 +1791,16 @@ run_exit "blocks docker volume prune" 2 "$DOCKER_GUARD" "$(db 'docker volume pru
 run_exit "blocks docker network prune" 2 "$DOCKER_GUARD" "$(db 'docker network prune -f')" "$PSLUG"
 run_exit "blocks docker container prune" 2 "$DOCKER_GUARD" "$(db 'docker container prune')" "$PSLUG"
 run_exit "blocks docker image prune" 2 "$DOCKER_GUARD" "$(db 'docker image prune -a')" "$PSLUG"
-run_exit "blocks docker rm -f \\$(docker ps -q)" 2 "$DOCKER_GUARD" "$(db 'docker rm -f $(docker ps -q)')" "$PSLUG"
-run_exit "blocks docker stop \\$(docker ps -q)" 2 "$DOCKER_GUARD" "$(db 'docker stop $(docker ps -q)')" "$PSLUG"
+run_exit 'blocks docker rm -f $(docker ps -q)' 2 "$DOCKER_GUARD" "$(db 'docker rm -f $(docker ps -q)')" "$PSLUG"
+run_exit 'blocks docker stop $(docker ps -q)' 2 "$DOCKER_GUARD" "$(db 'docker stop $(docker ps -q)')" "$PSLUG"
 run_exit "blocks compose down on other project" 2 "$DOCKER_GUARD" "$(db 'docker compose -p somebody-elses-thing down')" "$PSLUG"
 run_exit "blocks compose down without -p" 2 "$DOCKER_GUARD" "$(db 'docker compose down')" "$PSLUG"
 run_exit "blocks compose up without -p" 2 "$DOCKER_GUARD" "$(db 'docker compose up -d')" "$PSLUG"
 run_exit "blocks docker stop of unscoped container" 2 "$DOCKER_GUARD" "$(db 'docker stop my-personal-postgres')" "$PSLUG"
 run_exit "blocks docker rm of unscoped container" 2 "$DOCKER_GUARD" "$(db 'docker rm someone-else-redis-1')" "$PSLUG"
+run_exit "blocks docker exec unscoped container but ignores command args" 2 "$DOCKER_GUARD" "$(db 'docker exec other-api-1 cat /app/file.js')" "$PSLUG"
+run_exit "blocks docker cp from unscoped container but ignores host destination" 2 "$DOCKER_GUARD" "$(db 'docker cp other-api-1:/app/file.js ./file.js')" "$PSLUG"
+run_exit "blocks docker cp into unscoped container but ignores host source" 2 "$DOCKER_GUARD" "$(db 'docker cp ./file.js other-api-1:/tmp/file.js')" "$PSLUG"
 run_exit "blocks docker volume rm unscoped" 2 "$DOCKER_GUARD" "$(db 'docker volume rm someones-data')" "$PSLUG"
 
 # Escape hatch

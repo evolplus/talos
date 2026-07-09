@@ -36,7 +36,7 @@
 const fs = require('fs');
 const path = require('path');
 const { stripFencedCodeBlocks } = require('./lib/strip-fences.cjs');
-const { parseHeaderField } = require('./lib/parse-header.cjs');
+const { parseHeaderField, headerPrelude } = require('./lib/parse-header.cjs');
 
 const ROOT = process.env.CLAUDE_PROJECT_DIR || process.cwd();
 const SRS_PATH_PATTERN = /(^|\/)docs\/SRS\.md$/i;
@@ -52,7 +52,7 @@ function isSrsPath(p) {
 // variants the kit templates emit (**Status:** Signed-off, etc.).
 function parseSrsStatus(content) {
   const stripped = stripFencedCodeBlocks(content);
-  const head = stripped.slice(0, 4000);
+  const head = headerPrelude(stripped, 4000);
   return parseHeaderField(head, 'Status');
 }
 
@@ -110,7 +110,7 @@ function scanIntegrations() {
       files.push({ path: filePath, name: ent.name, adequacy: 'missing' });
       continue;
     }
-    const head = content.slice(0, 4000);
+    const head = headerPrelude(content, 4000);
     // Uses shared parseHeaderField so this tolerates **Adequacy:**,
     // - **Adequacy:**, Adequacy:, etc. uniformly with srs-status-guard.
     const raw = (parseHeaderField(head, 'Adequacy') || '').toLowerCase();

@@ -42,7 +42,7 @@
 const fs = require('fs');
 const path = require('path');
 const { stripFencedCodeBlocks } = require('./lib/strip-fences.cjs');
-const { parseHeaderField } = require('./lib/parse-header.cjs');
+const { parseHeaderField, headerPrelude } = require('./lib/parse-header.cjs');
 
 const ROOT = process.env.CLAUDE_PROJECT_DIR || process.cwd();
 
@@ -123,7 +123,7 @@ function readTaskTrack(taskFilePath) {
   try {
     const content = fs.readFileSync(taskFilePath, 'utf8');
     const stripped = stripFencedCodeBlocks(content);
-    const head = stripped.slice(0, 4000);
+    const head = headerPrelude(stripped, 4000);
     const track = parseHeaderField(head, 'Track');
     return track ? track.toLowerCase() : null;
   } catch {
