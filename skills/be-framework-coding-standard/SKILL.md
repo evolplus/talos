@@ -71,7 +71,7 @@ Read the matching reference before editing:
 6. Preserve security controls: authentication, authorization, tenant isolation, CSRF/session policy for web backends, mTLS/service auth for service backends, PII masking, and secret handling.
 7. Respect architecture §6 data contracts. Run named format conversions at boundaries and avoid writing gate fields unless the task owns the write condition.
 8. Make failure behavior deliberate: classify deterministic vs transient errors, use retries only for transient failures, preserve idempotency keys, and route poison messages / DLQ paths as architecture declares.
-9. Keep observability consistent: structured logs with correlation/request IDs, metrics for success/failure/latency, traces/spans where the project uses them, and no sensitive data in logs.
+9. Keep observability consistent: structured logs with correlation/request IDs, metrics for success/failure/latency, traces/spans where the project uses them, and no sensitive data in logs. For any new or changed backend operation, consult [`../backend-logging-traceability/SKILL.md`](../backend-logging-traceability/SKILL.md) and satisfy its ready-for-deploy checklist before signaling completion.
 10. Update API contracts under `docs/api-contracts/` when endpoints/messages change, using SRS §3.4.4's declared format. Freeze only when stable.
 11. Test at the right layer: unit tests for domain/application logic, framework handler/controller tests for transport mapping, integration tests for DB/queue/external adapter behavior, and contract tests for public API/message changes.
 12. Run format, lint, typecheck/compile, unit tests, and relevant integration/contract tests. If a command cannot run locally, document the blocker and the narrower checks you did run.
@@ -114,5 +114,6 @@ Read the matching reference before editing:
 - [`references/golang-echo.md`](./references/golang-echo.md)
 - [`references/golang-kratos.md`](./references/golang-kratos.md)
 - [`../api-contract-author/SKILL.md`](../api-contract-author/SKILL.md) - API contract authoring and freezing.
+- [`../backend-logging-traceability/SKILL.md`](../backend-logging-traceability/SKILL.md) - operator-grade debug/info/warn/error logging and traceability coverage for BE Dev.
 - [`../data-lifecycle-contracts/SKILL.md`](../data-lifecycle-contracts/SKILL.md) - gate-field write ownership.
 - [`../format-boundary-contracts/SKILL.md`](../format-boundary-contracts/SKILL.md) - cross-system format conversion discipline.

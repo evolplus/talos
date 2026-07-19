@@ -1,0 +1,4 @@
+interface:
+  display_name: "Backend Logging Traceability"
+  short_description: "Add operator-grade backend logs and trace context."
+  default_prompt: "Use $backend-logging-traceability to make backend code traceable with structured debug, info, warning, and error logs."

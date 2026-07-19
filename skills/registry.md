@@ -71,6 +71,7 @@ Skills consulted by any agent or human committing or operating in the repo, rega
 |---|---|---|
 | [`api-contract-author`](./api-contract-author/SKILL.md) | Publishing or updating an API contract under `docs/api-contracts/` | active |
 | [`be-framework-coding-standard`](./be-framework-coding-standard/SKILL.md) | Implementing or reviewing backend tasks after SRS `Backend-Track:` / `Backend-Framework:` and §3.4.6 env config are declared - selects the matching backend-web/backend-service and TypeScript/Python/Java/.NET/Go coding standard without migrating the stack or hardcoding runtime values | active |
+| [`backend-logging-traceability`](./backend-logging-traceability/SKILL.md) | Implementing or reviewing backend handlers, services, repositories, workers, jobs, integrations, retries, state transitions, or error paths that need operator-grade debug/info/warn/error logs, correlation IDs, safe structured fields, and incident traceability | active |
 
 ### QA-Exec
 
@@ -135,7 +136,7 @@ Predefined Foundation starting points. Selected by SRS header `Design-Guideline:
 | Cross-cutting (all phases) | sdlc-init, sdlc-loop, git-commit |
 | Planning (BA / SA / TL) | user-story-author, security-compliance-checklist, solution-defaults, sa-architecture-design, sa-brownfield-extract, external-integration-adequacy, adr-author, third-party-dependency-evaluation, task-sizing, c4-author, data-lifecycle-contracts, format-boundary-contracts |
 | Design (UI/UX Designer) | ui-ux-page-scoping, figma-requirements-extraction, figma-srs-mapping, figma-design-handoff, figma-canvas-layout, design-system-author |
-| Implementation (BE / FE) | api-contract-author, be-framework-coding-standard, fe-framework-coding-standard, react-native-implementation, react-native-performance, react-native-platform-integration, flutter-implementation, flutter-performance, flutter-platform-integration |
+| Implementation (BE / FE) | api-contract-author, be-framework-coding-standard, backend-logging-traceability, fe-framework-coding-standard, react-native-implementation, react-native-performance, react-native-platform-integration, flutter-implementation, flutter-performance, flutter-platform-integration |
 | QA (Author / Exec) | qa-author-by-us, qa-author-by-task, visual-spec-author, qa-execution-runner, test-case-author, ui-test-execution, playwright-author |
 | Deploy (DevOps) | local-deployment, ssh-remote-operations, docker-deployment, kubernetes-deployment, staging-deployment, release-readiness, migration-safety, rollback-readiness, secrets-config-audit, observability-readiness |
 | Post-release | incident-debugging |

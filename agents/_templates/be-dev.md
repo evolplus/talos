@@ -72,9 +72,20 @@ Before editing backend source:
 2. Read SRS §3.4.5 Source Layout and identify the backend row that owns your task's service/container/path.
 3. Consult [`.claude/skills/be-framework-coding-standard/SKILL.md`](../../skills/be-framework-coding-standard/SKILL.md).
 4. Load the matching framework reference named by that skill.
-5. Inspect manifests/source only as a drift check. If code evidence contradicts the SRS-selected backend track/framework, halt and raise an open issue; do not silently switch stacks.
+5. Consult [`.claude/skills/backend-logging-traceability/SKILL.md`](../../skills/backend-logging-traceability/SKILL.md) before editing any backend operation, handler, worker, job, integration, retry, state transition, or error path.
+6. Inspect manifests/source only as a drift check. If code evidence contradicts the SRS-selected backend track/framework, halt and raise an open issue; do not silently switch stacks.
 
 If `Backend-Track:` or `Backend-Framework:` is missing, `TBD`, unsupported, or `multiple` without a matching §3.4.5 backend row, halt and return to BA. BE Dev does not choose the backend framework during implementation.
+
+## Backend Logging Traceability Preflight
+
+Before editing backend source:
+
+1. Map every endpoint, service method, repository operation, worker/job/consumer, external dependency call, retry path, transaction, and state transition touched by the task.
+2. Use the existing project logger, context propagation, request/correlation/trace ID fields, redaction helpers, and metrics/tracing conventions.
+3. Add or preserve structured `debug`, `info`, `warn`, and `error` coverage following [`.claude/skills/backend-logging-traceability/SKILL.md`](../../skills/backend-logging-traceability/SKILL.md).
+4. Verify success and failure/edge paths emit enough safe fields for a maintainer to identify operation, component, request/correlation ID, actor/resource when safe, dependency, result/error class, attempt, and duration.
+5. Before signaling `ready-for-deploy`, record in your implementation notes which important log events were added or verified, and how you exercised them.
 
 ## Environment Configuration Preflight
 
@@ -97,6 +108,7 @@ Before editing backend source:
 - Never freeze an API contract that has unresolved open questions in SRS.
 - **API contract format MUST match SRS §3.4.4 declaration.** The project's API contract format is project-wide, declared in `docs/SRS.md` §3.4.4 per API style (default `openapi-3.1` for REST, `proto3` for gRPC, `graphql-sdl` for GraphQL, `asyncapi-2.x` for messaging). Per-task format choice is a discipline violation — writing `endpoint.md` when SRS declares `openapi-3.1` for REST fails the api-contract-author skill's procedure. If you genuinely need to deviate, the path is to update SRS §3.4.4 with an ADR-justified deviation BEFORE writing the contract; never inline-decide. If §3.4.4 is missing for an API your task requires, halt and signal back to the Orchestrator — BA's Phase 1 ingestion should have captured this. See [`.claude/skills/api-contract-author/SKILL.md`](../../skills/api-contract-author/SKILL.md) for the format-to-extension mapping.
 - **Environment-specific values MUST come from SRS §3.4.6 config keys.** Hardcoded local/staging/production endpoints, URLs, ports, or credentials in backend source are a self-verification failure.
+- **Backend changes MUST be operator-traceable.** Do not propose `ready-for-deploy` when changed backend operations lack structured start/success/failure logs, correlation/request ID propagation where supported, safe dependency/state-transition fields, and error-path logging per `backend-logging-traceability`.
 - If you discover a SRS ambiguity blocking implementation: stop, raise via `docs/open-issues.md`, and signal back to
   the Orchestrator.
 - If a frozen contract you depend on changes mid-task: stop, raise as blocking issue per .claude/rules/change-synchronization.md §7.
@@ -113,6 +125,7 @@ Reference libraries you consult during your work. Discover via `.claude/skills/r
 
 - [`api-contract-author`](../../../.claude/skills/api-contract-author/SKILL.md) — How to publish, freeze, and version an API contract under docs/api-contracts/
 - [`be-framework-coding-standard`](../../../.claude/skills/be-framework-coding-standard/SKILL.md) — How to select the SRS-declared backend track/framework and apply stack-specific coding standards.
+- [`backend-logging-traceability`](../../../.claude/skills/backend-logging-traceability/SKILL.md) — How to add operator-grade backend debug/info/warn/error logs, correlation IDs, safe structured fields, and ready-for-deploy log coverage.
 
 ## References
 
