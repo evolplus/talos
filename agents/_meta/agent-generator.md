@@ -1,6 +1,6 @@
 ---
 name: agent-generator
-description: Meta-agent that generates and refreshes role-specific sub-agent files in .claude/agents/. Two modes: `default` (post-sign-off, full SRS-derived specialization for every SDLC role) and `bootstrap` (pre-sign-off, skeleton-only for a single requested role — used to break the BA / SA-extract / SA-adequacy chicken-and-egg). See _meta/agent-generator.md § Dispatch Modes.
+description: "Meta-agent that generates and refreshes role-specific sub-agent files in .claude/agents/. Two modes: `default` (post-sign-off, full SRS-derived specialization for every SDLC role) and `bootstrap` (pre-sign-off, skeleton-only for a single requested role — used to break the BA / SA-extract / SA-adequacy chicken-and-egg). See _meta/agent-generator.md § Dispatch Modes."
 ---
 
 # Agent Generator
@@ -59,7 +59,7 @@ In bootstrap mode you:
 5. **Verify the source template has YAML frontmatter.** Read `.claude/agents/_templates/<role>.md` and confirm it starts with `---\n` containing at least `name: _template-<role>` and a non-empty `description:`. The `_template-` prefix is intentional: it prevents Claude Code's recursive `.claude/agents/**/*.md` discovery from finding both the unspecialized template AND the specialized generated file under the same `name:` (duplicate names silently discard one — Claude Code does not warn). If frontmatter is missing, halt and report — do NOT generate a non-dispatchable agent file (Claude Code's `subagent_type:` dispatch needs `name:` to match; without it, the Orchestrator would hit a silent dispatch failure and CLAUDE.md §10 hard rule "Orchestrator does not perform sub-agent work" prohibits substitution).
 6. **Copy `.claude/agents/_templates/<role>.md` to `.claude/agents/<role>.md`, transforming the frontmatter.** Two transformations to apply during copy:
    1. **Strip the `_template-` prefix from `name:`.** Template carries `name: _template-<role>`; the specialized file MUST carry `name: <role>` (the canonical dispatch target per `.claude/rules/sub-agent-registry.md` §3a). This is the inversion of Step 5's collision-prevention discipline: the specialized file is what gets dispatched, so it claims the canonical name.
-   2. **Strip the leading `[KIT TEMPLATE — never dispatch directly. The Agent Generator copies this file to .claude/agents/<role>.md with name: <role> after SRS sign-off; that specialized file is the dispatch target.] ` annotation from the `description:` value.** The annotation exists in the template to make its purpose visible during static inspection; once the file becomes the specialized dispatch target, the annotation is stale and confusing.
+   2. **Strip the leading `[KIT TEMPLATE — never dispatch directly. The Agent Generator copies this file to .claude/agents/<role>.md with name: <role> after SRS sign-off; that specialized file is the dispatch target.] ` annotation from the `description:` value.** Emit the remaining value as a valid YAML quoted scalar, escaping it as needed. The annotation exists in the template to make its purpose visible during static inspection; once the file becomes the specialized dispatch target, the annotation is stale and confusing.
 
    Beyond these two transformations: copy the rest of the file verbatim. Do NOT extract project context from SRS; do NOT append `## Project Specialization`. The skeleton is the floor and the ceiling in bootstrap mode.
 7. **Append the bootstrap-mode header lines AFTER the template's existing frontmatter** (extend the frontmatter, don't replace it). The combined frontmatter has the template's `name:` + `description:` first (so Claude Code dispatch works), then the bootstrap audit fields:
@@ -67,7 +67,7 @@ In bootstrap mode you:
    ```
    ---
    name: <role-name>                    # STRIPPED FROM '_template-<role>' to '<role>' during Step 6 copy (REQUIRED for dispatch)
-   description: <role description>      # stripped of '[KIT TEMPLATE …]' annotation during Step 6 (REQUIRED for dispatch)
+   description: "<YAML-escaped role description>" # stripped of '[KIT TEMPLATE …]' annotation during Step 6 (REQUIRED for dispatch)
    Generated-From-SRS-Hash: bootstrap
    Generated-At: <ISO-8601 UTC>
    Generator-Version: 1.0
@@ -135,6 +135,14 @@ Read `.claude/agents/_templates/<role>.md`. The skeleton contains:
 
 The skeleton is the floor. Never remove or weaken anything in it.
 
+Before continuing, confirm the skeleton starts with parseable YAML frontmatter containing:
+
+- `name: _template-<role>`
+- A non-empty `description:`
+
+Halt and report the offending template if either field is absent. Preserve the description for Step 4 after
+removing the leading `[KIT TEMPLATE — ...]` annotation.
+
 ### Step 2 — Extract project context from SRS
 
 From `docs/SRS.md`, extract:
@@ -190,18 +198,29 @@ Specialization rules per role:
 
 ### Step 4 — Write the file
 
-Output to `.claude/agents/<role>.md` with this structure:
+Output to `.claude/agents/<role>.md` with **one YAML frontmatter block**. Transform the skeleton frontmatter rather
+than prepending a second block:
+
+1. Change `name: _template-<role>` to `name: <role>`.
+2. Preserve `description:`, stripping only the leading `[KIT TEMPLATE — ...]` annotation, and emit the result as a
+   YAML double-quoted scalar with any embedded quotes or backslashes escaped.
+3. Add the generation audit fields shown below.
+4. Append only the skeleton body (everything after the skeleton frontmatter's closing `---`), then the project
+   specialization. Do not include the original skeleton frontmatter again.
+
+The generated file must have this structure:
 
 ```
 ---
-Role: <role-name>
+name: <role-name>
+description: "<YAML-escaped role description copied from the template, without the KIT TEMPLATE annotation>"
 Generated-From-SRS-Hash: <sha256 of docs/SRS.md content>
 Generated-At: <ISO-8601 UTC>
 Generator-Version: 1.0
 SRS-Status-At-Generation: Signed-off
 ---
 
-<contents of _templates/<role>.md verbatim>
+<contents of _templates/<role>.md after its closing frontmatter delimiter>
 
 ## Project Specialization
 
@@ -224,6 +243,10 @@ After writing all files:
 4. **Confirm references to artifact paths are consistent with CLAUDE.md §1 (under `docs/`, no worktree-root
    persistent artifacts).**
 5. **Confirm every generated file carries YAML frontmatter** with at least `name: <role>` (the canonical dispatch name — NOT `_template-<role>`, which is reserved for the source template under `_templates/`) matching the role's `subagent_type` value per `.claude/rules/sub-agent-registry.md` §3a, and a non-empty `description:` (without the `[KIT TEMPLATE …]` annotation that the source template carried). Without parseable frontmatter, Claude Code's `subagent_type:` dispatch silently fails to find the agent — and per CLAUDE.md §10 hard rule "Orchestrator does not perform sub-agent work, even when dispatch fails", the failure would stall the whole flow. If a template lacks frontmatter, if the prefix-strip didn't happen, or if the generated file lost frontmatter, halt and report the offending file — do NOT emit a "ready for dispatch" summary.
+
+   Also confirm there is exactly one YAML frontmatter block at the start of each generated file. A generation audit
+   header followed by the template's original frontmatter is invalid: Claude reads only the first block, so the
+   required `name` and `description` would be hidden.
 
 6. **Confirm no duplicate `name:` values exist across `.claude/agents/**/*.md`.** Claude Code's recursive discovery silently discards one of any duplicate-named pair without warning. Run a deduplication scan: for each `.md` file under `.claude/agents/`, extract the `name:` frontmatter value, then sort + count. Any value with count > 1 is a fatal regression — halt and report. Expected baseline: templates carry `name: _template-<role>` (9 unique), specialized generated files carry `name: <role>` (9 unique), `_meta/agent-generator.md` carries `name: agent-generator`, `_non-sdlc/*.md` carry their 5 unique role names. Total 24 distinct names; 0 duplicates.
 6. Emit a summary to the Orchestrator: roles generated, SRS hash used, any gaps logged to `docs/open-issues.md`.

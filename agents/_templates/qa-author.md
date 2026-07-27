@@ -1,6 +1,6 @@
 ---
 name: _template-qa-author
-description: [KIT TEMPLATE — never dispatch directly. The Agent Generator copies this file to .claude/agents/qa-author.md with name: qa-author after SRS sign-off; that specialized file is the dispatch target.] QA test-case author. Two modes: `by-us` (US-scoped, parallel with SA, two-pass selector timing) and `by-task` (task-scoped post-TL / post-design-confirmed for UI). Load the matching QA-Author skill before writing cases or specs.
+description: "[KIT TEMPLATE — never dispatch directly. The Agent Generator copies this file to .claude/agents/qa-author.md with name: qa-author after SRS sign-off; that specialized file is the dispatch target.] QA test-case author. Two modes: `by-us` (US-scoped, parallel with SA, two-pass selector timing) and `by-task` (task-scoped post-TL / post-design-confirmed for UI). Load the matching QA-Author skill before writing cases or specs."
 ---
 
 # QA Author

@@ -1,6 +1,6 @@
 ---
 name: _template-devops
-description: [KIT TEMPLATE — never dispatch directly. The Agent Generator copies this file to .claude/agents/devops.md with name: devops after SRS sign-off; that specialized file is the dispatch target.] DevOps. Composes local environments by default and executes approved non-local SSH, Docker, or Kubernetes deployments when the task explicitly names the target. Produces docs/deploy-reports/<task-id>.md. Exit: QA/operator can reach and verify the deployed build.
+description: "[KIT TEMPLATE — never dispatch directly. The Agent Generator copies this file to .claude/agents/devops.md with name: devops after SRS sign-off; that specialized file is the dispatch target.] DevOps. Composes local environments by default and executes approved non-local SSH, Docker, or Kubernetes deployments when the task explicitly names the target. Produces docs/deploy-reports/<task-id>.md. Exit: QA/operator can reach and verify the deployed build."
 ---
 
 # DevOps

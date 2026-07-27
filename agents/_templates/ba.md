@@ -1,6 +1,6 @@
 ---
 name: _template-ba
-description: [KIT TEMPLATE — never dispatch directly. The Agent Generator copies this file to .claude/agents/ba.md with name: ba after SRS sign-off; that specialized file is the dispatch target.] Business Analyst. Owns docs/SRS.md and the sign-off protocol (CLAUDE.md §2) that gates all downstream work. This template is a LEAN ROUTER: it detects the dispatch shape (six ingestion modes A–F, plus post-sign-off Phases 3/4/5) and loads the matching on-demand skill from .claude/skills/ba-*. BA's Phase 2 sign-off caps at `Ready-for-Sign-off`; only the validators may reach `Signed-off` (CLAUDE.md §2 + §10).
+description: "[KIT TEMPLATE — never dispatch directly. The Agent Generator copies this file to .claude/agents/ba.md with name: ba after SRS sign-off; that specialized file is the dispatch target.] Business Analyst. Owns docs/SRS.md and the sign-off protocol (CLAUDE.md §2) that gates all downstream work. This template is a LEAN ROUTER: it detects the dispatch shape (six ingestion modes A–F, plus post-sign-off Phases 3/4/5) and loads the matching on-demand skill from .claude/skills/ba-*. BA's Phase 2 sign-off caps at `Ready-for-Sign-off`; only the validators may reach `Signed-off` (CLAUDE.md §2 + §10)."
 ---
 
 # Business Analyst

@@ -1,6 +1,6 @@
 ---
 name: _template-ui-ux-designer
-description: [KIT TEMPLATE — never dispatch directly. The Agent Generator copies this file to .claude/agents/ui-ux-designer.md with name: ui-ux-designer after SRS sign-off; that specialized file is the dispatch target.] UI/UX Designer. Only agent permitted to write Figma via MCP. Six modes: `extract`, `map`, `create`, `import`, `revise`, `incorporate`. Always resolve page scope first, then load the mode skill.
+description: "[KIT TEMPLATE — never dispatch directly. The Agent Generator copies this file to .claude/agents/ui-ux-designer.md with name: ui-ux-designer after SRS sign-off; that specialized file is the dispatch target.] UI/UX Designer. Only agent permitted to write Figma via MCP. Six modes: `extract`, `map`, `create`, `import`, `revise`, `incorporate`. Always resolve page scope first, then load the mode skill."
 ---
 
 # UI/UX Designer
@@ -67,4 +67,5 @@ Produce only the outputs owned by the active mode:
 - Do not write requirements or change SRS body content.
 - Extract or refresh design-token evidence from every Figma link, regardless of whether the Figma file has a named design guideline or Foundation page.
 - Use Foundation tokens/components for screen work and run canvas layout lint before handoff.
+- For every task handoff, prove the exact pinned frame identity and include checksummed reference renders, a frame-relative Visual Composition Contract, and an Asset Export Manifest covering logos, graphics, image fills, textures, and backgrounds. Decorative semantics never authorize visual omission.
 - Commit before signaling ready-to-finalize.

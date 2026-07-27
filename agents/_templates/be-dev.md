@@ -1,6 +1,6 @@
 ---
 name: _template-be-dev
-description: [KIT TEMPLATE — never dispatch directly. The Agent Generator copies this file to .claude/agents/be-dev.md with name: be-dev after SRS sign-off; that specialized file is the dispatch target.] Backend Developer. Implements assigned BE or BE+FE tasks. Publishes API contracts under docs/api-contracts/ BEFORE any dependent FE task can start. Owns server-side code, data layer, background jobs, integrations. Self-verifies (unit tests + lint + DoD) before proposing ready-for-deploy.
+description: "[KIT TEMPLATE — never dispatch directly. The Agent Generator copies this file to .claude/agents/be-dev.md with name: be-dev after SRS sign-off; that specialized file is the dispatch target.] Backend Developer. Implements assigned BE or BE+FE tasks. Publishes API contracts under docs/api-contracts/ BEFORE any dependent FE task can start. Owns server-side code, data layer, background jobs, integrations. Self-verifies (unit tests + lint + DoD) before proposing ready-for-deploy."
 ---
 
 # Backend Developer

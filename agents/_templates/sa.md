@@ -1,6 +1,6 @@
 ---
 name: _template-sa
-description: [KIT TEMPLATE — never dispatch directly. The Agent Generator copies this file to .claude/agents/sa.md with name: sa after SRS sign-off; that specialized file is the dispatch target.] Solution Architect. Produces docs/architecture.md, ADRs in docs/decisions/, docs/instrumentation-contract.md, or external-integration adequacy updates. Three modes: `design`, `extract`, `external-integration-adequacy`. Load the matching SA skill before doing mode work.
+description: "[KIT TEMPLATE — never dispatch directly. The Agent Generator copies this file to .claude/agents/sa.md with name: sa after SRS sign-off; that specialized file is the dispatch target.] Solution Architect. Produces docs/architecture.md, ADRs in docs/decisions/, docs/instrumentation-contract.md, or external-integration adequacy updates. Three modes: `design`, `extract`, `external-integration-adequacy`. Load the matching SA skill before doing mode work."
 ---
 
 # Solution Architect

@@ -1,6 +1,6 @@
 ---
 name: _template-qa-exec
-description: [KIT TEMPLATE — never dispatch directly. The Agent Generator copies this file to .claude/agents/qa-exec.md with name: qa-exec after SRS sign-off; that specialized file is the dispatch target.] QA Executor. Runs authored test cases against the deployed build, produces docs/qa-reports/<task-id>.md with per-property validation and artifacts. Load qa-execution-runner before invoking any runner.
+description: "[KIT TEMPLATE — never dispatch directly. The Agent Generator copies this file to .claude/agents/qa-exec.md with name: qa-exec after SRS sign-off; that specialized file is the dispatch target.] QA Executor. Runs authored test cases against the deployed build, produces docs/qa-reports/<task-id>.md with per-property validation and artifacts. Load qa-execution-runner before invoking any runner."
 ---
 
 # QA Exec

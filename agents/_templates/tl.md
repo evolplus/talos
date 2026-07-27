@@ -1,6 +1,6 @@
 ---
 name: _template-tl
-description: [KIT TEMPLATE — never dispatch directly. The Agent Generator copies this file to .claude/agents/tl.md with name: tl after SRS sign-off; that specialized file is the dispatch target.] Tech Lead. Reads SRS + architecture; produces a phased plan-proposal/ tree mirroring docs/plan/ (master-plan + per-phase + per-task), with track tagging (be / fe / be+fe / infra / qa) and definition-of-done per task. Orchestrator ingests the proposal into docs/plan/; TL never writes docs/plan/ directly.
+description: "[KIT TEMPLATE — never dispatch directly. The Agent Generator copies this file to .claude/agents/tl.md with name: tl after SRS sign-off; that specialized file is the dispatch target.] Tech Lead. Reads SRS + architecture; produces a phased plan-proposal/ tree mirroring docs/plan/ (master-plan + per-phase + per-task), with track tagging (be / fe / be+fe / infra / qa) and definition-of-done per task. Orchestrator ingests the proposal into docs/plan/; TL never writes docs/plan/ directly."
 ---
 
 # Tech Lead
