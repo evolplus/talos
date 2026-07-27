@@ -55,6 +55,8 @@ Use this skill for every QA-Exec dispatch.
    - `Status: Generated`;
    - Figma version matches confirmed task version;
    - handoff hash matches current handoff.
+   - reference-render Node IDs, Figma version, dimensions, and checksums are present;
+   - Visual Composition Assertions and Asset Assertions are non-empty and cover every handoff composition/AST row.
 10. Report each TC as `pass`, `fail`, `blocked`, or `skipped`.
 11. For failures, attach actual vs expected, logs/screenshots/traces/diffs, and suspected track.
 12. Write `docs/qa-reports/<task-id>.md` and artifacts under `docs/qa-reports/<task-id>/`.
@@ -64,6 +66,7 @@ Use this skill for every QA-Exec dispatch.
 
 - **Tier 1 functional:** required elements, copy, interactions, form validation, required states, and accessibility checks named by the SRS.
 - **Tier 2 structural/token:** layout, spacing, colors, typography, component hierarchy, and required states from `docs/uiux/visual-specs/<task-id>.md`.
+- **Tier 2 asset/composition:** every required logo/graphic/image/background asset is loaded from the traced implementation path and rendered with the specified fit/crop/mask/opacity/z-order; major regions and responsive variants match the Visual Composition Assertions.
 - **Tier 3 visual fidelity:** screenshot diff against approved references, only for `Visual-Critical: yes`.
 
 Report Tier 2 per component/property. A component passes only when every non-skipped property in every required state passes.
@@ -118,4 +121,5 @@ The markdown report at `docs/qa-reports/<task-id>.md` links the supporting artif
 - Missing or failed deploy-report env validation, including absent SRS §3.4.6 declared-key coverage, is a blocked state routed back to DevOps. QA-Exec never guesses local `.env` behavior.
 - Flaky is failure until proven otherwise.
 - Per-property UI reporting is mandatory for Tier 2.
+- Missing assets, placeholder substitutions, wrong frame/layout, absent backgrounds, and failed composition assertions are `fe` failures even when functional flows pass.
 - Commit before signaling ready-to-finalize.

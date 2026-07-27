@@ -195,7 +195,7 @@ Checks: the section declares local + testing/staging + production tiers, include
 
 Refuses task-file `Write`/`Edit` under `docs/plan/*/tasks/T-*.md` when the resulting header sets `Design sub-status: design-confirmed` before the design evidence exists.
 
-Checks: `docs/uiux/handoffs/<task-id>.md` exists, has `## Design Element Manifest` with at least one `DEM-*` row and Design System Source/token evidence; `docs/uiux/completeness-reports/<task-id>.md` exists with a qualified verdict.
+Checks: `docs/uiux/handoffs/<task-id>.md` exists and has a checksummed `## Reference Render`, non-empty `## Visual Composition Contract`, `## Asset Export Manifest` with `AST-*` rows, `## Design Element Manifest` with `DEM-*` rows, and Design System Source/token evidence; `docs/uiux/completeness-reports/<task-id>.md` exists with a qualified verdict.
 
 ## source-code-write-guard.cjs (PreToolUse)
 

@@ -68,6 +68,31 @@ For each frame, walk every nested instance:
 - Group by type: buttons, inputs, cards, modals, navs, list items, toasts, etc.
 - For interactive components: note interaction targets (Figma Prototype connections) — these reveal flows.
 
+For each screen, also record the **visual composition** needed to distinguish it from a merely similar screen:
+
+- frame viewport and clip behavior;
+- direct-child layer order (back to front), including absolute-positioned layers;
+- each direct child's frame-relative x/y/width/height, Auto Layout participation, alignment, padding/gap, constraints, and responsive behavior;
+- overlays, masks, blend modes, opacity, corner clipping, and image-fill scale/crop settings;
+- whether a visible layer is content, branded artwork, decorative-but-required composition, or a non-rendered design annotation.
+
+Do not treat a screenshot as a substitute for this structure. The screenshot is corroborating evidence; node identity and composition properties remain the machine-readable contract.
+
+### Step 2a — Enumerate visual assets
+
+Walk every visible node with an image fill, vector/network, boolean vector, SVG-like geometry, video/poster, logo/brand mark, icon, illustration, texture, or background artwork. Record:
+
+- owning frame/state and Figma Node ID;
+- semantic class: `logo`, `brand-mark`, `icon.semantic`, `icon.decorative`, `illustration`, `photo`, `avatar`, `texture`, `background-image`, or `video-poster`;
+- source kind: image fill, vector, component instance, external/library instance, or generated shape;
+- intrinsic dimensions and rendered bounds;
+- crop/fill/fit/tile mode, focal point or transform when available, opacity, blend mode, mask/clip relationship, corner radius, and z-order;
+- exportability and required export format/scale (`SVG` for vectors when faithful; `PNG/WebP/JPEG` and `1x/2x/3x` as platform-appropriate for raster content);
+- accessibility intent: meaningful with required alt/label, decorative with empty semantics, or unknown;
+- library/component provenance and unresolved-access status.
+
+A visible logo, graphic, image fill, or background image is never silently discardable. If the asset cannot be read or exported, record a blocking gap rather than replacing it with text, emoji, a generic icon, a gradient, or a placeholder.
+
 ### Step 3 — Enumerate exact copy
 
 Walk every text node in every frame:
@@ -184,6 +209,21 @@ This file contains CONFIRMED elements (Sections 1–7 below) and INFERRED requir
 - Batch action bar (testID: `rep-batch-bar`) — sticky-bottom, visible when ≥1 row checked. Contains: "Show selected" button, "Hide selected" button, selection-count indicator.
 
 (Repeat per screen.)
+
+## Section 2A — Visual composition and asset evidence
+
+### Frame composition
+
+| Frame / State | Node ID | Viewport | Clip | Direct-child order (back → front) | Layout/constraint evidence |
+|---|---|---|---|---|---|
+| Login / Default | 120:1 | 1440×900 | yes | background artwork → scrim → form panel → logo | background absolute/fill; panel x=840 y=120 w=480 h=660; right constrained |
+
+### Visual assets
+
+| Frame / State | Node ID | Class | Source kind | Intrinsic / rendered bounds | Fit/crop/mask/z-order | Required export | Accessibility | Status |
+|---|---|---|---|---|---|---|---|---|
+| Login / Default | 120:4 | background-image | image fill | 2400×1600 / 1440×900 | fill; focal 32% 50%; clipped; back | WebP 1x/2x | decorative | exportable |
+| Login / Default | 120:18 | logo | vector instance | vector / 156×40 | contain; front | SVG | meaningful: product logo | exportable |
 
 ## Section 3 — Exact copy
 
@@ -311,6 +351,7 @@ Commit the file with conventional-commits convention (`feat(requirements): extra
 - **TOKEN EXTRACTION IS MANDATORY FOR FIGMA LINKS.** Every Figma extraction must produce Section 6 design token evidence, even when the Figma file has no named design guideline, no Foundation page, and no formal variables/styles. In that case, capture repeated observed values with confidence and source locations; do not leave Section 6 empty unless the scoped page contains no usable visual evidence.
 - **DESIGN GUIDELINE EXTRACTION IS EVIDENCE, NOT AUTHORING.** You may recommend `from-figma` from observed evidence, but you do not create the Foundation page, rename styles, normalize values, or invent missing token categories in extract mode.
 - **VERBATIM COPY.** Section 3 captures text exactly as it appears — no normalization, no fixing typos, no spelling corrections, no translation. The audit-log value depends on faithfulness.
+- **VISIBLE ASSETS ARE REQUIREMENTS EVIDENCE.** Record every logo, graphic, illustration, image fill, texture, and background image in Section 2A with its node provenance and rendering properties. `decorative` controls semantics, not whether the layer is rendered.
 - **PARAMETERIZED STRINGS marked clearly.** When copy contains `{placeholders}`, flag as PARAMETERIZED so BA's FR specifies the parameter source.
 - **One file per dispatch.** If the Figma file is large enough that the extraction produces a >5000-line single file, split by Figma page into multiple files: `<figma-id>-<date>-<page-slug>.md`. The Orchestrator's BA dispatch reads the full directory; multiple files are fine.
 - **No SRS-side writes except page-scope resolution.** This skill writes to `docs/requirements/design-extracted/`. The only allowed SRS update is the page-scope field update delegated to `ui-ux-page-scoping` when a frame/section/name must be resolved to a page Node ID. It does NOT touch SRS body content, `docs/user-stories/`, `docs/frs/`, or any role-owned doc that BA / SA / QA-Author own.

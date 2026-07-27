@@ -7,12 +7,11 @@
 //   - docs/uiux/handoffs/<task-id>.md       (UI/UX Designer's task handoff)
 //   - docs/uiux/visual-specs/<task-id>.md   (QA-Author by-task's UI spec)
 //   - docs/test-cases/by-task/<task-id>/    (QA-Author by-task's TC pack)
-// The refs and visual-spec files must also contain the implementation-level
-// design sections that prevent Figma field/item omission:
-//   - refs:        Status: Frozen + non-empty ## Design Element Manifest +
-//                  non-empty ## Implementation Trace Matrix
-//   - handoff:     non-empty ## Design Element Manifest + token evidence
-//   - visual spec: non-empty ## Design Element Assertions
+// The artifacts must also contain the implementation-level design sections
+// that prevent wrong-frame, layout, asset, and field/item omissions:
+//   - refs:        Status: Frozen + reference/composition/asset/element traces
+//   - handoff:     reference render + composition + asset + element + tokens
+//   - visual spec: composition + asset + design-element assertions
 //
 // Motivation (per the 2026-06-04 FR-022 batch-UI silent-drop incident):
 //   The kit defines a multi-gate chain between `design-confirmed` and Phase
@@ -189,6 +188,10 @@ function sectionHasDemRow(content, heading) {
   return /\bDEM-\d+\b/i.test(getSection(content, heading));
 }
 
+function sectionMatches(content, heading, pattern) {
+  return pattern.test(getSection(content, heading));
+}
+
 function hasOpenTraceStatus(content) {
   const section = getSection(content, 'Implementation Trace Matrix');
   return /\b(planned|not implemented|todo|tbd)\b/i.test(section);
@@ -213,6 +216,12 @@ function contentIssues(check, content) {
     if (rule.requireDemRows && !sectionHasDemRow(content, rule.heading)) {
       issues.push('## ' + rule.heading + ' has no DEM-* rows');
     }
+    if (rule.requirePattern && !sectionMatches(content, rule.heading, rule.requirePattern)) {
+      issues.push('## ' + rule.heading + ' lacks required evidence rows');
+    }
+    if (rule.rejectPattern && sectionMatches(content, rule.heading, rule.rejectPattern)) {
+      issues.push('## ' + rule.heading + ' contains blocked/incomplete rows');
+    }
     if (rule.rejectOpenTraceStatuses && hasOpenTraceStatus(content)) {
       issues.push('## ' + rule.heading + ' still contains planned/not implemented/TBD trace status');
     }
@@ -235,7 +244,12 @@ function checkArtifacts(projectRoot, worktreeRoot, taskId) {
       doc: 'FE Dev produces this per task. parallel-execution.md §4 Step 5.',
       mustBeFrozen: true,
       sectionRules: [
+        { heading: 'Reference Render', requirePattern: /\b(Node ID|Figma Node ID)\b[\s\S]*\b(SHA-?256|checksum)\b/i },
+        { heading: 'Visual Composition Contract', requirePattern: /\b(viewport|layer order|root layout|constraints?)\b/i },
+        { heading: 'Asset Export Manifest', requirePattern: /\bAST-(?:\d+|NONE)\b/i, rejectPattern: /^\|?[^\r\n]*\bAST-\d+\b[^\r\n]*\bblocked\b/im },
         { heading: 'Design Element Manifest', requireDemRows: true },
+        { heading: 'Asset Implementation Trace Matrix', requirePattern: /\bAST-(?:\d+|NONE)\b/i },
+        { heading: 'Composition Implementation Trace Matrix', requirePattern: /\bCMP-(?:\d+|NONE)\b/i },
         { heading: 'Implementation Trace Matrix', requireDemRows: true, rejectOpenTraceStatuses: true },
       ],
     },
@@ -245,6 +259,9 @@ function checkArtifacts(projectRoot, worktreeRoot, taskId) {
       kind: 'file',
       doc: 'UI/UX Designer produces this before design-confirmed. parallel-execution.md §4 Step 2/3.',
       sectionRules: [
+        { heading: 'Reference Render', requirePattern: /\b(Node ID|Figma Node ID)\b[\s\S]*\b(SHA-?256|checksum)\b/i },
+        { heading: 'Visual Composition Contract', requirePattern: /\b(viewport|layer order|root layout|constraints?)\b/i },
+        { heading: 'Asset Export Manifest', requirePattern: /\bAST-(?:\d+|NONE)\b/i, rejectPattern: /^\|?[^\r\n]*\bAST-\d+\b[^\r\n]*\bblocked\b/im },
         { heading: 'Design Element Manifest', requireDemRows: true },
       ],
       requiresDesignSystemSource: true,
@@ -255,6 +272,8 @@ function checkArtifacts(projectRoot, worktreeRoot, taskId) {
       kind: 'file',
       doc: 'QA-Author by-task produces this. sub-agent-registry.md §3.4.',
       sectionRules: [
+        { heading: 'Visual Composition Assertions', requirePattern: /\bCMP-(?:\d+|NONE)\b/i },
+        { heading: 'Asset Assertions', requirePattern: /\bAST-(?:\d+|NONE)\b/i },
         { heading: 'Design Element Assertions', requireDemRows: true },
       ],
     },
@@ -404,7 +423,7 @@ async function main() {
     '  Per CLAUDE.md §10 Hard Rule "Design-implementation symmetry":\n' +
     '    For UI-bearing tasks, the absence of any of these artifacts is a\n' +
     '    closure-blocker, NOT a vacuous pass. The same applies to refs/visual\n' +
-    '    handoffs/specs that exist but lack non-empty Design Element Manifest / Assertions rows.\n' +
+    '    handoffs/specs that exist but lack non-empty reference, composition, asset, element, or assertion rows.\n' +
     '    The kit cannot satisfy discipline by skipping the field/item-level\n' +
     '    contract that FE Dev must implement.\n\n' +
     '  Background — 2026-06-04 FR-022 batch-UI incident:\n' +

@@ -2,7 +2,8 @@
 // .claude/hooks/fe-dev-design-contract-guard.cjs
 // PreToolUse hook: refuses FE Dev source writes when `docs/uiux/refs/<task-id>.md`
 // is absent, its frontmatter does not declare `Status: Frozen`, or it lacks the
-// Design Element Manifest / Implementation Trace Matrix sections.
+// Reference Render / Visual Composition / Asset Export / Design Element
+// manifests and implementation trace sections.
 //
 // Motivation (per the 2026-06-04 FR-022 batch-UI silent-drop incident):
 //   FE Dev's "Design Contract Hard Rule" — "Never start UI implementation while
@@ -16,8 +17,8 @@
 //   - On Write / Edit / MultiEdit / NotebookEdit to a frontend source path,
 //     extract <task-id>, look for `docs/uiux/refs/<task-id>.md` at worktree
 //     and project root, verify it exists, its header declares `Status: Frozen`,
-//     and it contains non-empty `## Design Element Manifest` +
-//     `## Implementation Trace Matrix` rows.
+//     and it contains non-empty reference-render, composition, asset, element,
+//     and implementation-trace evidence.
 //   - Refuse the write (exit 2) with a kit-aware message if any check fails.
 //
 // What this hook does NOT do:
@@ -158,9 +159,21 @@ function sectionHasDemRow(content, heading) {
   return /\bDEM-\d+\b/i.test(getSection(content, heading));
 }
 
+function sectionMatches(content, heading, pattern) {
+  return pattern.test(getSection(content, heading));
+}
+
 function designContractIssues(content) {
   const issues = [];
-  const required = ['Design Element Manifest', 'Implementation Trace Matrix'];
+  const required = [
+    'Reference Render',
+    'Visual Composition Contract',
+    'Asset Export Manifest',
+    'Design Element Manifest',
+    'Asset Implementation Trace Matrix',
+    'Composition Implementation Trace Matrix',
+    'Implementation Trace Matrix',
+  ];
   if (typeof content !== 'string') {
     return required.map(h => 'missing ## ' + h);
   }
@@ -175,6 +188,27 @@ function designContractIssues(content) {
   }
   if (hasHeading(content, 'Implementation Trace Matrix') && !sectionHasDemRow(content, 'Implementation Trace Matrix')) {
     issues.push('## Implementation Trace Matrix has no DEM-* trace rows');
+  }
+  if (hasHeading(content, 'Reference Render') &&
+      !sectionMatches(content, 'Reference Render', /\b(Node ID|Figma Node ID)\b[\s\S]*\b(SHA-?256|checksum)\b/i)) {
+    issues.push('## Reference Render lacks node/checksum evidence');
+  }
+  if (hasHeading(content, 'Visual Composition Contract') &&
+      !sectionMatches(content, 'Visual Composition Contract', /\b(viewport|layer order|root layout|constraints?)\b/i)) {
+    issues.push('## Visual Composition Contract lacks layout evidence');
+  }
+  for (const heading of ['Asset Export Manifest', 'Asset Implementation Trace Matrix']) {
+    if (hasHeading(content, heading) && !sectionMatches(content, heading, /\bAST-(?:\d+|NONE)\b/i)) {
+      issues.push('## ' + heading + ' has no AST-* rows');
+    }
+  }
+  if (hasHeading(content, 'Asset Export Manifest') &&
+      sectionMatches(content, 'Asset Export Manifest', /^\|?[^\r\n]*\bAST-\d+\b[^\r\n]*\bblocked\b/im)) {
+    issues.push('## Asset Export Manifest contains blocked assets');
+  }
+  if (hasHeading(content, 'Composition Implementation Trace Matrix') &&
+      !sectionMatches(content, 'Composition Implementation Trace Matrix', /\bCMP-(?:\d+|NONE)\b/i)) {
+    issues.push('## Composition Implementation Trace Matrix has no CMP-* rows');
   }
   return issues;
 }
@@ -262,7 +296,7 @@ async function main() {
     '  ' + reason + '\n\n' +
     '  Per .claude/agents/_templates/fe-dev.md § Design Contract Hard Rules:\n' +
     '    "Never start UI implementation while `docs/uiux/refs/<task-id>.md` is `Draft`."\n' +
-    '    The Frozen refs file must also include non-empty Design Element Manifest + Implementation Trace Matrix rows.\n\n' +
+    '    The Frozen refs file must also include non-empty reference-render, composition, asset-export, element, and trace rows.\n\n' +
     '  Per CLAUDE.md §10 Hard Rules:\n' +
     '    "Design-implementation symmetry — artifact absence is a closure-blocker,\n' +
     '     not a vacuous pass."\n\n' +
@@ -271,7 +305,7 @@ async function main() {
     '    2. Use the Figma MCP server (read-only) to pull pinned nodes / tokens / snapshots.\n' +
     '    3. Verify the Figma file version matches the user-confirmed version in master plan.\n' +
     '    4. Write docs/uiux/refs/' + ctx.taskId + '.md with extracted tokens + node IDs +\n' +
-    '       snapshot references + Design Element Manifest + Implementation Trace Matrix;\n' +
+    '       reference render + composition + asset export/use traces + Design Element Manifest + Implementation Trace Matrix;\n' +
     '       set `Status: Frozen` once all checks pass.\n' +
     '    5. THEN proceed to source-code implementation.\n\n' +
     '  Escape hatch (non-UI FE tasks only): export CLAUDE_SKIP_DESIGN_CONTRACT_CHECK=1\n' +

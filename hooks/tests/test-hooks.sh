@@ -1631,6 +1631,24 @@ cat > "$FIX_ROOT/design-substatus-ok/docs/uiux/handoffs/T-010.md" <<'EOF'
 
 Token evidence from Figma: colors, typography, spacing, radius.
 
+## Reference Render
+
+| Figma Node ID | Dimensions | SHA-256 |
+|---|---|---|
+| 1:1 | 1440x900 | abc123 |
+
+## Visual Composition Contract
+
+| Frame | Viewport | Root layout | Layer order |
+|---|---|---|---|
+| Login | 1440x900 | split | background -> form |
+
+## Asset Export Manifest
+
+| Asset ID | Figma Node ID | Class | Status |
+|---|---|---|---|
+| AST-001 | 1:3 | background-image | exportable |
+
 ## Design Element Manifest
 
 | Manifest ID | Frame / State | Figma Node ID | Role | Visible text / value | Implementation requirement | Test/accessibility hook | Notes |
@@ -1639,6 +1657,60 @@ Token evidence from Figma: colors, typography, spacing, radius.
 EOF
 cat > "$FIX_ROOT/design-substatus-ok/docs/uiux/completeness-reports/T-010.md" <<'EOF'
 # Design Completeness - T-010
+
+Summary verdict: qualified
+EOF
+cat > "$FIX_ROOT/design-substatus-ok/docs/uiux/handoffs/T-011.md" <<'EOF'
+# Incomplete visual handoff - T-011
+
+## Design System Source
+
+Token evidence from Figma: colors and spacing.
+
+## Design Element Manifest
+
+| Manifest ID | Role |
+|---|---|
+| DEM-001 | button.action |
+EOF
+cat > "$FIX_ROOT/design-substatus-ok/docs/uiux/completeness-reports/T-011.md" <<'EOF'
+# Design Completeness - T-011
+
+Summary verdict: qualified
+EOF
+cat > "$FIX_ROOT/design-substatus-ok/docs/uiux/handoffs/T-012.md" <<'EOF'
+# Blocked asset handoff - T-012
+
+## Design System Source
+
+Token evidence from Figma: colors and spacing.
+
+## Reference Render
+
+| Figma Node ID | SHA-256 |
+|---|---|
+| 1:1 | abc123 |
+
+## Visual Composition Contract
+
+| Composition ID | Viewport | Root layout |
+|---|---|---|
+| CMP-001 | 1440x900 | split |
+
+## Asset Export Manifest
+
+| Asset ID | Figma Node ID | Class | Status |
+|---|---|---|---|
+| AST-001 | 1:3 | logo | blocked |
+
+## Design Element Manifest
+
+| Manifest ID | Role |
+|---|---|
+| DEM-001 | button.action |
+EOF
+cat > "$FIX_ROOT/design-substatus-ok/docs/uiux/completeness-reports/T-012.md" <<'EOF'
+# Design Completeness - T-012
 
 Summary verdict: qualified
 EOF
@@ -1658,11 +1730,31 @@ cat > "$FIX_ROOT/design-substatus-task-review.md" <<'EOF'
 - Status: not-started
 - Design sub-status: design-ready-for-review
 EOF
+cat > "$FIX_ROOT/design-substatus-task-incomplete-visual.md" <<'EOF'
+# T-011 - Incomplete visual contract
+
+- Phase: phase-01/
+- Track: fe
+- Status: not-started
+- Design sub-status: design-confirmed
+EOF
+cat > "$FIX_ROOT/design-substatus-task-blocked-asset.md" <<'EOF'
+# T-012 - Blocked visual asset
+
+- Phase: phase-01/
+- Track: fe
+- Status: not-started
+- Design sub-status: design-confirmed
+EOF
 
 mkdir -p "$FIX_ROOT/design-substatus-missing/docs"
 
 run_exit "design-substatus: allows design-confirmed with handoff and qualified report" 0 \
     "$DESIGN_SUBSTATUS" "$(task_payload_from_file "$FIX_ROOT/design-substatus-task-confirmed.md")" "CLAUDE_PROJECT_DIR=$FIX_ROOT/design-substatus-ok"
+run_exit "design-substatus: blocks handoff missing render/layout/assets" 2 \
+    "$DESIGN_SUBSTATUS" "$(task_payload_from_file "$FIX_ROOT/design-substatus-task-incomplete-visual.md" T-011)" "CLAUDE_PROJECT_DIR=$FIX_ROOT/design-substatus-ok"
+run_exit "design-substatus: blocks unexportable required asset" 2 \
+    "$DESIGN_SUBSTATUS" "$(task_payload_from_file "$FIX_ROOT/design-substatus-task-blocked-asset.md" T-012)" "CLAUDE_PROJECT_DIR=$FIX_ROOT/design-substatus-ok"
 run_exit "design-substatus: blocks design-confirmed when handoff/report missing" 2 \
     "$DESIGN_SUBSTATUS" "$(task_payload_from_file "$FIX_ROOT/design-substatus-task-confirmed.md")" "CLAUDE_PROJECT_DIR=$FIX_ROOT/design-substatus-missing"
 run_exit "design-substatus: skips non-confirmed design sub-status" 0 \
@@ -2179,11 +2271,41 @@ cat > "$FE_FIX/docs/uiux/refs/T-100.md" <<'EOF'
 - Status: Frozen
 - Figma-File-Version: abc
 
+## Reference Render
+
+| Figma Node ID | Dimensions | SHA-256 |
+|---|---|---|
+| 1:1 | 1440x900 | abc123 |
+
+## Visual Composition Contract
+
+| Frame | Viewport | Root layout | Layer order |
+|---|---|---|---|
+| Login | 1440x900 | split | background -> form |
+
+## Asset Export Manifest
+
+| Asset ID | Figma Node ID | Class | Status |
+|---|---|---|---|
+| AST-001 | 1:3 | background-image | exportable |
+
 ## Design Element Manifest
 
 | Manifest ID | Frame / State | Figma Node ID | Role | Visible text / value | Implementation requirement | Test/accessibility hook | Notes |
 |---|---|---|---|---|---|---|---|
 | DEM-001 | Login / Default | 1:2 | input.field | Email | Render email field | login-email | Static |
+
+## Asset Implementation Trace Matrix
+
+| Asset ID | Source path | Code location | Status |
+|---|---|---|---|
+| AST-001 | frontend/src/assets/login.webp | Login.tsx | implemented |
+
+## Composition Implementation Trace Matrix
+
+| Composition ID | Surface | Viewport | Code location | Status |
+|---|---|---|---|---|
+| CMP-001 | Login | 1440x900 | Login.tsx | implemented |
 
 ## Implementation Trace Matrix
 
@@ -2192,6 +2314,23 @@ cat > "$FE_FIX/docs/uiux/refs/T-100.md" <<'EOF'
 | DEM-001 | frontend/src/Login.tsx | login-email | implemented |
 EOF
 printf '%s\n' '# Design contract — T-300' '- Status: Draft' > "$FE_FIX/docs/uiux/refs/T-300.md"
+cat > "$FE_FIX/docs/uiux/refs/T-400.md" <<'EOF'
+# Design contract - T-400
+
+- Status: Frozen
+
+## Design Element Manifest
+
+| Manifest ID | Role |
+|---|---|
+| DEM-001 | button.action |
+
+## Implementation Trace Matrix
+
+| Manifest ID | Code location | Status |
+|---|---|---|
+| DEM-001 | frontend/src/Foo.tsx | implemented |
+EOF
 
 fe_w() {
   # $1 = absolute file_path, $2 = cwd
@@ -2217,6 +2356,7 @@ run_exit "fe-design: no contract blocks .css write"        2 "$FE_GUARD" "$(fe_w
 
 # === FE Dev worktree, contract exists but Draft — BLOCK ===
 run_exit "fe-design: Draft contract blocks write"          2 "$FE_GUARD" "$(fe_w "$FE_FIX/.worktrees/fe-dev-T-300/web/src/Foo.tsx" "$FE_FIX/.worktrees/fe-dev-T-300")"
+run_exit "fe-design: Frozen contract missing visual evidence blocks" 2 "$FE_GUARD" "$(fe_w "$FE_FIX/.worktrees/fe-dev-T-400/web/src/Foo.tsx" "$FE_FIX/.worktrees/fe-dev-T-400")"
 
 # === FE Dev worktree, writing non-FE-source — ALLOW ===
 run_exit "fe-design: docs/ write passes (no contract needed)" 0 "$FE_GUARD" "$(fe_w "$FE_FIX/.worktrees/fe-dev-T-200/docs/uiux/refs/T-200.md" "$FE_FIX/.worktrees/fe-dev-T-200")"
@@ -2264,6 +2404,24 @@ cat > "$UI_FIX/docs/uiux/handoffs/T-180.md" <<'EOF'
 
 Token evidence from Figma extraction: colors, typography, spacing, and radius.
 
+## Reference Render
+
+| Figma Node ID | Dimensions | SHA-256 |
+|---|---|---|
+| 1:1 | 1440x900 | abc123 |
+
+## Visual Composition Contract
+
+| Frame | Viewport | Root layout | Layer order |
+|---|---|---|---|
+| Group | 1440x900 | split | background -> panel |
+
+## Asset Export Manifest
+
+| Asset ID | Figma Node ID | Class | Status |
+|---|---|---|---|
+| AST-001 | 1:3 | background-image | exportable |
+
 ## Design Element Manifest
 
 | Manifest ID | Frame / State | Figma Node ID | Role | Visible text / value | Implementation requirement | Test/accessibility hook | Notes |
@@ -2275,11 +2433,41 @@ cat > "$UI_FIX/docs/uiux/refs/T-180.md" <<'EOF'
 
 - Status: Frozen
 
+## Reference Render
+
+| Figma Node ID | Dimensions | SHA-256 |
+|---|---|---|
+| 1:1 | 1440x900 | abc123 |
+
+## Visual Composition Contract
+
+| Frame | Viewport | Root layout | Layer order |
+|---|---|---|---|
+| Group | 1440x900 | split | background -> panel |
+
+## Asset Export Manifest
+
+| Asset ID | Figma Node ID | Class | Status |
+|---|---|---|---|
+| AST-001 | 1:3 | background-image | exportable |
+
 ## Design Element Manifest
 
 | Manifest ID | Frame / State | Figma Node ID | Role | Visible text / value | Implementation requirement | Test/accessibility hook | Notes |
 |---|---|---|---|---|---|---|---|
 | DEM-001 | Group / Default | 1:2 | button.action | Save | Render save action | group-save | Static |
+
+## Asset Implementation Trace Matrix
+
+| Asset ID | Source path | Code location | Status |
+|---|---|---|---|
+| AST-001 | frontend/src/assets/group.webp | Group.tsx | implemented |
+
+## Composition Implementation Trace Matrix
+
+| Composition ID | Surface | Viewport | Code location | Status |
+|---|---|---|---|---|
+| CMP-001 | Group | 1440x900 | Group.tsx | implemented |
 
 ## Implementation Trace Matrix
 
@@ -2289,6 +2477,18 @@ cat > "$UI_FIX/docs/uiux/refs/T-180.md" <<'EOF'
 EOF
 cat > "$UI_FIX/docs/uiux/visual-specs/T-180.md" <<'EOF'
 # Visual Spec - T-180
+
+## Visual Composition Assertions
+
+| Composition ID | Surface | Viewport | Layout assertion |
+|---|---|---|---|
+| CMP-001 | Group | 1440x900 | split layout and z-order match |
+
+## Asset Assertions
+
+| Asset ID | Assertion |
+|---|---|
+| AST-001 | background image is rendered |
 
 ## Design Element Assertions
 

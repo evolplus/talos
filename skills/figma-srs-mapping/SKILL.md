@@ -62,16 +62,19 @@ Use Figma MCP to fetch the file structure:
 - File-level metadata: `name`, `lastModified`, `version` (capture for the artifact header).
 - All top-level Frames and Sections on the canvas. Walk into Sections one level deep — group their child frames under the Section name.
 - For each frame: `id` (Node ID), `name`, `width × height`, presence of Auto Layout (Y/N), variant set membership (Y/N + variant property names).
+- Capture a small **surface signature** for identity verification: ordered direct-child names/types, visible text anchors, dominant asset node IDs (logo/background/hero illustration), and a reference thumbnail/snapshot. This prevents two same-named or visually adjacent frames from being interchanged later.
 - Skip Components and ComponentSets at this stage — they\'re design-system primitives, not screen-level surfaces.
 
 ### Step 3 — Match frames to surfaces
 
 For each SRS surface (Step 1), find its Figma match:
 
-1. **Exact name match.** Surface "Login screen" ↔ frame "Login screen" or "01 - Login" or "Login". Strip ordering prefixes (`01 - `, `1. `), normalize case, normalize separators.
+1. **Exact name match.** Surface "Login screen" ↔ frame "Login screen" or "01 - Login" or "Login". Strip ordering prefixes (`01 - `, `1. `), normalize case, normalize separators. An exact name is only a candidate: require exactly one candidate in the scoped page and verify its surface signature. Duplicate normalized names are blocking ambiguity, never "pick the first".
 2. **Synonym/fuzzy match.** Surface "Dashboard" ↔ frame "Home". Surface "Settings" ↔ frame "Preferences". When fuzzy-matching, mark `matched-fuzzy` and **list under "Decisions awaiting human confirmation"** — the Approver confirms or rejects each.
 3. **Variant-set match.** A single Figma variant-set may cover multiple SRS surfaces if the variants represent distinct states the SRS lists separately. Capture the variant-set node ID + the specific variant nodes used.
 4. **No match.** Surface has no Figma frame. This is a gap — file under "SRS surfaces without Figma match" with severity = `blocking`.
+
+Before accepting any match, verify all of the following: the node descends from the scoped page; its dimensions/platform agree with the SRS row; two or more visible text/component anchors agree with the expected surface when such anchors exist; and the reference snapshot corresponds to the same node ID. If identity remains ambiguous, mark `gap-ambiguous-frame` and require human confirmation. Never infer the intended screen from canvas proximity or whichever frame was most recently opened.
 
 In parallel, identify **orphans**: Figma frames with no SRS surface match. These may be (a) out-of-scope screens, (b) scratch frames, or (c) screens that SHOULD be in the SRS but were missed by the PM. The mapping lists them; the Approver decides their disposition during BA Phase 2.
 
@@ -107,11 +110,11 @@ Schema (header + tables):
 - Last-Confirmed: TBD  (filled when Approver confirms during BA Phase 2)
 
 ## Mapping Table
-| SRS Surface | US/FR ID | Figma Frame | Node ID | Auto-Layout | Variants Match | Status |
-|---|---|---|---|---|---|---|
-| Login screen | US-001 | "01 - Login" | 1:23 | yes | full | qualified |
-| Dashboard | US-002 | "02 - Home" | 1:45 | yes | partial (empty-state missing) | gap-variant |
-| Forgot password | FR-008 | (missing) | — | — | — | gap-surface |
+| SRS Surface | US/FR ID | Figma Frame | Node ID | Surface signature | Reference snapshot | Auto-Layout | Variants Match | Status |
+|---|---|---|---|---|---|---|---|---|
+| Login screen | US-001 | "01 - Login" | 1:23 | title="Welcome"; logo=1:29; background=1:31 | `snapshots/US-001.png` | yes | full | qualified |
+| Dashboard | US-002 | "02 - Home" | 1:45 | title="Dashboard"; nav=1:48 | `snapshots/US-002.png` | yes | partial (empty-state missing) | gap-variant |
+| Forgot password | FR-008 | (missing) | — | — | — | — | — | gap-surface |
 
 ## Gaps
 
@@ -157,6 +160,7 @@ Emit `plan-update.json` with `agent: ui-ux-designer`, `dispatch_mode: map`, `map
 - **One mapping per SRS version.** When SRS revs (Phase 1.Z iteration), re-run `map` and produce a new `v<n>` file. Old mappings stay for audit.
 - **Mapping-Status: gaps blocks SRS Status: Signed-off.** BA Phase 2 reads the artifact and refuses to flip Status if `gaps` is present.
 - **Fuzzy matches require Approver confirmation before sign-off.** BA Phase 2 surfaces them as NEEDS_CONTEXT; Approver confirms or rejects each.
+- **Ambiguous frame identity blocks qualification.** Duplicate normalized names, out-of-page nodes, missing surface signatures, or a node/snapshot mismatch are `gap-ambiguous-frame`; never choose by order, proximity, or visual plausibility.
 - **Orphans never block sign-off.** PM disposes during BA Phase 2 — accept as out-of-scope (logged in SRS §10 Changelog) or add as a new US (restarts BA Phase 1).
 - **You do not create surfaces in `map` mode.** Missing surfaces go in the gap list. Creation comes only via post-sign-off Design-Flow B or C with explicit user confirmation.
 

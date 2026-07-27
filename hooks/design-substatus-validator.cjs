@@ -117,6 +117,10 @@ function sectionHasDemRows(content, heading) {
   return /\bDEM-\d+\b/i.test(section);
 }
 
+function sectionHasPattern(content, heading, pattern) {
+  return pattern.test(getSection(content, heading));
+}
+
 function hasDesignSystemSource(content) {
   const stripped = stripFencedCodeBlocks(content);
   return /design\s+system\s+source/i.test(stripped) &&
@@ -148,6 +152,20 @@ function checkHandoff(root, taskId) {
   }
   if (!hasDesignSystemSource(content)) {
     violations.push(rel + ' is missing Design System Source / token-evidence detail.');
+  }
+  if (!hasHeading(content, 'Reference Render') ||
+      !sectionHasPattern(content, 'Reference Render', /\b(Node ID|Figma Node ID)\b[\s\S]*\b(SHA-?256|checksum)\b/i)) {
+    violations.push(rel + ' is missing non-empty ## Reference Render node/checksum evidence.');
+  }
+  if (!hasHeading(content, 'Visual Composition Contract') ||
+      !sectionHasPattern(content, 'Visual Composition Contract', /\b(viewport|layer order|root layout|constraints?)\b/i)) {
+    violations.push(rel + ' is missing non-empty ## Visual Composition Contract evidence.');
+  }
+  if (!hasHeading(content, 'Asset Export Manifest') ||
+      !sectionHasPattern(content, 'Asset Export Manifest', /\bAST-(?:\d+|NONE)\b/i)) {
+    violations.push(rel + ' is missing ## Asset Export Manifest AST-* rows.');
+  } else if (sectionHasPattern(content, 'Asset Export Manifest', /^\|?[^\r\n]*\bAST-\d+\b[^\r\n]*\bblocked\b/im)) {
+    violations.push(rel + ' has blocked Asset Export Manifest rows.');
   }
   return violations;
 }
@@ -205,7 +223,7 @@ async function main() {
     violations.map(v => '    - ' + v).join('\n') + '\n\n' +
     '  Required sequence:\n' +
     '    1. UI/UX Designer create/import/revise/incorporate writes docs/uiux/handoffs/' + taskId + '.md.\n' +
-    '    2. The handoff includes non-empty ## Design Element Manifest rows and token evidence.\n' +
+    '    2. The handoff includes non-empty Reference Render, Visual Composition Contract, Asset Export Manifest, Design Element Manifest, and token evidence.\n' +
     '    3. BA Phase 3 writes docs/uiux/completeness-reports/' + taskId + '.md with verdict: qualified.\n' +
     '    4. The Designated Design Approver confirms the design version, then design-confirmed may be recorded.\n'
   );

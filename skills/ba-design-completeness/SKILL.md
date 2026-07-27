@@ -43,13 +43,16 @@ For every UI requirement in SRS, verify against the designer's `docs/uiux/handof
    explicit others) appears in the design handoff's component inventory for that screen.
 3. **Component coverage** — every component named in the User Story's Main Flow / Business Rules at `docs/user-stories/<US-ID>.md` for a screen appears in
    that screen's component inventory.
-4. **Design Element Manifest coverage** — `docs/uiux/handoffs/<task-id>.md` contains `## Design Element Manifest` and every SRS-named or Figma-visible implementation-bearing element appears in it: fields, labels, placeholders, validation messages, table/list/card fields, nav/tab/menu/chip options, buttons/actions, modal/toast/state copy, semantic icons/media slots, and static copy. Decorative layers may be excluded only if listed under decorative/non-functional exclusions. Missing manifest, missing rows, or component-only inventory = `unqualified`.
-5. **Color palette** — colors listed in `docs/uiux/handoffs/<task-id>.md` are consistent with SRS brand / design system
+4. **Design Element Manifest coverage** — `docs/uiux/handoffs/<task-id>.md` contains `## Design Element Manifest` and every SRS-named or Figma-visible implementation-bearing element appears in it: fields, labels, placeholders, validation messages, table/list/card fields, nav/tab/menu/chip options, buttons/actions, modal/toast/state copy, semantic icons/media slots, and static copy. Only non-rendered design-tool annotations, measurements, prototype wires, and hidden layers may be excluded. Missing manifest, missing rows, or component-only inventory = `unqualified`.
+5. **Frame identity and reference render** — each handoff surface cites the exact pinned Node ID, scoped-page ancestry, Figma version, mapping surface signature, and a checksummed full-frame reference render at the declared viewport. Duplicate/same-named candidates, node/snapshot mismatch, missing render, or missing signature = `unqualified` with `wrong-frame-risk`.
+6. **Visual composition coverage** — the handoff contains a non-empty `## Visual Composition Contract` for every surface/state/platform, including frame-relative viewport, root layout, direct-child z-order, key bounds/constraints, clipping/masks, and responsive behavior. A component inventory without composition geometry = `unqualified`.
+7. **Asset coverage** — the handoff contains a non-empty `## Asset Export Manifest`. Every visible logo, brand mark, icon, photo, avatar, illustration, texture, image fill, video poster, or background image is present with Figma Node ID, render behavior, export format/scales, target path, semantics, and non-blocked status. `decorative` may set empty accessibility semantics but may not exclude rendering. Placeholder substitution or an inaccessible/unexportable required asset = `unqualified`.
+8. **Color palette** — colors listed in `docs/uiux/handoffs/<task-id>.md` are consistent with SRS brand / design system
    requirements. Flag any color outside the declared palette.
-6. **Platform coverage** — for each surface, every platform listed in SRS `Platform` column has a corresponding
+9. **Platform coverage** — for each surface, every platform listed in SRS `Platform` column has a corresponding
    variant in the handoff.
-7. **Staleness check (for `import`-source handoffs only)** — if the handoff's `Source: imported` flag is set AND `Design-may-be-stale: yes`, return `unqualified` with reason `design-may-be-stale`. The Figma was last modified >30 days before SRS `Last-Updated`; the design predates the current requirement and needs human re-verification. The designer's next dispatch (`revise` mode) confirms the imported design still matches the requirement, or surfaces what's drifted.
-8. **Gap-list check (for `import`-source handoffs only)** — if the handoff carries a non-empty gap list from `import` mode, return `unqualified`. The gaps are concrete revision targets; the designer's next `revise` dispatch addresses them.
+10. **Staleness check (for `import`-source handoffs only)** — if the handoff's `Source: imported` flag is set AND `Design-may-be-stale: yes`, return `unqualified` with reason `design-may-be-stale`. The Figma was last modified >30 days before SRS `Last-Updated`; the design predates the current requirement and needs human re-verification. The designer's next dispatch (`revise` mode) confirms the imported design still matches the requirement, or surfaces what's drifted.
+11. **Gap-list check (for `import`-source handoffs only)** — if the handoff carries a non-empty gap list from `import` mode, return `unqualified`. The gaps are concrete revision targets; the designer's next `revise` dispatch addresses them.
 
 This is a **completeness check, not a design review**. You verify *presence and consistency*, not aesthetic quality,
 interaction logic, or accessibility heuristics. Aesthetic quality is the human approver's job (next step in the flow,
@@ -74,6 +77,8 @@ Produce `docs/uiux/completeness-reports/<task-id>.md`:
 - Never sign off design quality — only completeness.
 - A missing item is `unqualified`, not "minor". The designer iterates until completeness is met.
 - A missing Design Element Manifest is `unqualified`; FE Dev cannot be expected to implement fields/items that no contract enumerates.
+- Missing reference renders, visual composition rows, or asset export rows are `unqualified`; functional completeness is not visual completeness.
+- A decorative-but-rendered layer is still required. Only non-rendered Figma annotations/measurements/hidden layers may be excluded from implementation.
 - Never edit Figma. You read the handoff, not the file directly.
 - If the SRS itself is the gap (the designer found ambiguity), reopen the relevant SRS requirement, raise an Open
   Question, and revert SRS Status to `Draft` if scope is affected.

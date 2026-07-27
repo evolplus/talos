@@ -100,9 +100,10 @@ Flaky tests are failures until proven otherwise (QA-Exec hard rule). To stay det
 Visual diff (Tier 3 in QA-Exec) is the most-flaky tier. Use sparingly:
 
 - **Only for surfaces with SRS `Visual-Critical: yes`.** Visual diff on a utility screen costs more than it catches.
+- **Default Figma-rich surfaces to Visual-Critical.** A surface with a logo/brand asset, illustration, image fill/background, mask, overlap, or composition-dependent geometry should be marked `Visual-Critical: yes` during handoff unless a human explicitly opts out in the SRS.
 - **Pin the rendering environment** — use a container image with fixed fonts and antialiasing. Without this, OS-level differences (macOS vs Linux runner) produce false diffs.
 - **Threshold is explicit** — typically 0.1% pixel difference at the same viewport. Higher = visual regressions slip through; lower = noise.
-- **Update the baseline only with human approval** — never auto-update on green. A "passing diff that matches yesterday's diff" is not the same as "matches the design."
+- **The initial baseline comes from the approved Figma Reference Render**, not from the first implementation screenshot. Update it only with human approval after a confirmed Figma-version change. A "passing diff that matches yesterday's implementation" is not the same as "matches the design."
 - **Default to framework-built-in** for visual diff (Playwright `toHaveScreenshot()`, Patrol screenshot diff). Layer Percy / Applitools only when the project has tenant-variant UI or design-system distribution at scale.
 
 ## Report artifact layout

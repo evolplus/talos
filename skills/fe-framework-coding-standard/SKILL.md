@@ -15,8 +15,8 @@ You are FE Dev implementing or reviewing UI code after the stack is declared in 
 
 ## Inputs and outputs
 
-- **Inputs:** task assignment, `docs/SRS.md` header `Frontend-Framework:`, SRS §3.4.2 UI Introspection Profile, SRS §3.4.5 Source Layout, SRS §3.4.6 Environment Configuration, SRS user story / FR / NFR IDs, design handoff, Design Element Manifest, visual spec assertions, instrumentation contract, architecture decisions, current frontend source tree, installed framework versions and libraries.
-- **Outputs:** framework-native UI code that follows the project's existing architecture, names stable test selectors, implements every required Figma field/item/copy/action from the Design Element Manifest, handles loading / error / empty states, satisfies design tokens where available, and includes the appropriate unit / component / E2E updates.
+- **Inputs:** task assignment, `docs/SRS.md` header `Frontend-Framework:`, SRS §3.4.2 UI Introspection Profile, SRS §3.4.5 Source Layout, SRS §3.4.6 Environment Configuration, SRS user story / FR / NFR IDs, design handoff, Reference Render, Visual Composition Contract, Asset Export Manifest, Design Element Manifest, visual spec assertions, instrumentation contract, architecture decisions, current frontend source tree, installed framework versions and libraries.
+- **Outputs:** framework-native UI code that follows the project's existing architecture, names stable test selectors, implements every required Figma field/item/copy/action, reproduces the contracted composition, uses every required exported asset, handles loading / error / empty states, satisfies design tokens where available, and includes the appropriate unit / component / E2E updates.
 
 ## Framework selection
 
@@ -58,18 +58,21 @@ For mobile frameworks, the matching reference is a routing card:
    - render every fixed button/link/nav/tab/chip/menu option and preserve Figma order;
    - render every table/list/card field, column, slot, badge, status, and counter specified by the row/card template;
    - render modal/toast/empty/loading/error/success copy and actions exactly when static;
-   - treat decorative exclusions as non-implementation unless they affect layout or accessibility.
-5. Keep boundaries explicit:
+   - reproduce the Visual Composition Contract: correct viewport variant, major region bounds, direct-child order, Auto Layout/flex/grid behavior, absolute layers, clipping/masks, overlap, and background treatment;
+   - export and use every Asset Export Manifest row at its declared format/scales and target path, preserving fit/crop/focal point, opacity, mask, z-order, and semantics;
+   - treat only non-rendered design-tool exclusions as non-implementation. Decorative-but-rendered imagery remains required.
+5. Never substitute visual assets without an explicit design change. Text initials for a logo, emoji for an icon, generic icon-library glyphs, CSS approximations, stock imagery, invented gradients, and solid-color placeholders do not satisfy an AST row.
+6. Keep boundaries explicit:
    - screen/page/container owns route params, data loading, permissions, and orchestration;
    - presentational components own layout and interaction events;
    - services/hooks/composables/providers own reusable data access;
    - shared components must stay feature-agnostic.
-6. Implement all user-observable states: initial, loading, success, empty, validation error, recoverable error, permission denied where applicable, disabled, and optimistic rollback if optimistic UI is used.
-7. Add or update stable selectors from `docs/instrumentation-contract.md` and the Design Element Manifest. Do not invent selector strings when the contract is absent; file the required contract gap and use the project convention only after it is declared.
-8. Preserve accessibility: semantic roles / labels, focus order, keyboard interaction for web, screen-reader labels for mobile, minimum touch targets, color contrast, and reduced-motion behavior when animations are present.
-9. Keep data flow predictable. Prefer derived state over duplicated state. Avoid effects/listeners/subscriptions that can run repeatedly without cleanup.
-10. Test at the right layer: unit tests for logic, component/widget tests for manifest row presence, and E2E tests for critical user flows. Update existing snapshots only when the visual change is intentional and reviewable.
-11. Run the project's format, lint, typecheck/analyze, and relevant tests. If a command cannot run locally, document the blocker and the narrower checks you did run.
+7. Implement all user-observable states: initial, loading, success, empty, validation error, recoverable error, permission denied where applicable, disabled, and optimistic rollback if optimistic UI is used.
+8. Add or update stable selectors from `docs/instrumentation-contract.md` and the Design Element Manifest. Do not invent selector strings when the contract is absent; file the required contract gap and use the project convention only after it is declared.
+9. Preserve accessibility: semantic roles / labels, focus order, keyboard interaction for web, screen-reader labels for mobile, minimum touch targets, color contrast, reduced-motion behavior when animations are present, and empty semantics for decorative imagery.
+10. Keep data flow predictable. Prefer derived state over duplicated state. Avoid effects/listeners/subscriptions that can run repeatedly without cleanup.
+11. Test at the right layer: unit tests for logic, component/widget tests for manifest row presence, asset-path/import tests for AST rows, structural tests for composition properties, and E2E tests for critical flows. For Visual-Critical surfaces, compare a deployed screenshot at the exact contracted viewport against the approved reference render; do not compare only against a screenshot generated from the implementation itself.
+12. Run the project's format, lint, typecheck/analyze, and relevant tests. If a command cannot run locally, document the blocker and the narrower checks you did run.
 
 ## Hard rules
 
@@ -79,6 +82,8 @@ For mobile frameworks, the matching reference is a routing card:
 - Do not rewrite established project structure to match a reference file. The reference guides decisions inside the existing architecture.
 - Do not ship UI code without loading, error, empty, and accessibility states for the changed surface.
 - Do not ship UI code that omits a Design Element Manifest row. If the implementation intentionally cannot render a row, raise an open issue and keep the task in-progress.
+- Do not ship UI code that omits an Asset Export Manifest row or materially changes a Visual Composition Contract row. Missing logos/backgrounds/graphics and rearranged major regions are blockers, not cosmetic follow-ups.
+- Do not use placeholders or approximate replacements for Figma assets unless the confirmed handoff explicitly authorizes the substitution.
 - Do not hardcode API/backend URLs, environment-specific endpoints, secrets, tenant IDs, locale text that belongs in i18n, or selector IDs outside the instrumentation contract. Runtime URLs must come from the SRS §3.4.6 config keys through the project config loader.
 - Do not bypass type errors, lints, or analyzer failures with suppressions unless the suppression is tightly scoped and justified in code.
 
