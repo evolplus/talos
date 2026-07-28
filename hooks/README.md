@@ -144,6 +144,16 @@ Refuses `Write`, `Edit`, `MultiEdit`, `NotebookEdit` on `docs/plan/` paths that 
 
 **Known limitation**: this hook does not parse Bash commands. A Bash redirect like `echo ... > docs/plan/master-plan.md` (or any file under `docs/plan/`) would still get through. Bash parsing for write redirects is brittle and tends to break on edge cases (heredocs, `tee`, `dd`, multiple shells); the prose rule (CLAUDE.md §10) is the authoritative control. The hook catches the common-case file-tool path.
 
+## plan-consistency-validator.cjs (PreToolUse)
+
+Validates main-repo `Write` and `Edit` operations that change `master-plan.md` or a phase's `phase.md`. Activation is
+path-based; `CLAUDE_ORCHESTRATOR` is not required. Sub-agent worktree paths are skipped because
+`master-plan-write-guard.cjs` owns that refusal.
+
+For compatibility with mature plans, Markdown wrappers such as `**done**` and backticked folder names are normalized
+before comparison. A phase whose tasks are all terminal and include at least one historical `failed` task computes as
+`done-with-caveat`; clean terminal phases compute as `done`.
+
 ## kit-role-dispatch-guard.cjs (PreToolUse on Task)
 
 Blocks `Task` tool dispatches that use `subagent_type: general-purpose` when the prompt content contains a kit-role signal. Enforces CLAUDE.md §10 hard rule "Role-specialized dispatch required" and orchestrator-operating-rules.md §9 Step 4.5.

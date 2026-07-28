@@ -588,6 +588,27 @@ EOF
 
 MP_CONSISTENT='{"tool_name":"Write","tool_input":{"file_path":"docs/plan/master-plan.md","content":"# Master Plan\n\n## Phases\n\n| Phase | Folder | Status | Tasks | Notes |\n|---|---|---|---|---|\n| 01 — Foundation | phase-01-foundation/ | done | 2/2 done | — |\n"}}'
 
+# Mature-plan compatibility: a phase with only terminal tasks, including a
+# historical failed task, may be closed as done-with-caveat.
+mkdir -p "$FIX_ROOT/pc-done-with-caveat/docs/plan/phase-11-legacy/tasks"
+cat > "$FIX_ROOT/pc-done-with-caveat/docs/plan/phase-11-legacy/phase.md" <<'EOF'
+# Phase 11 — Legacy
+
+- Status: done-with-caveat
+
+## Tasks
+
+| Task | Track | Status | DoD link |
+|---|---|---|---|
+| T-110 | be | **done** | tasks/T-110.md |
+| T-111 | qa | **failed** | tasks/T-111.md |
+EOF
+
+MP_DONE_WITH_CAVEAT='{"tool_name":"Write","tool_input":{"file_path":"docs/plan/master-plan.md","content":"# Master Plan\n\n## Phases\n\n| Phase | Folder | Status | Tasks | Notes |\n|---|---|---|---|---|\n| 11 — Legacy | `phase-11-legacy/` | **done-with-caveat** | **1/2 done** | Historical QA caveat |\n"}}'
+
+# Markdown emphasis is presentation only and must not change schema values.
+MP_BOLD_CONSISTENT='{"tool_name":"Write","tool_input":{"file_path":"docs/plan/master-plan.md","content":"# Master Plan\n\n## Phases\n\n| Phase | Folder | Status | Tasks | Notes |\n|---|---|---|---|---|\n| 01 — Foundation | **phase-01-foundation/** | **done** | **2/2 done** | — |\n"}}'
+
 # Inconsistent: master-plan says done 2/2, but phase.md has 1 done + 1 ready-for-deploy
 mkdir -p "$FIX_ROOT/pc-inconsistent-status/docs/plan/phase-01-foundation/tasks"
 cp "$FIX_ROOT/pc-consistent/docs/plan/phase-01-foundation/tasks/T-001.md" \
@@ -685,6 +706,10 @@ run_exit "consistency: skips sub-agent worktree writes (write-guard handles sepa
 # Master-plan consistency tests (path-based detection — no env var needed)
 run_exit "consistency: allows master-plan when consistent with phase" \
     0 "$PLAN_CONSISTENCY" "$MP_CONSISTENT" "CLAUDE_PROJECT_DIR=$FIX_ROOT/pc-consistent"
+run_exit "consistency: allows terminal done-with-caveat phase" \
+    0 "$PLAN_CONSISTENCY" "$MP_DONE_WITH_CAVEAT" "CLAUDE_PROJECT_DIR=$FIX_ROOT/pc-done-with-caveat"
+run_exit "consistency: ignores Markdown wrappers in plan tables" \
+    0 "$PLAN_CONSISTENCY" "$MP_BOLD_CONSISTENT" "CLAUDE_PROJECT_DIR=$FIX_ROOT/pc-consistent"
 run_exit "consistency: blocks master-plan when phase status disagrees" \
     2 "$PLAN_CONSISTENCY" "$MP_INCONSISTENT_STATUS" "CLAUDE_PROJECT_DIR=$FIX_ROOT/pc-inconsistent-status"
 run_exit "consistency: blocks master-plan when task count disagrees" \

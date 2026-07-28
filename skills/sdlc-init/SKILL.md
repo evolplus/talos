@@ -38,7 +38,8 @@ slash commands and may not exist in Codex.
 - `--target claude` - override auto-detection and write `CLAUDE.md`, `.claude/settings.json`, and `.claude/hooks`.
 - `--target both` - override auto-detection and write both Codex and Claude instruction targets.
 - `--dry-run` - prints planned changes without writing files.
-- `--force-hooks` - allows replacing conflicting Claude hook files.
+- `--force-hooks` - backs up conflicting Claude hook files under
+  `.claude/backups/sdlc-init-<timestamp>/hooks/`, then replaces them.
 - `--skip-agents` - skip instruction injection.
 - `--skip-settings` - skip Claude settings merge.
 - `--skip-hooks` - skip Claude hook copy.

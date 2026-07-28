@@ -32,7 +32,7 @@ function usage() {
     '  --project <path>     Project root to initialize. Defaults to CODEX_PROJECT_DIR, CLAUDE_PROJECT_DIR, or cwd.',
     '  --target <name>      Override auto-detected runtime: codex, claude, or both.',
     '  --dry-run            Print planned changes without writing files.',
-    '  --force-hooks        Replace conflicting project hook files with plugin hook files.',
+    '  --force-hooks        Back up, then replace conflicting project hook files.',
     '  --skip-agents        Do not update AGENTS.md / CLAUDE.md instructions.',
     '  --skip-claude        Deprecated alias for --skip-agents.',
     '  --skip-settings      Do not update .claude/settings.json (Claude target only).',
@@ -930,6 +930,34 @@ function copyHookFile(source, target, options) {
   recordInstallReceiptFile(options, target);
 }
 
+function forceHookBackupRoot(options) {
+  if (options.forceHookBackupRoot) {
+    return options.forceHookBackupRoot;
+  }
+
+  const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+  // Keep backups outside .claude/hooks so the post-Bash security audit does
+  // not mistake the preserved pre-install scripts for newly installed hooks.
+  const base = path.join(options.projectRoot, '.claude', 'backups', `sdlc-init-${timestamp}`, 'hooks');
+  let candidate = base;
+  let suffix = 2;
+  while (!options.dryRun && fs.existsSync(candidate)) {
+    candidate = `${base}-${suffix}`;
+    suffix += 1;
+  }
+  options.forceHookBackupRoot = candidate;
+  return candidate;
+}
+
+function backupConflictingHook(targetFile, rel, options) {
+  const backupFile = path.join(forceHookBackupRoot(options), rel);
+  if (!options.dryRun) {
+    fs.mkdirSync(path.dirname(backupFile), { recursive: true });
+    fs.copyFileSync(targetFile, backupFile);
+  }
+  return backupFile;
+}
+
 function injectHooks(options, result) {
   if (options.skipHooks) {
     recordUnchanged(result, 'Skipped hook script copy.');
@@ -964,9 +992,14 @@ function injectHooks(options, result) {
     }
 
     if (options.forceHooks) {
+      const backupFile = backupConflictingHook(targetFile, rel, options);
       copyHookFile(sourceFile, targetFile, options);
       replaced += 1;
-      result.warnings.push(`Replaced conflicting hook file ${relativeToProject(targetFile, options.projectRoot)}.`);
+      result.warnings.push(
+        `${options.dryRun ? 'Would back up and replace' : 'Backed up and replaced'} conflicting hook file ` +
+        `${relativeToProject(targetFile, options.projectRoot)} ` +
+        `(backup: ${relativeToProject(backupFile, options.projectRoot)}).`
+      );
     } else {
       result.warnings.push(
         `Hook file conflict at ${relativeToProject(targetFile, options.projectRoot)}; kept the project file. Re-run with --force-hooks to replace it.`

@@ -108,6 +108,8 @@ What it does:
 - In Codex, injects the plugin guidance into the project's `AGENTS.md` inside a managed block.
 - In Claude Code, writes `CLAUDE.md`, merges original Claude settings into the project, and mirrors hook scripts into `.claude/hooks`.
 - Warns about overlapping or conflicting headings.
+- With `--force-hooks`, preserves every overwritten hook under
+  `.claude/backups/sdlc-init-<timestamp>/hooks/` before replacement.
 - Uses `--target codex`, `--target claude`, or `--target both` only as an explicit override for migration or dual-tool setups.
 
 Run `/sdlc-init` again in Claude Code, or prompt `Run sdlc-init` in Codex,

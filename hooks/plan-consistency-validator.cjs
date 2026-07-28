@@ -7,7 +7,9 @@
 // "done" while phase.md files still showed "in-progress" with tasks at
 // "ready-for-deploy". No hook caught the mismatch.
 //
-// Triggers only when CLAUDE_ORCHESTRATOR=1 (the only writer to docs/plan/).
+// Triggers for main-repo writes to the plan files below. Activation is
+// path-based; CLAUDE_ORCHESTRATOR is intentionally not required. Writes inside
+// .worktrees/ are skipped here and refused by master-plan-write-guard.cjs.
 // Validates:
 //   1. master-plan.md ↔ phase.md:  phase Status and task counts must agree
 //   2. phase.md ↔ T-NNN.md:        task Status in phase table must match task file
@@ -73,23 +75,56 @@ function parseMarkdownTable(content, sectionHeading) {
   return rows;
 }
 
+// Remove Markdown presentation wrappers from schema values before comparing
+// them. Mature plans commonly contain `**done**`, `__T-001__`, or backticked
+// values even though the logical value is the unformatted text.
+function normalizeMarkdownScalar(value) {
+  let normalized = String(value || '').trim();
+  let previous;
+  do {
+    previous = normalized;
+    normalized = normalized
+      .replace(/^\*\*([\s\S]*)\*\*$/, '$1')
+      .replace(/^__([\s\S]*)__$/, '$1')
+      .replace(/^\*([\s\S]*)\*$/, '$1')
+      .replace(/^_([\s\S]*)_$/, '$1')
+      .replace(/^`([\s\S]*)`$/, '$1')
+      .trim();
+  } while (normalized !== previous);
+  return normalized;
+}
+
+function normalizeStatus(value) {
+  return normalizeMarkdownScalar(value).toLowerCase();
+}
+
 // Derive phase status from its task statuses.
 function computePhaseStatus(taskStatuses) {
   if (taskStatuses.length === 0) return 'not-started';
-  const nonTerminal = taskStatuses.filter(
-    s => s !== 'done' && s !== 'done-deprecated' && s !== 'cancelled'
-  );
+  const normalizedStatuses = taskStatuses.map(normalizeStatus);
+  const cleanTerminal = new Set(['done', 'done-deprecated', 'cancelled']);
+  const caveatTerminal = new Set([...cleanTerminal, 'failed']);
+
+  if (
+    normalizedStatuses.some(status => status === 'failed') &&
+    normalizedStatuses.every(status => caveatTerminal.has(status))
+  ) {
+    return 'done-with-caveat';
+  }
+
+  const nonTerminal = normalizedStatuses.filter(status => !cleanTerminal.has(status));
   if (nonTerminal.length === 0) return 'done';
-  const active = nonTerminal.filter(
-    s => s !== 'not-started'
-  );
+  const active = nonTerminal.filter(status => status !== 'not-started');
   if (active.length === 0) return 'not-started';
   return 'in-progress';
 }
 
 // Count done tasks from a list of status strings.
 function countDone(taskStatuses) {
-  return taskStatuses.filter(s => s === 'done' || s === 'done-deprecated').length;
+  return taskStatuses
+    .map(normalizeStatus)
+    .filter(status => status === 'done' || status === 'done-deprecated')
+    .length;
 }
 
 // Read a file's content, returning null on failure.
@@ -140,9 +175,9 @@ function validateMasterPlan(content) {
   if (phases.length === 0) return errors; // no phases to validate
 
   for (const row of phases) {
-    const folder = (row['folder'] || '').trim();
-    const declaredStatus = (row['status'] || '').trim().toLowerCase();
-    const declaredTasks = (row['tasks'] || '').trim();
+    const folder = normalizeMarkdownScalar(row['folder']);
+    const declaredStatus = normalizeStatus(row['status']);
+    const declaredTasks = normalizeMarkdownScalar(row['tasks']);
 
     if (!folder) continue;
 
@@ -154,7 +189,7 @@ function validateMasterPlan(content) {
     }
 
     const tasks = parseMarkdownTable(phaseContent, 'Tasks');
-    const taskStatuses = tasks.map(t => (t['status'] || '').trim().toLowerCase());
+    const taskStatuses = tasks.map(task => normalizeStatus(task['status']));
     const computedStatus = computePhaseStatus(taskStatuses);
     const actualDone = countDone(taskStatuses);
     const total = taskStatuses.length;
@@ -196,8 +231,8 @@ function validatePhase(phaseFilePath, content) {
   const tasks = parseMarkdownTable(content, 'Tasks');
 
   for (const row of tasks) {
-    const taskId = (row['task'] || '').trim();
-    const declaredStatus = (row['status'] || '').trim().toLowerCase();
+    const taskId = normalizeMarkdownScalar(row['task']);
+    const declaredStatus = normalizeStatus(row['status']);
 
     if (!taskId || !/^T-\d+$/i.test(taskId)) continue;
 
@@ -213,10 +248,10 @@ function validatePhase(phaseFilePath, content) {
       continue;
     }
 
-    if (actualStatus.toLowerCase() !== declaredStatus) {
+    if (normalizeStatus(actualStatus) !== declaredStatus) {
       errors.push(
         `phase.md says ${taskId} is "${declaredStatus}" but ` +
-        `${taskId}.md says "${actualStatus.toLowerCase()}"`
+        `${taskId}.md says "${normalizeStatus(actualStatus)}"`
       );
     }
   }
