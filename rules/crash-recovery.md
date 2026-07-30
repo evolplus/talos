@@ -32,9 +32,10 @@ following are orphaned **permanently** — the next session cannot tell a crashe
   UI/UX Designer). This corrupts the source-of-truth artifact itself, with no isolation boundary to discard.
 - Intermediate commits stranded in the orphan worktree; a half-written or absent `plan-update.json`.
 
-The fix has four parts: a **dispatch journal** (intent log) makes the in-flight operation recoverable; a **session-start
-detection** surfaces interrupted dispatches; a **reconciliation procedure** (§9 Step 0.6) clears them; **restart** is
-then a normal re-dispatch from a clean baseline.
+The fix has five parts: a **dispatch journal** (intent log) makes the in-flight operation recoverable; a
+**finalization marker** makes completed cleanup mechanically provable; a **session-start garbage collector** removes
+proved-finalized residue; **detection + reconciliation** (§9 Step 0.6) handle everything ambiguous; **restart** is then
+a normal re-dispatch from a clean baseline.
 
 ### 14.2 The dispatch journal (intent log)
 
@@ -48,10 +49,13 @@ baseline to roll a partial doc write back to.
   write.
 - **Deleted by:** the Orchestrator, at §9 Step 7, as the final step of clean-up — *after* the finalization commit
   contains both promoted artifacts and the master-plan transition, and after the worktree is removed.
+- **Finalization marker:** immediately after the finalization commit succeeds and before worktree removal, atomically
+  write `finalization.state: finalized` and the full commit SHA to `finalization.main_commit`. Automatic garbage
+  collection may delete no other journal state.
 
-The invariant that powers detection: **a journal entry that survives into a new session is, by definition, an
-interrupted dispatch** — a clean dispatch deletes its own journal entry inside the same Orchestrator turn that started
-it.
+The invariant that powers recovery: **after the SessionStart garbage collector runs, any journal entry that remains
+requires reconciliation**. It is interrupted, ready to finalize, or marked finalized without sufficient cleanup
+proof. A clean dispatch still deletes its own entry inside the same Orchestrator turn that started it.
 
 Schema:
 
@@ -82,13 +86,20 @@ Schema:
 reconciliation must restore. For physically-isolated (code) roles `owned_paths` may be empty: their partial work is
 confined to the worktree, so rollback is just worktree removal.
 
-`finalization.state` is operational bookkeeping. The Orchestrator may update it while running §9 Step 7, but it must not
-rely on it as the only source of truth. The durable truth is: journal exists + worktree exists + `plan-update.json`
-exists = the dispatch is **ready to finalize**, not done.
+`finalization.state` is operational bookkeeping. The Orchestrator must set it to `finalized` with the full
+`main_commit` immediately after the finalization commit succeeds and before worktree removal. No consumer relies on
+the marker alone: garbage collection additionally proves that the commit is in current `HEAD` history and that the
+worktree is gone. Otherwise, journal exists + worktree exists + `plan-update.json` exists means the dispatch is
+**ready to finalize**, not done.
 
-### 14.3 Detection (read-only, every session start)
+### 14.3 Garbage collection and detection (every session start)
 
-Two detectors, both read-only and fail-open:
+Session start runs one conservative collector, then a read-only detector and the Orchestrator action gate; all are
+fail-open:
+
+- **`dispatch-journal-gc.cjs` (SessionStart hook)** deletes a journal only when its finalization marker is `finalized`,
+  its recorded full commit SHA is an ancestor of current `HEAD`, and its journaled worktree no longer exists. It never
+  deletes interrupted, malformed, stale-branch, or otherwise ambiguous entries.
 
 - **`session-init-summary.cjs` (SessionStart hook)** scans `.claude/dispatch-journal/*.json` and `.worktrees/*`. For
   each journal entry it prints a warning line naming the role, task-id, worktree, and `dispatched_at`. It also flags any
@@ -105,6 +116,9 @@ For each journal entry found at session start, the Orchestrator reconciles deter
 1. **Check for ready-to-finalize sub-agent output.** If `.worktrees/<role>-<task-id>/plan-update.json` exists, do not
    mark the task interrupted and do not roll back. Run the §9 Step 7 finalization transaction immediately, then delete
    the journal only after the finalization commit and cleanup succeed.
+   If the journal is already marked `finalized`, first prove that `finalization.main_commit` is in current `HEAD`
+   history. When proven, do not create another finalization commit: remove the remaining worktree and delete the
+   journal. If proof fails, halt with `NEEDS_CONTEXT`; never guess or auto-delete.
 2. **Mark interrupted only when no `plan-update.json` exists.** Set the task status `in-progress → interrupted` in `docs/plan/.../tasks/T-NNN.md` with an append-only
    status-history row (`notes: "Session boundary; dispatch journal survived — reconciling"`).
 3. **Discard the worktree (physical roles).** `git worktree remove --force .worktrees/<role>-<task-id>/`. If the journal
@@ -141,6 +155,10 @@ Edge cases:
   Do not dispatch downstream work from that status. Re-run finalization if the worktree and `plan-update.json` exist. If
   the worktree is missing, halt with `NEEDS_CONTEXT` because main may contain a status transition without the matching
   artifacts.
+- **Journal marked `finalized`:** if its `main_commit` is in current `HEAD` history, finalization is durable. Remove a
+  remaining worktree, if any, then delete the journal. If the worktree is already gone, the SessionStart collector
+  normally performs this cleanup before reconciliation. If the commit is absent from current history, halt with
+  `NEEDS_CONTEXT`.
 - **Orphan worktree with `plan-update.json` and no journal:** treat as a potential lost-finalization incident, not
   disposable residue. If the task id maps to a plan task that is already advanced, halt with `NEEDS_CONTEXT` and ask the
   operator whether to finalize from the worktree or roll back the task status. If the task is still `in-progress`, write
@@ -209,6 +227,9 @@ Distinguish from neighbors:
 - **Reconciliation is re-entrant.** The `interrupted` transient status + journal-entry-as-source-of-truth mean a crash
   during reconciliation leaves the system reconcilable on the next session. Never delete the journal entry before
   rollback completes (§14.4 step 6 is last).
+- **Automatic journal deletion requires proof.** Only `finalization.state: finalized` plus a recorded commit in current
+  `HEAD` history plus an absent worktree permits `dispatch-journal-gc.cjs` to unlink an entry. Plan status, age, and
+  filename are never sufficient.
 - **Detection is read-only and fail-open.** `session-init-summary.cjs` only reports; it never removes worktrees, never
   mutates the plan. All clearing is the Orchestrator's job in Step 0.6, where it has the SDLC context to roll back
   correctly.
@@ -225,4 +246,5 @@ Distinguish from neighbors:
 - `.claude/rules/master-plan-discipline.md` §8 — the `interrupted` status in the enum + append-only status-history
   discipline.
 - `.claude/hooks/session-init-summary.cjs` — the read-only detector (§14.3).
+- `.claude/hooks/dispatch-journal-gc.cjs` — conservative cleanup of provably finalized journal residue (§14.3).
 - `.claude/rules/hard-rules.md` — git + commit discipline (commit-before-ready-to-finalize) that §14.6(b) depends on.

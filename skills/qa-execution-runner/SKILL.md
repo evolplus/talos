@@ -44,6 +44,19 @@ Use this skill for every QA-Exec dispatch.
    - when SRS §3.4.6 declares runtime keys, verify the deploy report lists each declared key name with a non-secret status summary only; missing declared keys are a blocked environment state routed back to DevOps;
    - verify every `Executable:` file exists;
    - grep executable specs for `TODO: instrumentation-contract`; any hit is `blocked`.
+   - inspect fixture reset behavior: direct DB INSERT/TRUNCATE must be followed by a synchronous reset/flush of
+     affected caches and process-global runtime state before the SUT is read; missing capability is `blocked:
+     test-harness-state-reset` routed to BE Dev.
+   - for direct-DB fixtures, require deploy-report `test_endpoints_enabled: true` and
+     `runtime_state_reset.synchronous_probe: pass` plus
+     `runtime_state_reset.behavioral_fresh_read_probe: pass`; missing or failed evidence routes to DevOps/BE Dev and
+     blocks the runner.
+   - inspect runner concurrency: any global DB reset, global cache flush, or process-global reset requires per-worker
+     isolation or a dedicated one-worker project; otherwise mark `blocked: shared-test-state`.
+   - compare navigation assertions with the signed-off URL/canonicalization contract. A path-only `$` assertion that
+     rejects required query parameters is `blocked: test-spec-contract-drift`, routed to QA-Author.
+   - if any pre-run check is blocked, halt before invoking the runner. Record the blocked reason and owning role; do
+     not continue to Step 7 with a known-invalid harness/spec.
 5. Skip deprecated US test cases with reason `deprecated-us`; report the skip.
 6. Select runner from `solution-defaults`, project ADRs, and SRS UI Introspection Profile. Load `ui-test-execution` and any relevant runner reference.
 7. Invoke the runner against the deployed environment, never against production data.
@@ -120,6 +133,10 @@ The markdown report at `docs/qa-reports/<task-id>.md` links the supporting artif
 - Missing spec files, stale visual specs, build identity mismatch, and unresolved selector TODOs are blocked states.
 - Missing or failed deploy-report env validation, including absent SRS §3.4.6 declared-key coverage, is a blocked state routed back to DevOps. QA-Exec never guesses local `.env` behavior.
 - Flaky is failure until proven otherwise.
+- A serial pass after a parallel FK/cache failure does not clear the failure until the harness removes shared-state
+  contention or serializes the affected project by design.
+- Contract-incompatible test assertions are blocked QA-Author defects, not product failures; do not change the
+  shipped behavior to satisfy them.
 - Per-property UI reporting is mandatory for Tier 2.
 - Missing assets, placeholder substitutions, wrong frame/layout, absent backgrounds, and failed composition assertions are `fe` failures even when functional flows pass.
 - Commit before signaling ready-to-finalize.

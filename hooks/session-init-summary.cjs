@@ -4,8 +4,8 @@
 // stdout is captured by Claude Code as additional session context, so the
 // Orchestrator sees this on every session start, resume, clear, or compact.
 //
-// Pure read — never blocks. Best-effort parsing; explicit caveats where the
-// kit doesn't pin docs/plan/master-plan.md format precisely.
+// Never blocks. It first garbage-collects only mechanically proven finalized
+// dispatch journals, then performs best-effort read-only state parsing.
 //
 // All file content is passed through strip-fences before regex matching so
 // example/reference content inside ``` fenced blocks is ignored.
@@ -21,6 +21,7 @@ const fs = require('fs');
 const path = require('path');
 const { stripFencedCodeBlocks } = require('./lib/strip-fences.cjs');
 const { parseHeaderField, headerPrelude } = require('./lib/parse-header.cjs');
+const { collectFinalizedJournals } = require('./dispatch-journal-gc.cjs');
 
 const ROOT = process.env.CLAUDE_PROJECT_DIR || process.cwd();
 
@@ -175,7 +176,7 @@ function summarizeInterruptedDispatches() {
   const worktreesDir = path.join(ROOT, '.worktrees');
 
   // --- (1) journal entries ---
-  const journals = [];   // { taskId, role, worktreeName, dispatchedAt, hasPlanUpdate }
+  const journals = [];   // { taskId, role, worktreeName, dispatchedAt, hasPlanUpdate, finalizationState }
   const journaledWorktrees = new Set();
   if (fs.existsSync(journalDir)) {
     let entries = [];
@@ -198,6 +199,7 @@ function summarizeInterruptedDispatches() {
         worktreeName: wtName,
         dispatchedAt: rec.dispatched_at || '?',
         hasPlanUpdate,
+        finalizationState: rec.finalization && rec.finalization.state,
       });
     }
   }
@@ -222,9 +224,11 @@ function summarizeInterruptedDispatches() {
 
   const lines = ['⚠ INTERRUPTED DISPATCHES detected — Orchestrator MUST run §9 Step 0.6 reconciliation before any new dispatch:'];
   for (const j of journals) {
-    const tag = j.hasPlanUpdate
-      ? 'has plan-update.json → FINALIZE FIRST (promote artifacts + plan in one commit)'
-      : 'no plan-update.json → ROLL BACK + restart';
+    const tag = j.finalizationState === 'finalized'
+      ? 'marked finalized but automatic cleanup could not prove it safe → RECONCILE BEFORE DELETING'
+      : j.hasPlanUpdate
+        ? 'has plan-update.json → FINALIZE FIRST (promote artifacts + plan in one commit)'
+        : 'no plan-update.json → ROLL BACK + restart';
     lines.push(`  · journal ${j.role}/${j.taskId} (dispatched ${j.dispatchedAt}) — ${tag}`);
   }
   for (const w of orphanWorktrees) {
@@ -398,8 +402,14 @@ async function main() {
   process.stdin.setEncoding('utf8');
   for await (const chunk of process.stdin) raw += chunk;
 
+  const removedJournals = collectFinalizedJournals();
+  const gcSummary = removedJournals.length > 0
+    ? `[orchestrator] Garbage-collected ${removedJournals.length} finalized dispatch journal entr${removedJournals.length === 1 ? 'y' : 'ies'}: ${removedJournals.join(', ')}`
+    : null;
+
   const lines = [
     `=== ClaudeProjectTemplate session state ===`,
+    gcSummary,
     summarizeGit(),
     summarizeWorkloadTier(),
     summarizeAgentDrift(),

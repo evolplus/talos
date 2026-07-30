@@ -23,7 +23,8 @@ Permission prompts add value **only where the kit's hook layer doesn't already e
 | `plan-update-location-guard.cjs` | Writes to any `plan-update*.json` outside `.worktrees/<role>-<task-id>/`. The transient handoff artifact has a single canonical home; root-level stragglers are leakage. Escape hatch: `CLAUDE_ALLOW_PLAN_UPDATE_ROOT=1` |
 | `docker-scope-guard.cjs` | Docker mutations on out-of-scope containers. Escape hatch: `CLAUDE_SKIP_DOCKER_SCOPE_CHECK=1` |
 | `task-completion-commit-check.cjs` | `plan-update.json` writes while the worktree has uncommitted changes |
-| `session-init-summary.cjs` | Read-only digest at session start |
+| `dispatch-journal-gc.cjs` | Deletes only mechanically proven finalized dispatch journals when invoked by session init; ambiguous entries remain for reconciliation |
+| `session-init-summary.cjs` | Runs safe dispatch-journal GC, then emits the session-start digest |
 
 **Inside the hook-covered space**, permission prompts are redundant — the hooks make the call. **Outside the hook-covered space** (Bash arguments, network egress, file writes outside `docs/`), permission prompts still matter, and the kit's policy reflects that.
 

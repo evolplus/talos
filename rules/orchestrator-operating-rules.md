@@ -277,11 +277,14 @@ When the classified path is A, before doing anything else, the Orchestrator must
    (1) read `plan-update.json` but do not commit the task status yet; (2) promote validated role-owned artifacts from the
    worktree to main by path-scoped ingestion (BE before FE when both return for the same feature); (3) apply the
    `docs/plan/` updates proposed by `plan-update.json`; (4) stage promoted artifacts + plan updates together; (5) create
-   ONE main-worktree finalization commit containing both the artifact content and the master-plan transition; (6) clean up
-   the worktree; (7) **delete the dispatch journal entry** `.claude/dispatch-journal/<role>-<task-id>.json` as the FINAL
-   cleanup action. Never commit a `ready-for-deploy`, `in-test`, `done`, or `failed` task transition before the matching
-   artifacts have been promoted to main. Deleting the journal last preserves §14's re-entrancy invariant (a crash before
-   this point leaves the dispatch finalizable or reconcilable).
+   ONE main-worktree finalization commit containing both the artifact content and the master-plan transition; (6)
+   atomically update the journal's `finalization` object to
+   `{"state":"finalized","main_commit":"<full finalization commit SHA>"}`; (7) clean up the worktree; (8) **delete the
+   dispatch journal entry** `.claude/dispatch-journal/<role>-<task-id>.json` as the FINAL cleanup action. Never commit a
+   `ready-for-deploy`, `in-test`, `done`, or `failed` task transition before the matching artifacts have been promoted
+   to main. The marker makes cleanup recoverable: if deletion is skipped after the worktree is gone,
+   `dispatch-journal-gc.cjs` proves the commit is in current `HEAD` history and removes the residue at the next
+   SessionStart. Deleting the journal last preserves §14's re-entrancy invariant.
 
 7.5. **Post-Implementation Verification dispatch (UI tasks only).** Before committing a FE Dev `→ ready-for-deploy` transition to the master plan, check the task file. If the task is UI-bearing (`track: fe` / `be+fe`, OR `Design sub-status:` set, OR `Linked Surface:` non-null), dispatch BA in `post-implementation` mode (subagent_type: `ba`, dispatch parameter `mode: post-implementation`, with `task_id` + FE Dev worktree path). BA produces `docs/uiux/post-implementation-reports/<task-id>.md` with verdict `qualified` or `unqualified`. Verdict-handling matrix:
 

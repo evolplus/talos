@@ -31,10 +31,12 @@ import { defineConfig, devices } from '@playwright/test';
 
 export default defineConfig({
   testDir: './e2e/specs',
-  fullyParallel: true,
+  // Safe default. Enable parallelism only after every mutable dependency has
+  // per-worker isolation (database/schema, cache namespace, server state).
+  fullyParallel: false,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 1 : 0,
-  workers: process.env.CI ? 2 : undefined,
+  workers: 1,
 
   reporter: [
     ['html', { outputFolder: `docs/qa-reports/${process.env.TASK_ID ?? 'unknown'}/playwright-report`, open: 'never' }],
@@ -65,12 +67,17 @@ Key points:
 - `reporter` outputs the HTML report into `docs/qa-reports/<task-id>/playwright-report/` so QA-Exec's markdown report links directly. The `TASK_ID` env var carries the value.
 - `baseURL` reads from `$BASE_URL` (set by QA-Exec from the deploy report's `## Test Environment` block).
 - Browser matrix matches `browser_targets` in the deploy report.
+- `fullyParallel: false` and `workers: 1` are the safe baseline. Raise concurrency only after the harness proves
+  per-worker database/schema, cache, and server-state isolation. A global `TRUNCATE` or global cache flush is
+  incompatible with parallel workers.
 
 ## CI integration (project decision)
 
 The kit's deploy is local-environment-only by design (CLAUDE.md §10 hard rule). CI is a project concern, not a kit concern. If the project layers CI on top:
 
-- The same `playwright.config.ts` drives both local and CI; the only differences are `CI=1` (Playwright sets retries=1, workers=2) and `BASE_URL` pointing at the CI-deployed env.
+- The same `playwright.config.ts` drives both local and CI; `CI=1` enables one retry and `BASE_URL` points at the
+  CI-deployed environment. Keep one worker until CI provisions isolated state per worker; only then raise the worker
+  count explicitly.
 - Trace and HTML report artifacts upload as build outputs.
 - Visual-diff baselines live in the repo at `e2e/specs/__screenshots__/`; CI compares against them. Baseline updates require human review (kit hard rule).
 
@@ -129,6 +136,13 @@ This makes the login flow ONE place; tests that need an authenticated session do
 - **`page.waitForTimeout(ms)` everywhere** — every appearance is a flake. Replace with `expect(...).toBeVisible()` / `expect.poll(...)`.
 - **`page.locator('.btn-primary').nth(2).click()`** — CSS + position selector, breaks the moment layout changes. Use testId or accessibility selectors.
 - **Tests that don't clean up** — fixtures that seed DB rows must tear down (or use a per-test transactional DB). Shared state across runs = flaky in week 2.
+- **DB-only reset with cached reads** — direct INSERT/TRUNCATE bypasses application invalidation. After the final DB
+  mutation, synchronously call the test-only runtime-state reset/flush endpoint before the browser reads the SUT.
+- **Global reset under `fullyParallel`** — one worker can truncate another worker's fixture. Use per-worker
+  schemas/namespaces, scoped row cleanup, or a dedicated one-worker project.
+- **Path-only URL regex for canonical URLs** — `/repositories/123$` rejects a valid
+  `/repositories/123?from_date=...`. Assert `URL.pathname` and contract-required `searchParams`, or use a
+  `RegExp` that allows `(?:\\?|$)`.
 - **Trace files everywhere** — `trace: 'on'` retains a trace for every test, fills disk fast on CI. Stick with `retain-on-failure`.
 - **Visual diff on macOS local, Linux CI** — fonts and antialiasing differ. Pin a Docker image for visual-diff runs; baselines come from the same image.
 

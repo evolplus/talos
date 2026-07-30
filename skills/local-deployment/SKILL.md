@@ -1,6 +1,6 @@
 ---
 name: local-deployment
-description: How DevOps composes the local environment using Docker so QA-Exec can run end-to-end tests AND the operator can manually trial features in a browser. Probes available host ports instead of hardcoding, discovers project .env/template/env_file requirements without exposing secrets, never edits the project's compose file directly, and produces a deploy report with QA test-environment fields and human-friendly trial URLs.
+description: How DevOps composes the local Docker environment for QA and operator trials, including port probing, secret-safe env discovery, test-only runtime-reset endpoint verification for direct-DB fixtures, QA deploy-report fields, and human trial URLs without editing project Compose files.
 agents: [devops]
 sdlc_phase: deploy
 owner: Platform Eng
@@ -394,6 +394,26 @@ wait_for_http "http://localhost:${api_port}/healthz" 60 || { echo "API never cam
 
 If any service stays unhealthy past timeout, gather logs (`docker compose logs --tail=200 <service>`) and report as a deploy failure (see DevOps template § Failure Handling). Do NOT proceed to QA-Exec dispatch — that signals a successful deploy.
 
+### Step 7.25 — Verify full-state reset for direct-DB fixtures
+
+Inspect the selected E2E fixture helpers. If they perform direct DB `INSERT`, `DELETE`, `TRUNCATE`, database-wide
+cleanup, or seed scripts outside the application API, the deployed test environment must expose a synchronous
+test-only runtime-state reset endpoint.
+
+1. Confirm the project test-endpoint flag is enabled only for this local/test deployment.
+2. Probe the aggregate reset endpoint once (for example,
+   `POST <admin_base_url>/api/admin/_test/reset-runtime-state`) and require 2xx.
+3. Confirm its documented reset coverage includes every cache and worker/backfill/poller state holder affected by
+   the direct fixture writes. A DB reset alone is insufficient.
+4. Run the project's reset-contract integration probe: warm an affected cached read, directly mutate the backing
+   fixture data, call reset, then assert the next read observes the new data rather than the cached response.
+5. Record the endpoint, reset coverage, synchronous probe, and behavioral fresh-read probe in the deploy report. Do
+   not record auth tokens or secret values.
+
+If the fixture mutates DB state directly and no synchronous full-state reset exists, mark the deploy `failed` with
+category `test-harness-state-reset` and route it to BE Dev. Do not tell QA to use cache-busting parameters or wait for
+an asynchronous production invalidation poller.
+
 ### Step 7.5 — UI-rendering smoke probe (UI-bearing tasks only)
 
 When the task being deployed has any UI surface (task file shows `track: fe` / `be+fe`, OR `Linked Surface:` non-null, OR the linked FRs in SRS §3.3 reference a UI surface), the API-level health checks above are necessary but NOT sufficient. The 2026-06-04 FR-022 batch-UI silent-drop incident demonstrated the failure mode: every API endpoint returned 200, every smoke `curl` against `/api/...` PASSed, QA-Exec ran by-task TCs that asserted on the API layer, and the missing UI surface went undetected through to operator discovery weeks later.
@@ -486,6 +506,12 @@ Standard schema per the DevOps template — `base_url`, `api_base_url`, `admin_b
 - base_url: http://localhost:3007            (FE — port 3007 chosen; 3000-3006 were in use)
 - api_base_url: http://localhost:4002        (API — port 4002 chosen)
 - admin_base_url: http://localhost:4101      (admin — port 4101 chosen)
+- test_endpoints_enabled: true
+- runtime_state_reset:
+  - endpoint: POST http://localhost:4101/api/admin/_test/reset-runtime-state
+  - resets: statistics-cache, worker-state, invalidation-poller cursor
+  - synchronous_probe: pass
+  - behavioral_fresh_read_probe: pass
 - test_user_fixtures: e2e/fixtures/users.ts
 - env_vars_for_tests:
   - REGION=VN
@@ -579,6 +605,8 @@ For dispatch close, the kit's worktree-isolation pattern cleans up the worktree 
 - **Creating or editing `.env` to make deploy pass.** Env files are operator-owned. Halt with `NEEDS_CONTEXT` and list missing file/key names without values.
 - **`sleep 30` instead of a health-check loop.** Times out cleanly; produces flaky deploys when services are slow to start. Always poll readiness, never sleep blind.
 - **Reporting only the chosen FE port and leaving the operator to discover the API port.** Both go in the deploy report. The operator opens one tab and hits the FE; QA-Exec opens many tabs and hits the API.
+- **Deploying direct-DB fixtures without probing runtime reset.** Truncated tables do not clear process-global caches
+  or worker cursors. Require and record the synchronous test-only reset endpoint before handing off to QA.
 - **Forgetting to bring volumes down between dispatches.** A `down` without `-v` keeps the Postgres data — fine for some tests, broken for others. Document the recovery command in the deploy report so the operator can reset state without asking.
 
 ## Hard rules
@@ -591,6 +619,9 @@ For dispatch close, the kit's worktree-isolation pattern cleans up the worktree 
 - **Never edit the project's `docker-compose.yml` directly.** Generate `docker-compose.override.yml` in your worktree.
 - **Health checks must be green** before the deploy is declared successful. `--wait` flag or explicit polling loop; never blind `sleep`.
 - **Both deploy-report sections (`## Test Environment` + `## Human Trial URLs`) are mandatory** for tasks with a UI surface. Backend-only tasks may omit Human Trial URLs (no UI to trial); the deploy report still names the API healthcheck URL the operator can `curl`.
+- **Direct-DB fixtures require a synchronous full-state reset endpoint.** Probe it at deploy time and record
+  `test_endpoints_enabled`, endpoint, reset coverage, synchronous result, and behavioral fresh-read result.
+  Missing/failed reset is a deploy blocker routed to BE Dev.
 - **Tear-down command is mandatory** in the deploy report. The operator and QA-Exec both need a single command to reset state.
 - **Never start the environment with Docker images pulled from untrusted registries.** Use the project's pinned image tags or build from the project's Dockerfile.
 

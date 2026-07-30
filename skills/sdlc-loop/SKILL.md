@@ -72,7 +72,11 @@ Run as the Orchestrator:
 4. If not halted, identify the eligible batch and dispatch the matching role.
 5. On each role return, validate exit criteria, promote validated role-owned
    artifacts by path-scoped ingestion, apply `plan-update.json`, and commit
-   artifacts + task-state updates together according to the rules.
+   artifacts + task-state updates together according to the rules. Record the
+   resulting full commit SHA as `finalization.state: finalized` in the dispatch
+   journal before removing the worktree, then delete the journal last. This
+   marker lets SessionStart safely collect residue when final cleanup is
+   interrupted.
 6. Auto-route non-human failures to the owning role:
    - SRS validator failure -> BA Mode D;
    - architecture validator failure -> SA revision;

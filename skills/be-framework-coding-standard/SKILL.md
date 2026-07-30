@@ -74,7 +74,16 @@ Read the matching reference before editing:
 9. Keep observability consistent: structured logs with correlation/request IDs, metrics for success/failure/latency, traces/spans where the project uses them, and no sensitive data in logs. For any new or changed backend operation, consult [`../backend-logging-traceability/SKILL.md`](../backend-logging-traceability/SKILL.md) and satisfy its ready-for-deploy checklist before signaling completion.
 10. Update API contracts under `docs/api-contracts/` when endpoints/messages change, using SRS §3.4.4's declared format. Freeze only when stable.
 11. Test at the right layer: unit tests for domain/application logic, framework handler/controller tests for transport mapping, integration tests for DB/queue/external adapter behavior, and contract tests for public API/message changes.
-12. Run format, lint, typecheck/compile, unit tests, and relevant integration/contract tests. If a command cannot run locally, document the blocker and the narrower checks you did run.
+12. When the E2E harness mutates persistence directly, provide a deterministic test-only full-state reset:
+    - gate it behind the project's existing test-endpoint/test-environment flag and make it unavailable elsewhere;
+    - synchronously reset caches, worker/backfill/poller checkpoints, queues, fake clocks, and other process-global
+      state affected by those writes;
+    - prefer an aggregate reset endpoint backed by registered resetters, with non-2xx on partial failure;
+    - add an integration test that warms an affected cache, directly changes its backing data, invokes reset, and
+      verifies the next API read returns the changed data rather than the cached response;
+    - keep production invalidation behavior unchanged—this endpoint compensates only for fixtures bypassing normal
+      application writes/events.
+13. Run format, lint, typecheck/compile, unit tests, and relevant integration/contract tests. If a command cannot run locally, document the blocker and the narrower checks you did run.
 
 ## Track-specific rules
 
@@ -99,6 +108,8 @@ Read the matching reference before editing:
 - Do not hardcode API URLs, downstream endpoints, secrets, credentials, tenant IDs, region rules, retry counts, or timeout values outside the project config mechanism. Runtime values must come from the SRS §3.4.6 config keys through the project config loader.
 - Do not swallow errors or map all failures to generic 500s when the FR error model declares specific cases.
 - Do not bypass type errors, compiler errors, lints, analyzer failures, or tests with broad suppressions.
+- Do not expose test reset endpoints when the test-endpoint flag is disabled, and do not implement reset as an
+  asynchronous "eventually flushed" poller path.
 
 ## References
 

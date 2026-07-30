@@ -10,7 +10,8 @@ All hooks are **fail-open**: if a hook crashes or its event JSON is malformed, i
 
 | Hook | Event | Purpose |
 |---|---|---|
-| `session-init-summary.cjs` | SessionStart | Prints SRS / open-issues / master-plan state on every session start |
+| `dispatch-journal-gc.cjs` | SessionStart via `session-init-summary.cjs` | Deletes only journals marked finalized whose recorded finalization commit is in current `HEAD` history and whose worktree is gone |
+| `session-init-summary.cjs` | SessionStart | Runs safe journal GC, then prints SRS / open-issues / master-plan state |
 | `srs-status-guard.cjs` | UserPromptSubmit | Reminds when SRS Status ≠ Signed-off |
 | `open-issues-triage-gate.cjs` | UserPromptSubmit | Reminds when any open-issues entry is `State: open` |
 | `privacy-check.cjs` | PreToolUse | Blocks reads/writes/searches against sensitive paths and credential-dumping Bash commands while allowing safe SSH/K8s config references |
@@ -44,6 +45,18 @@ Plus shared utilities in `lib/`:
 |---|---|
 | `lib/strip-fences.cjs` | Pure function used by markdown-parsing hooks to remove content inside ``` fenced blocks before regex matching. Prevents fenced "format reference" examples from being parsed as real data. |
 | `lib/worktree-scope.cjs` | Worktree-scope detection shared by `orchestrator-bash-guard` and `source-code-write-guard`. `isOperationWorktreeScoped(cwd, cmd)` is true when the cwd is inside `.worktrees/<role>-<task-id>/` OR the command scopes itself there (`cd .worktrees/<role>-<task-id> && …`, `git -C`, `--prefix`, `make -C`). `wellFormedWorktreePath(p)` resolves `..` then checks the write lands INSIDE a worktree (traversal escapes are rejected). It enforces *worktree-scoped*, not *agent-owns-this-worktree* — see the lib header for why the latter isn't runtime-achievable today. |
+
+## dispatch-journal-gc.cjs (SessionStart)
+
+Is invoked synchronously by the session summary before it scans dispatch state. It garbage-collects journals only when
+finalization is mechanically proven:
+
+- `finalization.state` is `finalized`;
+- `finalization.main_commit` names a commit in the current `HEAD` history; and
+- the journaled worktree no longer exists.
+
+Interrupted, malformed, stale-branch, and otherwise ambiguous journal entries are never removed. They remain visible to
+the summary hook and must be reconciled under CLAUDE.md §14.
 
 ## session-init-summary.cjs (SessionStart)
 

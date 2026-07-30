@@ -1,6 +1,6 @@
 ---
 name: playwright-author
-description: Concrete how-to for QA-Author writing Playwright specs from markdown TCs — project layout, fixtures, network mocking, parallelism, retries, trace capture, screenshot/visual-diff usage. Consult after `ui-test-execution` when the target surface is web AND the project uses Playwright (the org default per solution-defaults).
+description: Concrete how-to for QA-Author writing Playwright specs from markdown TCs — project layout, full-state resets for direct-DB fixtures and caches, parallel-worker isolation, contract-aware URL assertions, network mocking, retries, traces, and visual diffs. Consult after `ui-test-execution` when the target surface is web AND the project uses Playwright.
 agents: [qa-author]
 sdlc_phase: qa
 owner: Platform Eng
@@ -140,6 +140,40 @@ export async function seedMatch(
 - Fixtures use admin endpoints the deployed local env exposes (DevOps's deploy report should declare the admin base URL alongside the public one).
 - Test data is per-test: every test seeds its own match, its own user, its own session.
 
+### Full-state reset contract
+
+Database reset is not a complete reset when API/UI reads pass through caches, worker cursors, queues, fake clocks, or
+other process-global state. Build one harness primitive that resets all state relevant to the suite:
+
+```typescript
+test.beforeEach(async ({ request }) => {
+  await dbHelpers.resetDb();
+  await seedScenarioRows();
+
+  // Required after direct DB mutation: invalidate state normally maintained
+  // by application writes/events before the browser or API reads the SUT.
+  await testStateHelpers.resetRuntimeState(request);
+});
+```
+
+The server-side test endpoint behind `resetRuntimeState()` must:
+
+- be gated by the project's test-endpoint flag and unavailable in non-test environments;
+- synchronously flush every relevant in-memory/distributed cache and reset worker/backfill/poller state;
+- return non-2xx if any requested reset fails, so the fixture aborts before navigation;
+- be idempotent and safe to call before every test.
+- have an integration probe that warms each affected cached surface, directly mutates its backing state, invokes the
+  reset, and proves the next read returns fresh data with a cache miss. A 2xx-only route test is insufficient.
+
+Prefer one aggregate endpoint (for example, `POST /api/admin/_test/reset-runtime-state`) that delegates to registered
+resetters. A companion `flush-caches` endpoint is acceptable when an existing worker-reset endpoint cannot be
+extended. If direct DB seeding is used, invoke the reset/flush **after the final INSERT/TRUNCATE**. Seeding a production
+event merely to wake an asynchronous invalidation poller is race-prone and forbidden.
+
+If the endpoint does not exist, do not work around stale state with unique query boundaries or cache-busting
+parameters. Append a `Category: test-harness-state-reset` entry to `docs/open-issues.md`, route it to BE Dev, and
+leave the executable case blocked until the deterministic reset exists.
+
 ## Network mocking — when to use
 
 Two modes:
@@ -151,9 +185,38 @@ Mixing modes in one test = noise. Pick.
 
 ## Parallelism and isolation
 
-- Playwright runs tests in parallel by default. Lean into that.
+- Enable parallel execution only after proving that every mutable dependency is isolated per worker.
 - Each test must NOT depend on order. If TC-001 must run before TC-002, the test is malformed — split state into the fixture.
-- Workers don't share state. If two parallel tests both create a match, the API must accept that (fixture endpoints return per-call IDs).
+- Playwright workers share any external database/cache/service unless the harness explicitly provisions per-worker
+  instances or namespaces. Process-global server caches are also shared when workers hit the same deployed server.
+- A suite whose reset calls global `TRUNCATE`, database-wide cleanup, global cache flush, or process-global worker reset
+  must not run concurrently. Choose, in descending order:
+  1. per-worker database/schema plus per-worker server/cache namespace;
+  2. cleanup scoped to test-owned row IDs/namespaces;
+  3. a dedicated Playwright project with `workers: 1`.
+- `test.describe.configure({ mode: 'serial' })` is the smallest safe fix only when that suite runs in one Playwright
+  project/worker domain. Multiple browser projects can still execute the same serial group concurrently; use a
+  dedicated one-worker project when global reset spans projects.
+- `fullyParallel: true` is forbidden while any participating fixture performs a global destructive reset.
+
+## URL assertions follow the navigation contract
+
+Assert the URL shape promised by the signed-off acceptance criteria, including canonical query synchronization.
+Do not anchor a route regex at `$` when the contract permits or requires query parameters.
+
+```typescript
+await page.goBack();
+await page.waitForURL(url => url.pathname === `/repositories/${repositoryId}`);
+
+const restored = new URL(page.url());
+expect(restored.pathname).toBe(`/repositories/${repositoryId}`);
+expect(restored.searchParams.get('from_date')).toBe(expectedFromDate);
+expect(restored.searchParams.get('to_date')).toBe(expectedToDate);
+```
+
+When only the pathname matters, a regex may allow either a query or the end of the URL:
+`new RegExp(`/repositories/${repositoryId}(?:\\?|$)`)`. Prefer `URL.pathname`/`URL.searchParams` when query semantics
+are part of the feature.
 
 ## Retries
 
@@ -210,6 +273,10 @@ Baselines live at `e2e/specs/__screenshots__/`. The first run captures a baselin
 - Selectors come from the instrumentation contract. `page.getByTestId('<id>')` referencing an ID the contract declares. No CSS / XPath / text selectors for stable elements.
 - No `page.waitForTimeout(<ms>)`. Use `expect(...).toBeVisible()` / `expect.poll(...)`. Time-based waits are flakes waiting to happen.
 - No shared state across tests. Each test seeds its own fixtures. Login flows go in a fixture, not in every test.
+- Direct DB seeding/truncation is incomplete until the harness synchronously resets affected caches and runtime state.
+- Never combine global DB/cache reset with parallel workers; isolate per worker or serialize in a dedicated
+  one-worker project.
+- URL assertions must match the signed-off canonicalization contract; do not reject contract-required query params.
 - HTML report writes to `docs/qa-reports/<task-id>/playwright-report/`. QA-Exec consumes it from there.
 - Visual diff baseline updates require human review. `--update-snapshots` on a CI run is forbidden.
 

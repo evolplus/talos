@@ -13,6 +13,7 @@ SRS_GUARD="$HOOKS_DIR/srs-status-guard.cjs"
 OI_GATE="$HOOKS_DIR/open-issues-triage-gate.cjs"
 MP_GUARD="$HOOKS_DIR/master-plan-write-guard.cjs"
 SESSION_INIT="$HOOKS_DIR/session-init-summary.cjs"
+DISPATCH_GC="$HOOKS_DIR/dispatch-journal-gc.cjs"
 ROLE_GUARD="$HOOKS_DIR/kit-role-dispatch-guard.cjs"
 SCENARIOS_VALIDATOR="$HOOKS_DIR/acceptance-scenarios-validator.cjs"
 SELF_CONTAINMENT="$HOOKS_DIR/self-containment-validator.cjs"
@@ -94,6 +95,20 @@ run_stdout_silent() {
   else
     printf "  FAIL  %s (expected silent stdout, got:)\n" "$name"
     sed 's/^/        stdout: /' "$STDOUT_TMP"
+    FAIL=$((FAIL+1))
+  fi
+}
+
+assert_path_state() {
+  # name, present|missing, path
+  local name="$1" expected="$2" target="$3"
+  local actual="missing"
+  if [ -e "$target" ]; then actual="present"; fi
+  if [ "$actual" = "$expected" ]; then
+    printf "  PASS  %s\n" "$name"
+    PASS=$((PASS+1))
+  else
+    printf "  FAIL  %s (expected %s: %s)\n" "$name" "$expected" "$target"
     FAIL=$((FAIL+1))
   fi
 }
@@ -807,6 +822,60 @@ run_stdout_contains "shows phase done count"       "$SESSION_INIT" '{}' "1 done"
 run_stdout_contains "shows running task count"     "$SESSION_INIT" '{}' "1 running task(s)"            "CLAUDE_PROJECT_DIR=$FIX_ROOT/session-rich"
 run_stdout_contains "handles missing files"   "$SESSION_INIT" '{}' "docs/SRS.md not found"    "CLAUDE_PROJECT_DIR=$FIX_ROOT/session-empty"
 run_exit "always exits 0"                     0 "$SESSION_INIT" '{}' "CLAUDE_PROJECT_DIR=$FIX_ROOT/session-rich"
+
+echo
+echo "dispatch-journal-gc.cjs:"
+GC_ROOT="$FIX_ROOT/dispatch-gc"
+mkdir -p "$GC_ROOT/.claude/dispatch-journal" "$GC_ROOT/.worktrees"
+printf 'baseline\n' > "$GC_ROOT/baseline.txt"
+git -C "$GC_ROOT" init -b main >/dev/null 2>&1 || git -C "$GC_ROOT" init >/dev/null 2>&1
+git -C "$GC_ROOT" checkout -B main >/dev/null 2>&1
+git -C "$GC_ROOT" config user.name "Kit Test" >/dev/null
+git -C "$GC_ROOT" config user.email "kit-test@example.com" >/dev/null
+git -C "$GC_ROOT" add baseline.txt >/dev/null
+git -C "$GC_ROOT" commit -m "test: baseline" >/dev/null
+GC_HEAD="$(git -C "$GC_ROOT" rev-parse HEAD)"
+
+cat > "$GC_ROOT/.claude/dispatch-journal/be-dev-T-001.json" <<EOF
+{"task_id":"T-001","role":"be-dev","worktree":".worktrees/be-dev-T-001/","finalization":{"state":"finalized","main_commit":"$GC_HEAD"}}
+EOF
+run_stdout_contains "removes proven finalized journal" "$DISPATCH_GC" '{}' \
+  "Garbage-collected 1 finalized dispatch journal entry" "CLAUDE_PROJECT_DIR=$GC_ROOT"
+assert_path_state "proven finalized journal is gone" missing \
+  "$GC_ROOT/.claude/dispatch-journal/be-dev-T-001.json"
+
+cat > "$GC_ROOT/.claude/dispatch-journal/be-dev-T-005.json" <<EOF
+{"task_id":"T-005","role":"be-dev","worktree":".worktrees/be-dev-T-005/","finalization":{"state":"finalized","main_commit":"$GC_HEAD"}}
+EOF
+run_stdout_contains "session summary invokes journal GC before scanning" "$SESSION_INIT" '{}' \
+  "Garbage-collected 1 finalized dispatch journal entry" "CLAUDE_PROJECT_DIR=$GC_ROOT"
+assert_path_state "session summary removes proven journal" missing \
+  "$GC_ROOT/.claude/dispatch-journal/be-dev-T-005.json"
+
+cat > "$GC_ROOT/.claude/dispatch-journal/be-dev-T-002.json" <<EOF
+{"task_id":"T-002","role":"be-dev","worktree":".worktrees/be-dev-T-002/","finalization":{"state":"dispatched","main_commit":null}}
+EOF
+run_stdout_silent "leaves interrupted journal untouched" "$DISPATCH_GC" '{}' \
+  "CLAUDE_PROJECT_DIR=$GC_ROOT"
+assert_path_state "interrupted journal survives" present \
+  "$GC_ROOT/.claude/dispatch-journal/be-dev-T-002.json"
+
+cat > "$GC_ROOT/.claude/dispatch-journal/be-dev-T-003.json" <<EOF
+{"task_id":"T-003","role":"be-dev","worktree":".worktrees/be-dev-T-003/","finalization":{"state":"finalized","main_commit":"0000000000000000000000000000000000000000"}}
+EOF
+run_stdout_silent "leaves unprovable finalized journal untouched" "$DISPATCH_GC" '{}' \
+  "CLAUDE_PROJECT_DIR=$GC_ROOT"
+assert_path_state "unprovable finalized journal survives" present \
+  "$GC_ROOT/.claude/dispatch-journal/be-dev-T-003.json"
+
+mkdir -p "$GC_ROOT/.worktrees/be-dev-T-004"
+cat > "$GC_ROOT/.claude/dispatch-journal/be-dev-T-004.json" <<EOF
+{"task_id":"T-004","role":"be-dev","worktree":".worktrees/be-dev-T-004/","finalization":{"state":"finalized","main_commit":"$GC_HEAD"}}
+EOF
+run_stdout_silent "leaves finalized journal while worktree remains" "$DISPATCH_GC" '{}' \
+  "CLAUDE_PROJECT_DIR=$GC_ROOT"
+assert_path_state "journal with remaining worktree survives" present \
+  "$GC_ROOT/.claude/dispatch-journal/be-dev-T-004.json"
 
 if command -v git >/dev/null 2>&1; then
   GIT_FIX="$FIX_ROOT/session-head-ahead"

@@ -1,6 +1,6 @@
 ---
 name: ui-test-execution
-description: Framework-agnostic principles for executing UI tests against the running build — how markdown test cases map to executable specs, selector strategy by platform, fixture discipline, determinism rules, and visual-diff guidance. Consult when QA-Author writes executable specs or when QA-Exec invokes a test runner against a deployed build.
+description: Framework-agnostic principles for executing UI tests against the running build — TC-to-spec mapping, selectors, full-state fixture reset across DB/cache/worker state, shared-resource parallelism, determinism, and visual diffs. Consult when QA-Author writes executable specs or QA-Exec invokes a runner against a deployed build.
 agents: [qa-author, qa-exec]
 sdlc_phase: qa
 owner: Platform Eng
@@ -84,6 +84,18 @@ Don't proliferate spec files per TC; that fragments the runner and makes paralle
 - **Fixtures live in `e2e/fixtures/`** (or framework-equivalent). Schema versions match the API contract version they target.
 - **Never reach into the production DB.** Tests run against the deployed local env's DB seeded by the fixture. If the local env reuses prod data, that's a DevOps deployment defect — raise an open-issue.
 - **Test users are explicit fixtures**, not shared "QA accounts". Names like `test-spectator-vn-001` make the trace readable.
+- **Reset the whole observable test state, not only persistence.** Inventory every process-global state holder that can
+  affect a tested surface: in-memory/distributed caches, worker checkpoints, polling cursors, queues, rate-limit
+  buckets, and fake clocks. The reset primitive must clear all relevant state before the next test observes the
+  system.
+- **Direct DB mutation requires explicit invalidation.** A fixture that inserts/truncates rows outside the application
+  bypasses normal cache/event invalidation. After the final direct DB mutation, call a synchronous test-only runtime
+  reset/flush endpoint before navigating or querying the SUT. An asynchronous production poller is not a deterministic
+  substitute.
+- **Missing reset capability is a harness blocker.** QA-Author files a harness-gap routed to BE Dev when a required
+  cache/worker reset is unavailable by appending `Category: test-harness-state-reset` to `docs/open-issues.md`;
+  QA-Exec reports the case `blocked`. Do not disguise the gap with unique cache keys, arbitrary waits, or
+  production-data mutations.
 
 ## Determinism rules
 
@@ -94,6 +106,9 @@ Flaky tests are failures until proven otherwise (QA-Exec hard rule). To stay det
 3. **Network requests are explicit.** Either mock at the network layer (Playwright `page.route()`) or pin the test against a known fixture in the deployed env. Half-pinned tests fail intermittently.
 4. **No `Math.random`.** Seed any randomness used in setup.
 5. **Single observable per assertion.** A test that asserts "the page loads AND the user is logged in AND the dashboard renders" hides which step failed. Split.
+6. **Parallelism follows resource isolation.** Do not run tests concurrently when any fixture performs global
+   `TRUNCATE`, database-wide cleanup, shared cache flush, or process-global worker reset. Use per-worker databases or
+   schemas, cleanup scoped to test-owned rows, or serialize the affected suite.
 
 ## Visual diff guidance
 
@@ -130,6 +145,10 @@ The summary at `docs/qa-reports/<task-id>.md` cites these by relative path. QA-E
 - No `sleep` / time-based waits. Wait on the condition.
 - Visual diff is reserved for SRS `Visual-Critical: yes` surfaces. Layering it on every UI test guarantees flakiness.
 - Test fixtures isolate per-test. Shared mutable state across tests is forbidden.
+- A fixture that bypasses application writes must synchronously invalidate every derived cache/runtime state it can
+  affect before the test reads the SUT.
+- Global destructive resets and parallel workers are mutually exclusive unless each worker has an isolated
+  database/schema and isolated process-global state.
 - Baselines for visual diff are updated only with human approval — auto-update on green is forbidden.
 - `TODO: instrumentation-contract` markers in a spec file mean the spec is intentionally unrunnable until QA-Author Pass 2 lands the real selectors. QA-Exec's Pre-Run check halts on any marker hit. Markers are NEVER acceptable in shipped specs; they are Pass-1-to-Pass-2 handoff annotations only.
 

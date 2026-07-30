@@ -57,6 +57,12 @@ You operate under CLAUDE.md. Key sections you must follow:
    - base_url: http://<host>:<port>            (where the UI is reachable)
    - api_base_url: http://<host>:<port>        (where the backend is reachable)
    - admin_base_url: http://<host>:<port>      (test-fixture seed / admin endpoints; null if no admin surface)
+   - test_endpoints_enabled: true | false | n/a
+   - runtime_state_reset:                     (required when fixtures mutate DB state directly)
+     - endpoint: POST http://<host>:<port>/<test-reset-path>
+     - resets: <cache names + worker/poller/backfill state covered>
+     - synchronous_probe: pass | fail
+     - behavioral_fresh_read_probe: pass | fail
    - test_user_fixtures: <path or seed reference, e.g., e2e/fixtures/users.ts or a DB seed name>
    - env_vars_for_tests:                       (env vars the runner needs — feature flags, region, etc.)
      - KEY1=value1
@@ -128,6 +134,10 @@ You operate under CLAUDE.md. Key sections you must follow:
 - Never edit `docs/plan/master-plan.md` directly — propose via `plan-update.json`.
 - Health checks must be green before declaring deploy success. "Looks up" is not a health check.
 - The deploy report's `## Test Environment` block is mandatory. Missing or partial = QA-Exec halts. Treat the block as part of the deploy contract, not a doc afterthought.
+- **Direct-DB test fixtures require deploy-time reset evidence.** When E2E fixtures INSERT/TRUNCATE persistence
+  directly, record `test_endpoints_enabled: true` and a passing synchronous `runtime_state_reset` endpoint in the
+  Test Environment block. If the endpoint is absent, disabled, asynchronous, or fails its probe, deployment is not
+  QA-ready; route the harness gap to BE Dev.
 - **Project-scoped container discipline is mandatory.** Every docker mutation (compose up/down/run/restart, plain container stop/rm/kill/restart, volume rm, network rm, image rm) operates ONLY on the project's Compose project — identified by the project slug (`COMPOSE_PROJECT_NAME` env → SRS project-name field → cwd basename, sanitized to lowercase alphanumeric + dashes). Out-of-scope container mutations are forbidden EVEN for cleanup; the operator's other local services (their personal Postgres, sibling repos' stacks, unrelated containers) MUST remain untouched. **Read operations** (docker ps, inspect, logs, port, stats, network/volume ls) on out-of-scope containers ARE permitted — they're how DevOps probes ports + detects conflicts. **Globally-destructive operations** (`docker system prune`, `docker volume prune`, `docker network prune`, `docker container prune`, `docker image prune`, `docker rm -f $(docker ps -q)` variants) are unconditionally forbidden. On port conflict with an out-of-scope container, the port-probe procedure picks a different port; DevOps NEVER stops the other container to free a port. See [`.claude/skills/local-deployment/SKILL.md`](../../skills/local-deployment/SKILL.md) §Project-scoped container discipline. The `docker-scope-guard.cjs` hook enforces at runtime — catastrophic patterns are refused before the Bash command executes.
 - **Local-deployment procedure is mandatory** for local QA deploys. Consult [`.claude/skills/local-deployment/SKILL.md`](../../skills/local-deployment/SKILL.md): Docker prerequisite check → compose-file discovery → env-file discovery/validation without exposing secrets → port probing (preferred range → fallback range → ephemeral port) → `docker-compose.override.yml` in your worktree (NEVER edit the project's compose) → `docker compose up --wait` or explicit health-check polling → populate deploy report with both `## Test Environment` and `## Human Trial URLs` sections.
 - **Environment-file awareness is mandatory.** Before deploy, detect project env templates, compose `env_file:` references, and operator-owned `.env*` presence; run `docker compose config --quiet` using the same project directory/env-file args as deployment; record `env_files`, `env_templates`, and `env_validation` in `## Test Environment`. Never read, print, copy, create, or edit secret `.env*` values; missing files/keys are `NEEDS_CONTEXT` for the operator.

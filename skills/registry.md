@@ -62,8 +62,8 @@ Skills consulted by any agent or human committing or operating in the repo, rega
 | [`qa-author-by-task`](./qa-author-by-task/SKILL.md) | QA-Author `by-task` mode — task-scoped structural/API/e2e/rare functional cases after TL and design confirmation where needed | active |
 | [`visual-spec-author`](./visual-spec-author/SKILL.md) | QA-Author visual-spec generation for UI tasks — derives `docs/uiux/visual-specs/<task-id>.md` from UI/UX handoff, Design Element Manifest, Figma nodes, and instrumentation contract | active |
 | [`test-case-author`](./test-case-author/SKILL.md) | Writing markdown test cases for an assigned task | active |
-| [`ui-test-execution`](./ui-test-execution/SKILL.md) | Authoring executable specs alongside markdown TCs — cross-runner principles (TC↔spec mapping, selectors, fixtures, determinism, visual diff) | active |
-| [`playwright-author`](./playwright-author/SKILL.md) | Writing Playwright specs for web UI surfaces (the org default per `solution-defaults`) | active |
+| [`ui-test-execution`](./ui-test-execution/SKILL.md) | Authoring executable specs alongside markdown TCs — cross-runner principles (TC↔spec mapping, selectors, full-state fixture reset, shared-resource isolation, determinism, visual diff) | active |
+| [`playwright-author`](./playwright-author/SKILL.md) | Writing Playwright specs for web UI surfaces, including cache-safe direct-DB fixtures, parallel-worker isolation, and canonical URL assertions | active |
 
 ### BE Dev — Backend Developer
 
@@ -105,7 +105,7 @@ Predefined Foundation starting points. Selected by SRS header `Design-Guideline:
 
 | Skill | When | Status |
 |---|---|---|
-| [`local-deployment`](./local-deployment/SKILL.md) | Every DevOps dispatch against a `ready-for-deploy` task — Docker-based environment composition, SRS §3.4.6 config-key validation, `.env`/template/compose `env_file` discovery without exposing secrets, port probing (never hardcode 3000), worktree override generation, health-check polling, deploy report populated with both `## Test Environment` (QA-Exec consumes) and `## Human Trial URLs` (operator opens in browser). | active |
+| [`local-deployment`](./local-deployment/SKILL.md) | Every DevOps dispatch against a `ready-for-deploy` task — Docker composition, env/config validation, port probing, full-state reset endpoint verification for direct-DB fixtures, health checks, and QA/operator deploy-report URLs. | active |
 | [`ssh-remote-operations`](./ssh-remote-operations/SKILL.md) | DevOps remote VM/server operations through project-root `.ssh/config` — command execution, package/software installation, artifact staging, host preflight, health checks, rollback notes, and deploy evidence without reading SSH credentials. | active |
 | [`docker-deployment`](./docker-deployment/SKILL.md) | DevOps Dockerfile or docker-compose deployment beyond the local QA loop — image build/pull/tag checks, remote Compose releases via SSH, scoped Docker mutations, health checks, rollback commands, and redacted deploy reports. | active |
 | [`kubernetes-deployment`](./kubernetes-deployment/SKILL.md) | DevOps Kubernetes deployment — manifests, Kustomize, Helm, explicit kubeconfig/namespace/context, dry-run/diff, rollout status, rollback, and credential-safe handling of project-root `.k8s/`. | active |

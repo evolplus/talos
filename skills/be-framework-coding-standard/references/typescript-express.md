@@ -24,6 +24,11 @@ Read this when the backend service uses TypeScript with Express.
 
 - Use route tests with the project's HTTP test tool when changing status codes, headers, auth, validation, or error mapping.
 - Unit-test services without Express request/response objects.
+- For direct-DB E2E fixtures, register a test-only reset route only when the project test-endpoint flag is enabled.
+  The handler should await an aggregate reset service that flushes caches and resets worker/poller state, return
+  non-2xx on any failure, and have a route test proving it is absent when the flag is disabled. Add an integration
+  test that warms a cached route, directly mutates backing data, calls reset, and verifies a fresh subsequent read;
+  asserting only the reset route's 2xx response does not prove invalidation.
 - Run typecheck, lint, unit tests, and targeted integration tests.
 
 ## Red flags
