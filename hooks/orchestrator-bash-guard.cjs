@@ -33,7 +33,126 @@
 
 'use strict';
 
+const fs = require('fs');
+const path = require('path');
 const { isOperationWorktreeScoped } = require('./lib/worktree-scope.cjs');
+
+// The Orchestrator owns two transient cleanup surfaces. Step 7 and crash
+// recovery must be able to remove them without opening a general-purpose rm
+// escape hatch:
+//   - .worktrees/<dispatch>/ (including logical-role handoff-only dirs)
+//   - .claude/dispatch-journal/<entry>.json
+//
+// Accept only a single plain rm/rmdir command whose every non-option operand
+// resolves strictly below one of those roots. Reject shell composition,
+// substitutions, traversal escapes, mixed targets, and removal of the roots
+// themselves.
+function splitSimpleShellWords(command) {
+  const words = [];
+  let word = '';
+  let quote = null;
+  let escaped = false;
+
+  for (let i = 0; i < command.length; i += 1) {
+    const ch = command[i];
+    if (escaped) {
+      word += ch;
+      escaped = false;
+      continue;
+    }
+    if (ch === '\\' && quote !== "'") {
+      escaped = true;
+      continue;
+    }
+    if (quote) {
+      if (ch === quote) quote = null;
+      else word += ch;
+      continue;
+    }
+    if (ch === "'" || ch === '"') {
+      quote = ch;
+      continue;
+    }
+    if (/\s/.test(ch)) {
+      if (word) {
+        words.push(word);
+        word = '';
+      }
+      continue;
+    }
+    if (';&|<>`\n\r'.includes(ch)) return null;
+    word += ch;
+  }
+
+  if (escaped || quote) return null;
+  if (word) words.push(word);
+  return words;
+}
+
+function isStrictDescendant(candidate, root) {
+  const relative = path.relative(root, candidate);
+  return Boolean(relative) && !relative.startsWith('..') && !path.isAbsolute(relative);
+}
+
+function hasSymlinkComponent(candidate, root) {
+  const segments = path.relative(root, candidate).split(path.sep);
+  const firstGlob = segments.findIndex(segment => /[*?\[]/.test(segment));
+  if (firstGlob !== -1 && firstGlob !== segments.length - 1) return true;
+  if (segments.some(segment => /[{}]/.test(segment))) return true;
+
+  let cursor = root;
+  for (const segment of ['', ...segments]) {
+    if (segment) cursor = path.join(cursor, segment);
+    try {
+      if (fs.lstatSync(cursor).isSymbolicLink()) return true;
+    } catch (error) {
+      if (error && error.code === 'ENOENT') break;
+      return true;
+    }
+  }
+  return false;
+}
+
+function isOrchestratorCleanupRemoval(command, cwd) {
+  const words = splitSimpleShellWords(command.trim());
+  if (!words || words.length < 2) return false;
+
+  const executable = words[0];
+  const allowedExecutables = new Set(['rm', '/bin/rm', '/usr/bin/rm', 'rmdir', '/bin/rmdir', '/usr/bin/rmdir']);
+  if (!allowedExecutables.has(executable)) return false;
+
+  const isRmdir = executable.endsWith('rmdir');
+  const targets = [];
+  let optionsEnded = false;
+  for (const word of words.slice(1)) {
+    if (!optionsEnded && word === '--') {
+      optionsEnded = true;
+      continue;
+    }
+    if (!optionsEnded && word.startsWith('-')) {
+      // rmdir -p/--parents can remove ancestors above the named target.
+      if (isRmdir && (word === '-p' || word === '--parents' || word.startsWith('--parents=') || /^-[^-]*p/.test(word))) return false;
+      continue;
+    }
+    targets.push(word);
+  }
+  if (targets.length === 0) return false;
+
+  const projectRoot = path.resolve(process.env.CLAUDE_PROJECT_DIR || cwd || process.cwd());
+  const commandCwd = path.resolve(cwd || projectRoot);
+  const cleanupRoots = [
+    path.join(projectRoot, '.worktrees'),
+    path.join(projectRoot, '.claude', 'dispatch-journal'),
+  ];
+
+  return targets.every(target => {
+    if (!target || target.startsWith('~') || target.includes('$') || target.includes('`')) return false;
+    const resolved = path.resolve(commandCwd, target);
+    return cleanupRoots.some(root =>
+      isStrictDescendant(resolved, root) && !hasSymlinkComponent(resolved, root)
+    );
+  });
+}
 
 // ─── Sub-agent context detection ───
 // Worktree-scope detection (cwd-based AND command-based) lives in the shared
@@ -86,6 +205,7 @@ const MUTATING_PATTERNS = [
   // ─── FS destructive ops ───
   { re: /\brm\s+-[a-zA-Z]*[rRfF]/, why: 'rm with destructive flags (-r / -f) — sub-agent territory' },
   { re: /\brm\s+(?!-)/, why: 'rm without protective flags — sub-agent territory' },
+  { re: /\brmdir\s+/, why: 'rmdir — sub-agent territory outside Orchestrator transient cleanup surfaces' },
   { re: /\bmv\s+(?!.*\/tmp\/|.*\.\.\/tmp\/)\S+/, why: 'mv (file move outside /tmp) — sub-agent territory' },
   { re: /\bshred\b/, why: 'shred (destructive overwrite)' },
 
@@ -183,6 +303,11 @@ async function main() {
   // and are blocked — that shared-tree contamination is the cross-agent-conflict
   // risk this guard prevents. See .claude/hooks/lib/worktree-scope.cjs.
   if (isOperationWorktreeScoped(cwd, cmd)) process.exit(0);
+
+  // Narrow lifecycle carve-out: the Orchestrator may delete only its own
+  // transient dispatch artifacts. This check runs before the general rm/rmdir
+  // block and requires every target to remain inside an exact cleanup root.
+  if (isOrchestratorCleanupRemoval(cmd, cwd)) process.exit(0);
 
   const reason = findMutatingMatch(cmd);
   if (!reason) process.exit(0);

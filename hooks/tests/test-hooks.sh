@@ -2096,6 +2096,7 @@ run_exit "orch-write: allows docs/plan/.../tasks/T-001.md"    0 "$ORCH_WRITE_GUA
 run_exit "orch-write: allows docs/open-issues.md"             0 "$ORCH_WRITE_GUARD" "$(w 'docs/open-issues.md')"
 run_exit "orch-write: allows docs/iteration-plan/v3.md"       0 "$ORCH_WRITE_GUARD" "$(w 'docs/iteration-plan/v3.md')"
 run_exit "orch-write: allows .claude/agents/ba.md"            0 "$ORCH_WRITE_GUARD" "$(w '.claude/agents/ba.md')"
+run_exit "orch-write: allows absolute Claude memory path"      0 "$ORCH_WRITE_GUARD" "$(w '/Users/test/.claude/projects/repo/memory/MEMORY.md')"
 run_exit "orch-write: allows .claude/rules/foo.md"            0 "$ORCH_WRITE_GUARD" "$(w '.claude/rules/foo.md')"
 run_exit "orch-write: allows .claude/hooks/bar.cjs"           0 "$ORCH_WRITE_GUARD" "$(w '.claude/hooks/bar.cjs')"
 run_exit "orch-write: allows CLAUDE.md"                       0 "$ORCH_WRITE_GUARD" "$(w 'CLAUDE.md')"
@@ -2233,6 +2234,7 @@ run_exit "orch-bash: blocks curl --data"          2 "$ORCH_BASH_GUARD" "$(bc 'cu
 run_exit "orch-bash: blocks wget --post-data"     2 "$ORCH_BASH_GUARD" "$(bc 'wget --post-data=x http://localhost:3000')"
 run_exit "orch-bash: blocks rm -rf"               2 "$ORCH_BASH_GUARD" "$(bc 'rm -rf docs/old/')"
 run_exit "orch-bash: blocks rm -f"                2 "$ORCH_BASH_GUARD" "$(bc 'rm -f docs/old.md')"
+run_exit "orch-bash: blocks rmdir outside cleanup surface" 2 "$ORCH_BASH_GUARD" "$(bc 'rmdir docs/old')"
 run_exit "orch-bash: blocks mv"                   2 "$ORCH_BASH_GUARD" "$(bc 'mv docs/old.md docs/new.md')"
 run_exit "orch-bash: blocks sed -i"               2 "$ORCH_BASH_GUARD" "$(bc 'sed -i s/foo/bar/g src/api/handler.ts')"
 run_exit "orch-bash: blocks perl -i"              2 "$ORCH_BASH_GUARD" "$(bc 'perl -i.bak -pe s/foo/bar/ src/foo.ts')"
@@ -2257,6 +2259,27 @@ run_exit "orch-bash: blocks go build"             2 "$ORCH_BASH_GUARD" "$(bc 'go
 run_exit "orch-bash: blocks make"                 2 "$ORCH_BASH_GUARD" "$(bc 'make all')"
 run_exit "orch-bash: blocks systemctl restart"    2 "$ORCH_BASH_GUARD" "$(bc 'systemctl restart nginx')"
 run_exit "orch-bash: blocks docker system prune"  2 "$ORCH_BASH_GUARD" "$(bc 'docker system prune -af')"
+
+# === Orchestrator transient cleanup carve-out ===
+run_exit "orch-bash: allows rm logical-role handoff dir" 0 "$ORCH_BASH_GUARD" "$(bc 'rm -rf -- .worktrees/ba-T-001')"
+run_exit "orch-bash: allows rmdir logical-role handoff dir" 0 "$ORCH_BASH_GUARD" "$(bc 'rmdir .worktrees/sa-T-002')"
+run_exit "orch-bash: allows rm dispatch journal" 0 "$ORCH_BASH_GUARD" "$(bc 'rm -- .claude/dispatch-journal/ba-T-001.json')"
+run_exit "orch-bash: allows cleanup globs" 0 "$ORCH_BASH_GUARD" "$(bc 'rm -rf .worktrees/ba-* .claude/dispatch-journal/*.json')"
+run_exit "orch-bash: allows absolute cleanup target" 0 "$ORCH_BASH_GUARD" "$(bc 'rm -rf /repo/.worktrees/tl-T-003')"
+run_exit "orch-bash: allows quoted cleanup target" 0 "$ORCH_BASH_GUARD" "$(bc 'rm -rf ".worktrees/role task"')"
+run_exit "orch-bash: blocks cleanup-root removal" 2 "$ORCH_BASH_GUARD" "$(bc 'rm -rf .worktrees')"
+run_exit "orch-bash: blocks journal-root removal" 2 "$ORCH_BASH_GUARD" "$(bc 'rm -rf .claude/dispatch-journal')"
+run_exit "orch-bash: blocks mixed cleanup and project targets" 2 "$ORCH_BASH_GUARD" "$(bc 'rm -rf .worktrees/ba-T-001 docs/old')"
+run_exit "orch-bash: blocks cleanup traversal escape" 2 "$ORCH_BASH_GUARD" "$(bc 'rm -rf .worktrees/../docs')"
+run_exit "orch-bash: blocks composed cleanup command" 2 "$ORCH_BASH_GUARD" "$(bc 'rm -rf .worktrees/ba-T-001 && rm -rf docs')"
+run_exit "orch-bash: blocks variable cleanup target" 2 "$ORCH_BASH_GUARD" "$(bc 'rm -rf $TARGET')"
+run_exit "orch-bash: blocks cleanup command substitution" 2 "$ORCH_BASH_GUARD" "$(bc 'rm -rf \".worktrees/`printf bad`\"')"
+run_exit "orch-bash: blocks rmdir parents mode" 2 "$ORCH_BASH_GUARD" "$(bc 'rmdir -p .worktrees/ba-T-001/nested')"
+CLEANUP_GUARD_ROOT="$FIX_ROOT/orch-cleanup"
+mkdir -p "$CLEANUP_GUARD_ROOT/.worktrees" "$CLEANUP_GUARD_ROOT/outside/child"
+ln -s "$CLEANUP_GUARD_ROOT/outside" "$CLEANUP_GUARD_ROOT/.worktrees/link"
+run_exit "orch-bash: blocks cleanup through symlink" 2 "$ORCH_BASH_GUARD" \
+  "$(bc 'rm -rf .worktrees/link/child' "$CLEANUP_GUARD_ROOT")" "CLAUDE_PROJECT_DIR=$CLEANUP_GUARD_ROOT"
 
 # === Sub-agent context (cwd inside .worktrees/) — all allow ===
 run_exit "orch-bash: sub-agent allows npm install"     0 "$ORCH_BASH_GUARD" "$(bc 'npm install lodash' '/repo/.worktrees/be-dev-T-001')"

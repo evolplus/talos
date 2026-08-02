@@ -28,7 +28,7 @@ All hooks are **fail-open**: if a hook crashes or its event JSON is malformed, i
 | `kit-role-dispatch-guard.cjs` | PreToolUse (Task) | Blocks `subagent_type: general-purpose` dispatches when the prompt contains kit-role signals (BA Mode X, SA extract, QA-Author, etc.). Enforces CLAUDE.md §10 "Role-specialized dispatch required" |
 | `source-code-write-guard.cjs` | PreToolUse (Write/Edit/MultiEdit/NotebookEdit) | Blocks Orchestrator source-code writes and enforces declared source roots for sub-agent worktrees |
 | `orchestrator-write-guard.cjs` | PreToolUse (Write/Edit/MultiEdit/NotebookEdit) | Blocks Orchestrator writes outside its allow-list of router-owned paths |
-| `orchestrator-bash-guard.cjs` | PreToolUse (Bash) | Blocks state-mutating Bash from Orchestrator/main-repo context |
+| `orchestrator-bash-guard.cjs` | PreToolUse (Bash) | Blocks state-mutating Bash from Orchestrator/main-repo context; permits cleanup-only `rm`/`rmdir` when every target is strictly below `.worktrees/` or `.claude/dispatch-journal/` |
 | `local-worktree-git-guard.cjs` | PreToolUse (Bash) | Blocks pushing, pulling, merging, rebasing, or cherry-picking local `.worktrees/` Git history and blocks branch-backed `.worktrees/` creation |
 | `plan-update-location-guard.cjs` | PreToolUse (Write/Edit/MultiEdit/NotebookEdit) | Blocks `plan-update*.json` outside `.worktrees/<role>-<task-id>/` |
 | `fe-dev-design-contract-guard.cjs` | PreToolUse (Write/Edit/MultiEdit/NotebookEdit) | Blocks FE Dev source writes until `docs/uiux/refs/<task-id>.md` is Frozen and has non-empty manifest/trace rows |
@@ -282,7 +282,7 @@ Enforces the **pure-router invariant** on the Bash side: blocks state-mutating B
 - Orchestration: `kubectl apply/delete/patch/rollout`, `helm install/upgrade/delete`
 - DB DML/DDL: `psql -c "INSERT|UPDATE|DELETE|DROP|CREATE|ALTER|..."`, same patterns for `mysql -e`, `sqlite3`, `mongosh`, `redis-cli SET/DEL/FLUSHDB`
 - HTTP mutations: `curl -X POST|PUT|DELETE|PATCH`, `curl -d|--data`, `wget --post-data`, `http POST/PUT/DELETE`
-- FS destructive: `rm -rf|-f`, `mv` (outside `/tmp`), `shred`
+- FS destructive: `rm -rf|-f`, `rmdir`, `mv` (outside `/tmp`), `shred`
 - In-place edits: `sed -i`, `perl -i`, `awk -i`
 - Shell redirects to project paths: `> src/`, `> e2e/.../spec.ts`, `> docs/` (except plan/ + open-issues.md + iteration-plan/), `> .env`, `> package.json|Dockerfile|...`, `tee` to non-temp paths
 - Git mutations beyond commit/add/init/detached-worktree creation: `git push`, `git pull`, `git merge`, `git cherry-pick`, `git reset --hard`, `git rebase`, `git checkout -- <path>`, `git clean`, `git stash drop/clear/pop`, `git filter-branch/repo`
@@ -291,6 +291,11 @@ Enforces the **pure-router invariant** on the Bash side: blocks state-mutating B
 - Service mutations: `systemctl start/stop/restart`, `crontab -e|-r`
 
 **Pass-through:** read-only commands (`ls`, `cat`, `grep`, `find`, `git status/log/diff/show`, `docker ps/inspect/logs/port/stats`, `git commit/add/init/worktree add --detach`) and any command not matching a mutating pattern. Branch-backed `.worktrees/` creation is refused by `local-worktree-git-guard.cjs`.
+
+**Transient-cleanup carve-out:** a single `rm` or `rmdir` command is allowed from Orchestrator context only when every
+target resolves strictly below `.worktrees/` or `.claude/dispatch-journal/`. The cleanup roots themselves, traversal,
+mixed targets, variables, non-terminal globs, symlink traversal, `rmdir -p`, and composed shell commands remain
+blocked. This is the exact Step-7/crash-recovery surface; it does not authorize deletion elsewhere.
 
 **Override (rare — operator-explicit one-off):** `export CLAUDE_ALLOW_ORCHESTRATOR_BASH=1`. Hook emits stderr warning when active.
 

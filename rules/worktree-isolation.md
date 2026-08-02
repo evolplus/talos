@@ -15,7 +15,7 @@ For workflow contract entry-point, see `CLAUDE.md`. For master plan write discip
 - **Logical isolation by role-ownership** (default for doc-writing roles: BA, SA, TL, QA-Author, UI/UX Designer). Sub-agents write directly to their owned paths under `docs/` from the main cwd. The `orchestrator-write-guard.cjs` hook consults `.claude/hooks/lib/role-ownership.cjs` to allow any kit-role-owned path. The owning role's prose Hard Rules in their agent template are the gate against cross-role writes. This is the **primary** discipline going forward.
 - **Physical isolation by local worktree** (required for code-writing roles: BE Dev, FE Dev, QA-Exec, DevOps). The Orchestrator runs `git worktree add --detach .worktrees/<role>-<task-id>/ <base-ref>` BEFORE dispatch (per `.claude/rules/orchestrator-operating-rules.md` §9 Step 4.6). The detached worktree is a local scratch execution area, not a branch to push or merge. The sub-agent's dispatch prompt names the absolute worktree path; the sub-agent uses it as the prefix for all source-code writes, which themselves land under the project's declared source roots (`frontend/**`, `backend/**` per SRS §3.4.5 Source Layout — e.g. `<worktree>/frontend/web/src/**`). The `source-code-write-guard.cjs` hook blocks source-code paths NOT inside any `.worktrees/<role>-<task-id>/` segment. This preserves conflict isolation where logical role-ownership is ambiguous (BE Dev and FE Dev both write to `src/`).
 
-When this section's prose references "the worktree" or "the sub-agent's cwd," substitute "logical role-ownership" for doc-writing roles and "physical worktree" for code-writing roles. The layout diagram below shows the physical worktree shape; doc-writing roles use the layout less and less in practice — their writes land directly under `docs/<role-owned-path>/`.
+When this section's prose references "the worktree" or "the sub-agent's cwd," substitute "logical role-ownership" for doc-writing roles and "physical worktree" for code-writing roles. Logical roles may still create a plain, non-Git `.worktrees/<role>-<task-id>/` handoff directory solely for `plan-update.json`; it must be removed after ingestion. The layout diagram below includes both physical worktrees and these handoff-only directories.
 
 All sub-agents operate under **isolation** to enable safe parallel work — logical by default for docs, physical for code.
 
@@ -37,7 +37,10 @@ All sub-agents operate under **isolation** to enable safe parallel work — logi
 
 **Rules:**
 
-1. The Orchestrator creates a local detached worktree per dispatched sub-agent: `git worktree add --detach .worktrees/<role>-<task-id>/ <base-ref>`.
+1. For code-writing roles, the Orchestrator creates a local detached worktree:
+   `git worktree add --detach .worktrees/<role>-<task-id>/ <base-ref>`. For logically isolated doc roles, do not register
+   a Git worktree; create `.worktrees/<role>-<task-id>/` only as the transient handoff directory needed for
+   `plan-update.json`.
 2. Sub-agents may commit inside their own detached worktree so `git status` is clean before `plan-update.json`. These commits are local-only evidence/checkpoints; they are **not** integration branches, are **never pushed**, and are **never merged/cherry-picked** into main.
 3. **The `docs/plan/` hierarchy is special.** Sub-agents do **not** edit anything under `docs/plan/` in their worktrees. Instead, they emit a
    `plan-update.json` proposal in their worktree:
@@ -72,7 +75,10 @@ All sub-agents operate under **isolation** to enable safe parallel work — logi
 6. **Promotion order:** Designer's `docs/uiux/handoffs/<task-id>.md` and BA's `docs/uiux/completeness-reports/<task-id>.md`
    are promoted to main before FE Dev starts (logically enforced by the design lifecycle gate). For BE+FE features, BE Dev artifacts are promoted
    before FE Dev so the API contract is on main when FE starts.
-7. Worktree cleanup is the Orchestrator's responsibility once the task closes.
+7. Cleanup is the Orchestrator's responsibility once the task closes. Use the `git worktree remove --force` command
+   only for paths listed by `git worktree list --porcelain`. For a logical-role handoff-only directory, use
+   `rm -rf -- .worktrees/<role>-<task-id>/`. Then remove the matching journal with
+   `rm -- .claude/dispatch-journal/<role>-<task-id>.json`. The Bash guard permits only these strict cleanup targets.
 
 ### Command scoping for code-writing roles (Bash surface)
 

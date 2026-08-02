@@ -268,7 +268,10 @@ When the classified path is A, before doing anything else, the Orchestrator must
      worktree, never request the escape hatch as a first resort).
    - **Don't create worktrees for doc-writing roles.** A `git worktree add` for BA / SA / TL / QA-Author / UI/UX Designer dispatches is permitted (physical isolation never hurts) but not required. The default is to skip the worktree-add for these — they write doc paths directly under `docs/` from the main cwd. Skipping saves ~200ms per dispatch and keeps `.worktrees/` clean of inert directories.
 
-   Cleanup happens at §9 Step 7 (sub-agent return): the Orchestrator runs `git worktree remove .worktrees/<role>-<task-id>/` after ingesting `plan-update.json` and promoting validated role-owned artifacts by path.
+   Cleanup happens at §9 Step 7 after ingesting `plan-update.json`. If `git worktree list --porcelain` identifies the
+   path as a registered worktree, run `git worktree remove --force .worktrees/<role>-<task-id>/`. Otherwise it is a
+   logical-role handoff-only directory; run `rm -rf -- .worktrees/<role>-<task-id>/`. The Bash guard permits this exact
+   transient cleanup surface.
 
 5. For each eligible task, create an isolated worktree per `.claude/rules/worktree-isolation.md` §5 (for code-writing roles per Step 4.6) and dispatch the
    appropriate sub-agent.
@@ -279,12 +282,16 @@ When the classified path is A, before doing anything else, the Orchestrator must
    `docs/plan/` updates proposed by `plan-update.json`; (4) stage promoted artifacts + plan updates together; (5) create
    ONE main-worktree finalization commit containing both the artifact content and the master-plan transition; (6)
    atomically update the journal's `finalization` object to
-   `{"state":"finalized","main_commit":"<full finalization commit SHA>"}`; (7) clean up the worktree; (8) **delete the
+   `{"state":"finalized","main_commit":"<full finalization commit SHA>"}`; (7) clean up the dispatch directory—use
+   `git worktree remove --force` for a registered Git worktree, otherwise `rm -rf --` for the logical-role plain
+   `.worktrees/<role>-<task-id>/` handoff directory; (8) **delete the
    dispatch journal entry** `.claude/dispatch-journal/<role>-<task-id>.json` as the FINAL cleanup action. Never commit a
    `ready-for-deploy`, `in-test`, `done`, or `failed` task transition before the matching artifacts have been promoted
    to main. The marker makes cleanup recoverable: if deletion is skipped after the worktree is gone,
    `dispatch-journal-gc.cjs` proves the commit is in current `HEAD` history and removes the residue at the next
-   SessionStart. Deleting the journal last preserves §14's re-entrancy invariant.
+   SessionStart. `orchestrator-bash-guard.cjs` explicitly permits `rm`/`rmdir` only when every target is strictly below
+   `.worktrees/` or `.claude/dispatch-journal/`; no escape hatch is needed. Deleting the journal last preserves §14's
+   re-entrancy invariant.
 
 7.5. **Post-Implementation Verification dispatch (UI tasks only).** Before committing a FE Dev `→ ready-for-deploy` transition to the master plan, check the task file. If the task is UI-bearing (`track: fe` / `be+fe`, OR `Design sub-status:` set, OR `Linked Surface:` non-null), dispatch BA in `post-implementation` mode (subagent_type: `ba`, dispatch parameter `mode: post-implementation`, with `task_id` + FE Dev worktree path). BA produces `docs/uiux/post-implementation-reports/<task-id>.md` with verdict `qualified` or `unqualified`. Verdict-handling matrix:
 

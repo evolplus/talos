@@ -136,4 +136,10 @@ Many of these rules are ALSO declared in their owning agent's template Hard Rule
 
 - No two agents share a worktree
 - **`plan-update.json` lives ONLY at `.worktrees/<role>-<task-id>/plan-update.json`.** The transient handoff artifact sub-agents emit to signal ready-to-finalize. Sub-agents write it inside their own worktree; the Orchestrator finalizes by promoting validated role-owned artifacts, applying its plan updates into `docs/plan/`, committing both together, then cleaning up the worktree per `.claude/rules/worktree-isolation.md` §5. Any `plan-update*.json` at project root, under `docs/`, or anywhere outside `.worktrees/<*>/` is leakage — not a kit-prescribed pattern, and refused at runtime by `plan-update-location-guard.cjs`. The Orchestrator's §9 Step 0.5 pre-flight sweeps any existing root-level stragglers on every invocation. Escape hatch `CLAUDE_ALLOW_PLAN_UPDATE_ROOT=1` permits one-off operator-explicit writes outside the worktree (e.g., kit-dogfooding); document rationale in SRS §10 Changelog.
+- **Transient cleanup is Orchestrator-owned and path-bounded.** Remove registered Git worktrees with the
+  `git worktree remove --force` command. Remove logical-role handoff-only directories with
+  `rm -rf -- .worktrees/<role>-<task-id>/`. Remove
+  dispatch journals with `rm -- .claude/dispatch-journal/<role>-<task-id>.json`. `orchestrator-bash-guard.cjs` allows
+  `rm`/`rmdir` only when every target resolves strictly below one of those two cleanup roots. Mixed targets, traversal,
+  root removal, shell composition, and `rmdir -p` remain blocked.
 - All kit-emitted artifacts live under `docs/`, organized in per-purpose subfolders. No agent writes kit-emitted artifacts to project root. Worktree root is reserved for transient handoff artifacts the Orchestrator consumes once and then discards (e.g., `plan-update.json`, the TL's `plan-proposal/` tree). Transient artifacts are NEVER git-merged to main; the Orchestrator ingests their content (e.g., copies `plan-proposal/` into `docs/plan/`) and cleans up the worktree per `.claude/rules/worktree-isolation.md` §5.

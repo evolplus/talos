@@ -74,9 +74,12 @@ Run as the Orchestrator:
    artifacts by path-scoped ingestion, apply `plan-update.json`, and commit
    artifacts + task-state updates together according to the rules. Record the
    resulting full commit SHA as `finalization.state: finalized` in the dispatch
-   journal before removing the worktree, then delete the journal last. This
-   marker lets SessionStart safely collect residue when final cleanup is
-   interrupted.
+   journal before cleanup. Remove registered Git worktrees with the
+   `git worktree remove --force` command. Remove logical-role handoff-only
+   directories with `rm -rf -- .worktrees/<role>-<task-id>/`. Then remove the
+   journal last with `rm -- .claude/dispatch-journal/<role>-<task-id>.json`.
+   The Bash guard permits only these path-bounded cleanup targets. The marker lets SessionStart safely
+   collect residue when final cleanup is interrupted.
 6. Auto-route non-human failures to the owning role:
    - SRS validator failure -> BA Mode D;
    - architecture validator failure -> SA revision;

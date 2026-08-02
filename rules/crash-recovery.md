@@ -125,6 +125,8 @@ For each journal entry found at session start, the Orchestrator reconciles deter
    came from an older kit version and names a legacy `agent/<role>/<task-id>` branch, delete that local branch too. The
    partial code is throwaway by design — the sub-agent had not passed exit criteria, so detached worktree commits are
    not trusted integration history.
+   If the path is not present in `git worktree list --porcelain`, treat it as a logical-role handoff-only directory and
+   remove it with `rm -rf -- .worktrees/<role>-<task-id>/` after checking it matches the journaled dispatch path.
 4. **Roll back partial doc writes (logical roles).** For each path in `baseline.owned_paths`, restore main to the
    journaled baseline:
    `git restore --source=<baseline.head> --staged --worktree -- <path>`. This discards uncommitted partial writes to the
@@ -134,7 +136,8 @@ For each journal entry found at session start, the Orchestrator reconciles deter
 5. **Reset status.** Transition the task `interrupted → not-started` (append-only history row:
    `notes: "Rolled back to <baseline.head>; eligible for fresh re-dispatch"`). Clear any design sub-status that the
    interrupted dispatch had advanced but not confirmed.
-6. **Delete the journal entry.** `rm .claude/dispatch-journal/<role>-<task-id>.json`.
+6. **Delete the journal entry.** `rm -- .claude/dispatch-journal/<role>-<task-id>.json`. The Bash guard allows this and
+   the handoff-directory removal above only on the two exact Orchestrator cleanup surfaces.
 7. **Log** to the session-start summary:
    `[orchestrator] Reconciled interrupted dispatch <role>/<task-id>: local worktree discarded, docs rolled back to <sha>, task → not-started`.
 
