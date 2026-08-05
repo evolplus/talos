@@ -1524,6 +1524,41 @@ run_stdout_contains "session-init: reports Status after huge header comment" \
 run_stdout_contains "session-init: reads Workload-Tier after huge header comment" \
     "$SESSION_INIT" '{}' "Workload tier: conservative (via SRS header)" "CLAUDE_PROJECT_DIR=$FIX_ROOT/md-srs-long-comment"
 
+# A long version/audit preamble is still part of the markdown header. It must
+# not push bold Status beyond an arbitrary scan window. The conflicting body
+# field proves parsing remains header-scoped rather than scanning the whole doc.
+mkdir -p "$FIX_ROOT/md-srs-long-preamble/docs"
+LONG_VERSION_NOTE="$(printf '%05000d' 0 | tr '0' 'v')"
+cat > "$FIX_ROOT/md-srs-long-preamble/docs/SRS.md" <<EOF
+# [Project Name]: [Feature Title]
+
+**Version:** 64.0
+Version audit trail: $LONG_VERSION_NOTE
+**Status:** Signed-off
+**Last-Updated:** 2026-08-04
+
+## Historical example
+
+**Status:** Draft
+EOF
+run_stdout_silent "srs-status-guard: reads bold Status beyond legacy scan window" \
+    "$SRS_GUARD" '{}' "CLAUDE_PROJECT_DIR=$FIX_ROOT/md-srs-long-preamble"
+run_stdout_contains "session-init: reads Status beyond legacy scan window" \
+    "$SESSION_INIT" '{}' "SRS: Signed-off" "CLAUDE_PROJECT_DIR=$FIX_ROOT/md-srs-long-preamble"
+
+mkdir -p "$FIX_ROOT/md-srs-body-status-only/docs"
+cat > "$FIX_ROOT/md-srs-body-status-only/docs/SRS.md" <<'EOF'
+# [Project Name]: [Feature Title]
+
+**Version:** 1.0
+
+## Historical example
+
+**Status:** Signed-off
+EOF
+run_stdout_contains "srs-status-guard: does not accept a body-only Status" \
+    "$SRS_GUARD" '{}' "SRS Status: (missing)" "CLAUDE_PROJECT_DIR=$FIX_ROOT/md-srs-body-status-only"
+
 # srs-status-guard: bold **Status:** Draft → emits reminder with parsed status
 mkdir -p "$FIX_ROOT/md-srs-draft/docs"
 cat > "$FIX_ROOT/md-srs-draft/docs/SRS.md" <<'EOF'

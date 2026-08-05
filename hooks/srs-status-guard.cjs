@@ -33,9 +33,10 @@ function readSrs() {
   } catch (e) {
     return { exists: false, error: e.message };
   }
-  // Status header lives near the top of the file. parseHeaderField tolerates
-  // markdown bold (**Status:**) and other variants the kit templates use.
-  const head = headerPrelude(content, 4000);
+  // Parse the structural header (everything before the first ## section), not
+  // an arbitrary character window. Version/audit notes can legitimately make
+  // the header much larger than 4,000 characters.
+  const head = headerPrelude(content);
   return {
     exists: true,
     status: parseHeaderField(head, 'Status'),

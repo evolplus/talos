@@ -14,9 +14,9 @@
 //   -   **Status**:   Signed-off
 //   **Status:** **Signed-off**         (markdown bold around value is stripped)
 //
-// Returns the first match (multiline regex; callers typically slice the head of
-// the doc before calling so the header wins over body mentions). Case-insensitive
-// label match by default; pass {caseSensitive: true} to override.
+// Returns the first match (multiline regex; callers should pass headerPrelude()
+// output so the header wins over body mentions). Case-insensitive label match by
+// default; pass {caseSensitive: true} to override.
 //
 // Callers should pre-process with stripFencedCodeBlocks() so a "format reference"
 // fenced block at the top of the doc doesn't shadow the real header value.
@@ -26,9 +26,16 @@ function stripHtmlComments(content) {
   return content.replace(/<!--[\s\S]*?(?:-->|$)/g, '');
 }
 
-function headerPrelude(content, maxChars) {
-  const limit = Number.isFinite(maxChars) && maxChars > 0 ? maxChars : 4000;
-  return stripHtmlComments(content).slice(0, limit);
+function headerPrelude(content, _legacyMaxChars) {
+  // Header extent is a markdown structure, not a byte count. SRS and plan
+  // headers can carry long version/audit notes before fields such as Status;
+  // truncating at an arbitrary character offset makes a valid field disappear.
+  // Stop at the first level-two section so an identically named body field
+  // cannot shadow a genuinely missing header field. The second parameter is
+  // retained for compatibility with installed hooks that still pass a limit.
+  const stripped = stripHtmlComments(content);
+  const section = stripped.search(/^[ \t]*##(?:[ \t]|$)/m);
+  return section === -1 ? stripped : stripped.slice(0, section);
 }
 
 function parseHeaderField(content, label, opts) {
