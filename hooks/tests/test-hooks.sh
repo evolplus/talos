@@ -171,23 +171,23 @@ run_exit "override CLAUDE_PRIVACY_OK=1"     0 "$PRIVACY" '{"tool_name":"Read","t
 echo
 echo "plan-update-validator.cjs:"
 
-VALID='{"tool_name":"Write","tool_input":{"file_path":".worktrees/be-dev-T-042/plan-update.json","content":"{\"task_id\":\"T-042\",\"track\":\"be\",\"from_status\":\"in-progress\",\"to_status\":\"ready-for-deploy\",\"agent\":\"be-dev\",\"timestamp\":\"2026-05-10T08:00:00Z\"}"}}'
+VALID='{"tool_name":"Write","tool_input":{"file_path":".worktrees/be-dev-T-042/plan-update.json","content":"{\"task_id\":\"T-042\",\"track\":\"be\",\"from_status\":\"in-progress\",\"to_status\":\"ready-for-deploy\",\"artifacts\":[\"backend/src/handler.js\"],\"agent\":\"be-dev\",\"timestamp\":\"2026-05-10T08:00:00Z\"}"}}'
 run_exit "valid be-dev update"              0 "$VALIDATOR" "$VALID"
-VALID_NOTES='{"tool_name":"Write","tool_input":{"file_path":"plan-update.json","content":"{\"task_id\":\"T-042\",\"track\":\"be+fe\",\"from_status\":\"in-progress\",\"to_status\":\"ready-for-deploy\",\"agent\":\"fe-dev\",\"timestamp\":\"2026-05-10T08:00:00Z\",\"notes\":\"contract frozen\"}"}}'
+VALID_NOTES='{"tool_name":"Write","tool_input":{"file_path":"plan-update.json","content":"{\"task_id\":\"T-042\",\"track\":\"be+fe\",\"from_status\":\"in-progress\",\"to_status\":\"ready-for-deploy\",\"artifacts\":[\"backend/src/handler.js\"],\"agent\":\"fe-dev\",\"timestamp\":\"2026-05-10T08:00:00Z\",\"notes\":\"contract frozen\"}"}}'
 run_exit "valid with notes"                 0 "$VALIDATOR" "$VALID_NOTES"
 run_exit "ignores Read tool"                0 "$VALIDATOR" '{"tool_name":"Read","tool_input":{"file_path":"plan-update.json"}}'
 run_exit "ignores writes to other files"    0 "$VALIDATOR" '{"tool_name":"Write","tool_input":{"file_path":"docs/SRS.md","content":"hello"}}'
-BAD_TRACK='{"tool_name":"Write","tool_input":{"file_path":"plan-update.json","content":"{\"task_id\":\"T-1\",\"track\":\"backend\",\"from_status\":\"in-progress\",\"to_status\":\"done\",\"agent\":\"be-dev\",\"timestamp\":\"2026-05-10T08:00:00Z\"}"}}'
+BAD_TRACK='{"tool_name":"Write","tool_input":{"file_path":"plan-update.json","content":"{\"task_id\":\"T-1\",\"track\":\"backend\",\"from_status\":\"in-progress\",\"to_status\":\"done\",\"artifacts\":[\"backend/src/handler.js\"],\"agent\":\"be-dev\",\"timestamp\":\"2026-05-10T08:00:00Z\"}"}}'
 run_exit "rejects unknown track"            2 "$VALIDATOR" "$BAD_TRACK"
 MISSING='{"tool_name":"Write","tool_input":{"file_path":"plan-update.json","content":"{\"task_id\":\"T-1\",\"track\":\"be\"}"}}'
 run_exit "rejects missing required fields"  2 "$VALIDATOR" "$MISSING"
-BAD_STATUS='{"tool_name":"Write","tool_input":{"file_path":"plan-update.json","content":"{\"task_id\":\"T-1\",\"track\":\"be\",\"from_status\":\"queued\",\"to_status\":\"done\",\"agent\":\"be-dev\",\"timestamp\":\"2026-05-10T08:00:00Z\"}"}}'
+BAD_STATUS='{"tool_name":"Write","tool_input":{"file_path":"plan-update.json","content":"{\"task_id\":\"T-1\",\"track\":\"be\",\"from_status\":\"queued\",\"to_status\":\"done\",\"artifacts\":[\"backend/src/handler.js\"],\"agent\":\"be-dev\",\"timestamp\":\"2026-05-10T08:00:00Z\"}"}}'
 run_exit "rejects unknown from_status"      2 "$VALIDATOR" "$BAD_STATUS"
 BAD_AGENT='{"tool_name":"Write","tool_input":{"file_path":"plan-update.json","content":"{\"task_id\":\"T-1\",\"track\":\"be\",\"from_status\":\"in-progress\",\"to_status\":\"done\",\"agent\":\"backend-dev\",\"timestamp\":\"2026-05-10T08:00:00Z\"}"}}'
 run_exit "rejects unknown agent"            2 "$VALIDATOR" "$BAD_AGENT"
-UNKNOWN_FIELD='{"tool_name":"Write","tool_input":{"file_path":"plan-update.json","content":"{\"task_id\":\"T-1\",\"track\":\"be\",\"from_status\":\"in-progress\",\"to_status\":\"done\",\"agent\":\"be-dev\",\"timestamp\":\"2026-05-10T08:00:00Z\",\"foo\":\"bar\"}"}}'
+UNKNOWN_FIELD='{"tool_name":"Write","tool_input":{"file_path":"plan-update.json","content":"{\"task_id\":\"T-1\",\"track\":\"be\",\"from_status\":\"in-progress\",\"to_status\":\"done\",\"artifacts\":[\"backend/src/handler.js\"],\"agent\":\"be-dev\",\"timestamp\":\"2026-05-10T08:00:00Z\",\"foo\":\"bar\"}"}}'
 run_exit "rejects unknown field"            2 "$VALIDATOR" "$UNKNOWN_FIELD"
-BAD_TS='{"tool_name":"Write","tool_input":{"file_path":"plan-update.json","content":"{\"task_id\":\"T-1\",\"track\":\"be\",\"from_status\":\"in-progress\",\"to_status\":\"done\",\"agent\":\"be-dev\",\"timestamp\":\"yesterday\"}"}}'
+BAD_TS='{"tool_name":"Write","tool_input":{"file_path":"plan-update.json","content":"{\"task_id\":\"T-1\",\"track\":\"be\",\"from_status\":\"in-progress\",\"to_status\":\"done\",\"artifacts\":[\"backend/src/handler.js\"],\"agent\":\"be-dev\",\"timestamp\":\"yesterday\"}"}}'
 run_exit "rejects malformed timestamp"      2 "$VALIDATOR" "$BAD_TS"
 BAD_JSON='{"tool_name":"Write","tool_input":{"file_path":"plan-update.json","content":"{this is not json}"}}'
 run_exit "rejects non-JSON content"         2 "$VALIDATOR" "$BAD_JSON"
@@ -200,9 +200,9 @@ run_exit "ignores malformed event JSON"     0 "$VALIDATOR" 'not json'
 
 # --- state-machine transition enforcement (Bug 1 fix) ---
 # Legal transitions
-TRANS_RDY_DEPLOY='{"tool_name":"Write","tool_input":{"file_path":"plan-update.json","content":"{\"task_id\":\"T-1\",\"track\":\"be\",\"from_status\":\"ready-for-deploy\",\"to_status\":\"in-test\",\"agent\":\"devops\",\"timestamp\":\"2026-05-10T08:00:00Z\"}"}}'
+TRANS_RDY_DEPLOY='{"tool_name":"Write","tool_input":{"file_path":"plan-update.json","content":"{\"task_id\":\"T-1\",\"track\":\"be\",\"from_status\":\"ready-for-deploy\",\"to_status\":\"in-test\",\"artifacts\":[\"backend/src/handler.js\"],\"agent\":\"devops\",\"timestamp\":\"2026-05-10T08:00:00Z\"}"}}'
 run_exit "legal: ready-for-deploy → in-test"          0 "$VALIDATOR" "$TRANS_RDY_DEPLOY"
-TRANS_IN_TEST_DONE='{"tool_name":"Write","tool_input":{"file_path":"plan-update.json","content":"{\"task_id\":\"T-1\",\"track\":\"be\",\"from_status\":\"in-test\",\"to_status\":\"done\",\"agent\":\"qa-exec\",\"timestamp\":\"2026-05-10T08:00:00Z\"}"}}'
+TRANS_IN_TEST_DONE='{"tool_name":"Write","tool_input":{"file_path":"plan-update.json","content":"{\"task_id\":\"T-1\",\"track\":\"be\",\"from_status\":\"in-test\",\"to_status\":\"done\",\"artifacts\":[\"backend/src/handler.js\"],\"agent\":\"qa-exec\",\"timestamp\":\"2026-05-10T08:00:00Z\"}"}}'
 run_exit "legal: in-test → done"                       0 "$VALIDATOR" "$TRANS_IN_TEST_DONE"
 TRANS_NOTSTARTED_IP='{"tool_name":"Write","tool_input":{"file_path":"plan-update.json","content":"{\"task_id\":\"T-1\",\"track\":\"fe\",\"from_status\":\"not-started\",\"to_status\":\"in-progress\",\"agent\":\"orchestrator\",\"timestamp\":\"2026-05-10T08:00:00Z\"}"}}'
 run_exit "legal: not-started → in-progress"            0 "$VALIDATOR" "$TRANS_NOTSTARTED_IP"
@@ -217,13 +217,13 @@ TRANS_IDENTITY='{"tool_name":"Write","tool_input":{"file_path":"plan-update.json
 run_exit "legal: identity transition (in-progress → in-progress)" 0 "$VALIDATOR" "$TRANS_IDENTITY"
 
 # Illegal transitions — the core of Bug 1
-ILLEGAL_RFD_DONE='{"tool_name":"Write","tool_input":{"file_path":"plan-update.json","content":"{\"task_id\":\"T-1\",\"track\":\"be\",\"from_status\":\"ready-for-deploy\",\"to_status\":\"done\",\"agent\":\"devops\",\"timestamp\":\"2026-05-10T08:00:00Z\"}"}}'
+ILLEGAL_RFD_DONE='{"tool_name":"Write","tool_input":{"file_path":"plan-update.json","content":"{\"task_id\":\"T-1\",\"track\":\"be\",\"from_status\":\"ready-for-deploy\",\"to_status\":\"done\",\"artifacts\":[\"backend/src/handler.js\"],\"agent\":\"devops\",\"timestamp\":\"2026-05-10T08:00:00Z\"}"}}'
 run_exit "blocks: ready-for-deploy → done (skip in-test)"  2 "$VALIDATOR" "$ILLEGAL_RFD_DONE"
-ILLEGAL_IP_DONE='{"tool_name":"Write","tool_input":{"file_path":"plan-update.json","content":"{\"task_id\":\"T-1\",\"track\":\"be\",\"from_status\":\"in-progress\",\"to_status\":\"done\",\"agent\":\"be-dev\",\"timestamp\":\"2026-05-10T08:00:00Z\"}"}}'
+ILLEGAL_IP_DONE='{"tool_name":"Write","tool_input":{"file_path":"plan-update.json","content":"{\"task_id\":\"T-1\",\"track\":\"be\",\"from_status\":\"in-progress\",\"to_status\":\"done\",\"artifacts\":[\"backend/src/handler.js\"],\"agent\":\"be-dev\",\"timestamp\":\"2026-05-10T08:00:00Z\"}"}}'
 run_exit "blocks: in-progress → done (skip ready-for-deploy)" 2 "$VALIDATOR" "$ILLEGAL_IP_DONE"
-ILLEGAL_DONE_IP='{"tool_name":"Write","tool_input":{"file_path":"plan-update.json","content":"{\"task_id\":\"T-1\",\"track\":\"be\",\"from_status\":\"done\",\"to_status\":\"in-progress\",\"agent\":\"be-dev\",\"timestamp\":\"2026-05-10T08:00:00Z\"}"}}'
+ILLEGAL_DONE_IP='{"tool_name":"Write","tool_input":{"file_path":"plan-update.json","content":"{\"task_id\":\"T-1\",\"track\":\"be\",\"from_status\":\"done\",\"to_status\":\"in-progress\",\"artifacts\":[\"backend/src/handler.js\"],\"agent\":\"be-dev\",\"timestamp\":\"2026-05-10T08:00:00Z\"}"}}'
 run_exit "blocks: done → in-progress (reverse)"         2 "$VALIDATOR" "$ILLEGAL_DONE_IP"
-ILLEGAL_IP_INTEST='{"tool_name":"Write","tool_input":{"file_path":"plan-update.json","content":"{\"task_id\":\"T-1\",\"track\":\"be\",\"from_status\":\"in-progress\",\"to_status\":\"in-test\",\"agent\":\"be-dev\",\"timestamp\":\"2026-05-10T08:00:00Z\"}"}}'
+ILLEGAL_IP_INTEST='{"tool_name":"Write","tool_input":{"file_path":"plan-update.json","content":"{\"task_id\":\"T-1\",\"track\":\"be\",\"from_status\":\"in-progress\",\"to_status\":\"in-test\",\"artifacts\":[\"backend/src/handler.js\"],\"agent\":\"be-dev\",\"timestamp\":\"2026-05-10T08:00:00Z\"}"}}'
 run_exit "blocks: in-progress → in-test (skip ready-for-deploy)" 2 "$VALIDATOR" "$ILLEGAL_IP_INTEST"
 # Terminal states
 ILLEGAL_DEPR_IP='{"tool_name":"Write","tool_input":{"file_path":"plan-update.json","content":"{\"task_id\":\"T-1\",\"track\":\"be\",\"from_status\":\"done-deprecated\",\"to_status\":\"in-progress\",\"agent\":\"orchestrator\",\"timestamp\":\"2026-05-10T08:00:00Z\"}"}}'
@@ -235,23 +235,23 @@ run_exit "blocks: cancelled → in-progress (terminal)"   2 "$VALIDATOR" "$ILLEG
 # Authorized transitions: correct agent for the correct transition
 
 # be-dev can propose in-progress → ready-for-deploy (dev completes work)
-AUTH_BEDEV_RFD='{"tool_name":"Write","tool_input":{"file_path":"plan-update.json","content":"{\"task_id\":\"T-1\",\"track\":\"be\",\"from_status\":\"in-progress\",\"to_status\":\"ready-for-deploy\",\"agent\":\"be-dev\",\"timestamp\":\"2026-05-10T08:00:00Z\"}"}}'
+AUTH_BEDEV_RFD='{"tool_name":"Write","tool_input":{"file_path":"plan-update.json","content":"{\"task_id\":\"T-1\",\"track\":\"be\",\"from_status\":\"in-progress\",\"to_status\":\"ready-for-deploy\",\"artifacts\":[\"backend/src/handler.js\"],\"agent\":\"be-dev\",\"timestamp\":\"2026-05-10T08:00:00Z\"}"}}'
 run_exit "authority: be-dev proposes in-progress → ready-for-deploy (allowed)" 0 "$VALIDATOR" "$AUTH_BEDEV_RFD"
 
 # fe-dev can also propose in-progress → ready-for-deploy
-AUTH_FEDEV_RFD='{"tool_name":"Write","tool_input":{"file_path":"plan-update.json","content":"{\"task_id\":\"T-1\",\"track\":\"fe\",\"from_status\":\"in-progress\",\"to_status\":\"ready-for-deploy\",\"agent\":\"fe-dev\",\"timestamp\":\"2026-05-10T08:00:00Z\"}"}}'
+AUTH_FEDEV_RFD='{"tool_name":"Write","tool_input":{"file_path":"plan-update.json","content":"{\"task_id\":\"T-1\",\"track\":\"fe\",\"from_status\":\"in-progress\",\"to_status\":\"ready-for-deploy\",\"artifacts\":[\"backend/src/handler.js\"],\"agent\":\"fe-dev\",\"timestamp\":\"2026-05-10T08:00:00Z\"}"}}'
 run_exit "authority: fe-dev proposes in-progress → ready-for-deploy (allowed)" 0 "$VALIDATOR" "$AUTH_FEDEV_RFD"
 
 # devops can propose ready-for-deploy → in-test (deployment)
-AUTH_DEVOPS_IT='{"tool_name":"Write","tool_input":{"file_path":"plan-update.json","content":"{\"task_id\":\"T-1\",\"track\":\"be\",\"from_status\":\"ready-for-deploy\",\"to_status\":\"in-test\",\"agent\":\"devops\",\"timestamp\":\"2026-05-10T08:00:00Z\"}"}}'
+AUTH_DEVOPS_IT='{"tool_name":"Write","tool_input":{"file_path":"plan-update.json","content":"{\"task_id\":\"T-1\",\"track\":\"be\",\"from_status\":\"ready-for-deploy\",\"to_status\":\"in-test\",\"artifacts\":[\"backend/src/handler.js\"],\"agent\":\"devops\",\"timestamp\":\"2026-05-10T08:00:00Z\"}"}}'
 run_exit "authority: devops proposes ready-for-deploy → in-test (allowed)" 0 "$VALIDATOR" "$AUTH_DEVOPS_IT"
 
 # qa-exec can propose in-test → done (QA pass)
-AUTH_QA_DONE='{"tool_name":"Write","tool_input":{"file_path":"plan-update.json","content":"{\"task_id\":\"T-900\",\"track\":\"be\",\"from_status\":\"in-test\",\"to_status\":\"done\",\"agent\":\"qa-exec\",\"timestamp\":\"2026-05-10T08:00:00Z\"}"}}'
+AUTH_QA_DONE='{"tool_name":"Write","tool_input":{"file_path":"plan-update.json","content":"{\"task_id\":\"T-900\",\"track\":\"be\",\"from_status\":\"in-test\",\"to_status\":\"done\",\"artifacts\":[\"backend/src/handler.js\"],\"agent\":\"qa-exec\",\"timestamp\":\"2026-05-10T08:00:00Z\"}"}}'
 run_exit "authority: qa-exec proposes in-test → done (allowed)" 0 "$VALIDATOR" "$AUTH_QA_DONE" "CLAUDE_PROJECT_DIR=$FIX_ROOT/artifact-gate"
 
 # qa-exec can propose in-test → failed (QA fail)
-AUTH_QA_FAILED='{"tool_name":"Write","tool_input":{"file_path":"plan-update.json","content":"{\"task_id\":\"T-1\",\"track\":\"be\",\"from_status\":\"in-test\",\"to_status\":\"failed\",\"agent\":\"qa-exec\",\"timestamp\":\"2026-05-10T08:00:00Z\"}"}}'
+AUTH_QA_FAILED='{"tool_name":"Write","tool_input":{"file_path":"plan-update.json","content":"{\"task_id\":\"T-1\",\"track\":\"be\",\"from_status\":\"in-test\",\"to_status\":\"failed\",\"artifacts\":[\"backend/src/handler.js\"],\"agent\":\"qa-exec\",\"timestamp\":\"2026-05-10T08:00:00Z\"}"}}'
 run_exit "authority: qa-exec proposes in-test → failed (allowed)" 0 "$VALIDATOR" "$AUTH_QA_FAILED"
 
 # orchestrator can propose done → done-deprecated (iteration deprecation)
@@ -273,31 +273,31 @@ run_exit "authority: orchestrator proposes failed → in-progress (allowed)" 0 "
 # --- Unauthorized transitions: wrong agent for the transition ---
 
 # be-dev cannot propose in-test → done (that's QA-Exec's authority)
-AUTH_BEDEV_DONE='{"tool_name":"Write","tool_input":{"file_path":"plan-update.json","content":"{\"task_id\":\"T-900\",\"track\":\"be\",\"from_status\":\"in-test\",\"to_status\":\"done\",\"agent\":\"be-dev\",\"timestamp\":\"2026-05-10T08:00:00Z\"}"}}'
+AUTH_BEDEV_DONE='{"tool_name":"Write","tool_input":{"file_path":"plan-update.json","content":"{\"task_id\":\"T-900\",\"track\":\"be\",\"from_status\":\"in-test\",\"to_status\":\"done\",\"artifacts\":[\"backend/src/handler.js\"],\"agent\":\"be-dev\",\"timestamp\":\"2026-05-10T08:00:00Z\"}"}}'
 run_exit "authority: blocks be-dev proposing in-test → done" 2 "$VALIDATOR" "$AUTH_BEDEV_DONE" "CLAUDE_PROJECT_DIR=$FIX_ROOT/artifact-gate"
 
 # be-dev cannot propose ready-for-deploy → in-test (that's DevOps's authority)
-AUTH_BEDEV_INTEST='{"tool_name":"Write","tool_input":{"file_path":"plan-update.json","content":"{\"task_id\":\"T-1\",\"track\":\"be\",\"from_status\":\"ready-for-deploy\",\"to_status\":\"in-test\",\"agent\":\"be-dev\",\"timestamp\":\"2026-05-10T08:00:00Z\"}"}}'
+AUTH_BEDEV_INTEST='{"tool_name":"Write","tool_input":{"file_path":"plan-update.json","content":"{\"task_id\":\"T-1\",\"track\":\"be\",\"from_status\":\"ready-for-deploy\",\"to_status\":\"in-test\",\"artifacts\":[\"backend/src/handler.js\"],\"agent\":\"be-dev\",\"timestamp\":\"2026-05-10T08:00:00Z\"}"}}'
 run_exit "authority: blocks be-dev proposing ready-for-deploy → in-test" 2 "$VALIDATOR" "$AUTH_BEDEV_INTEST"
 
 # be-dev cannot propose in-test → failed (that's QA-Exec's authority)
-AUTH_BEDEV_FAIL='{"tool_name":"Write","tool_input":{"file_path":"plan-update.json","content":"{\"task_id\":\"T-1\",\"track\":\"be\",\"from_status\":\"in-test\",\"to_status\":\"failed\",\"agent\":\"be-dev\",\"timestamp\":\"2026-05-10T08:00:00Z\"}"}}'
+AUTH_BEDEV_FAIL='{"tool_name":"Write","tool_input":{"file_path":"plan-update.json","content":"{\"task_id\":\"T-1\",\"track\":\"be\",\"from_status\":\"in-test\",\"to_status\":\"failed\",\"artifacts\":[\"backend/src/handler.js\"],\"agent\":\"be-dev\",\"timestamp\":\"2026-05-10T08:00:00Z\"}"}}'
 run_exit "authority: blocks be-dev proposing in-test → failed" 2 "$VALIDATOR" "$AUTH_BEDEV_FAIL"
 
 # be-dev cannot propose done → done-deprecated (that's Orchestrator's authority)
-AUTH_BEDEV_DEPR='{"tool_name":"Write","tool_input":{"file_path":"plan-update.json","content":"{\"task_id\":\"T-1\",\"track\":\"be\",\"from_status\":\"done\",\"to_status\":\"done-deprecated\",\"agent\":\"be-dev\",\"timestamp\":\"2026-05-10T08:00:00Z\"}"}}'
+AUTH_BEDEV_DEPR='{"tool_name":"Write","tool_input":{"file_path":"plan-update.json","content":"{\"task_id\":\"T-1\",\"track\":\"be\",\"from_status\":\"done\",\"to_status\":\"done-deprecated\",\"artifacts\":[\"backend/src/handler.js\"],\"agent\":\"be-dev\",\"timestamp\":\"2026-05-10T08:00:00Z\"}"}}'
 run_exit "authority: blocks be-dev proposing done → done-deprecated" 2 "$VALIDATOR" "$AUTH_BEDEV_DEPR"
 
 # be-dev cannot propose not-started → cancelled (only Orchestrator can cancel)
-AUTH_BEDEV_CANCEL='{"tool_name":"Write","tool_input":{"file_path":"plan-update.json","content":"{\"task_id\":\"T-1\",\"track\":\"be\",\"from_status\":\"not-started\",\"to_status\":\"cancelled\",\"agent\":\"be-dev\",\"timestamp\":\"2026-05-10T08:00:00Z\"}"}}'
+AUTH_BEDEV_CANCEL='{"tool_name":"Write","tool_input":{"file_path":"plan-update.json","content":"{\"task_id\":\"T-1\",\"track\":\"be\",\"from_status\":\"not-started\",\"to_status\":\"cancelled\",\"artifacts\":[\"backend/src/handler.js\"],\"agent\":\"be-dev\",\"timestamp\":\"2026-05-10T08:00:00Z\"}"}}'
 run_exit "authority: blocks be-dev proposing not-started → cancelled" 2 "$VALIDATOR" "$AUTH_BEDEV_CANCEL"
 
 # be-dev cannot propose blocked → in-progress (re-dispatch is Orchestrator-only)
-AUTH_BEDEV_UNBLOCK='{"tool_name":"Write","tool_input":{"file_path":"plan-update.json","content":"{\"task_id\":\"T-1\",\"track\":\"be\",\"from_status\":\"blocked\",\"to_status\":\"in-progress\",\"agent\":\"be-dev\",\"timestamp\":\"2026-05-10T08:00:00Z\"}"}}'
+AUTH_BEDEV_UNBLOCK='{"tool_name":"Write","tool_input":{"file_path":"plan-update.json","content":"{\"task_id\":\"T-1\",\"track\":\"be\",\"from_status\":\"blocked\",\"to_status\":\"in-progress\",\"artifacts\":[\"backend/src/handler.js\"],\"agent\":\"be-dev\",\"timestamp\":\"2026-05-10T08:00:00Z\"}"}}'
 run_exit "authority: blocks be-dev proposing blocked → in-progress" 2 "$VALIDATOR" "$AUTH_BEDEV_UNBLOCK"
 
 # fe-dev cannot propose in-progress → ready-for-deploy on a be track (track mismatch is not Bug 5's scope, but authority is)
-AUTH_FEDEV_BE_RFD='{"tool_name":"Write","tool_input":{"file_path":"plan-update.json","content":"{\"task_id\":\"T-1\",\"track\":\"be\",\"from_status\":\"in-progress\",\"to_status\":\"ready-for-deploy\",\"agent\":\"fe-dev\",\"timestamp\":\"2026-05-10T08:00:00Z\"}"}}'
+AUTH_FEDEV_BE_RFD='{"tool_name":"Write","tool_input":{"file_path":"plan-update.json","content":"{\"task_id\":\"T-1\",\"track\":\"be\",\"from_status\":\"in-progress\",\"to_status\":\"ready-for-deploy\",\"artifacts\":[\"backend/src/handler.js\"],\"agent\":\"fe-dev\",\"timestamp\":\"2026-05-10T08:00:00Z\"}"}}'
 run_exit "authority: fe-dev proposing in-progress → ready-for-deploy is allowed (authority is role-based, not track-based)" 0 "$VALIDATOR" "$AUTH_FEDEV_BE_RFD"
 
 # Identity transition (from === to) bypasses authority check — design_sub_status update
@@ -408,12 +408,12 @@ cat > "$FIX_ROOT/artifact-when-ready/docs/qa-reports/T-900.md" <<'EOF'
 # QA Report T-900
 EOF
 
-DONE_BOTH_PRESENT='{"tool_name":"Write","tool_input":{"file_path":"plan-update.json","content":"{\"task_id\":\"T-900\",\"track\":\"be\",\"from_status\":\"in-test\",\"to_status\":\"done\",\"agent\":\"qa-exec\",\"timestamp\":\"2026-05-10T08:00:00Z\"}"}}'
-DONE_QA_MISSING='{"tool_name":"Write","tool_input":{"file_path":"plan-update.json","content":"{\"task_id\":\"T-900\",\"track\":\"be\",\"from_status\":\"in-test\",\"to_status\":\"done\",\"agent\":\"qa-exec\",\"timestamp\":\"2026-05-10T08:00:00Z\"}"}}'
-DONE_DEPLOY_MISSING='{"tool_name":"Write","tool_input":{"file_path":"plan-update.json","content":"{\"task_id\":\"T-900\",\"track\":\"be\",\"from_status\":\"in-test\",\"to_status\":\"done\",\"agent\":\"qa-exec\",\"timestamp\":\"2026-05-10T08:00:00Z\"}"}}'
-DONE_BOTH_MISSING='{"tool_name":"Write","tool_input":{"file_path":"plan-update.json","content":"{\"task_id\":\"T-900\",\"track\":\"be\",\"from_status\":\"in-test\",\"to_status\":\"done\",\"agent\":\"qa-exec\",\"timestamp\":\"2026-05-10T08:00:00Z\"}"}}'
+DONE_BOTH_PRESENT='{"tool_name":"Write","tool_input":{"file_path":"plan-update.json","content":"{\"task_id\":\"T-900\",\"track\":\"be\",\"from_status\":\"in-test\",\"to_status\":\"done\",\"artifacts\":[\"backend/src/handler.js\"],\"agent\":\"qa-exec\",\"timestamp\":\"2026-05-10T08:00:00Z\"}"}}'
+DONE_QA_MISSING='{"tool_name":"Write","tool_input":{"file_path":"plan-update.json","content":"{\"task_id\":\"T-900\",\"track\":\"be\",\"from_status\":\"in-test\",\"to_status\":\"done\",\"artifacts\":[\"backend/src/handler.js\"],\"agent\":\"qa-exec\",\"timestamp\":\"2026-05-10T08:00:00Z\"}"}}'
+DONE_DEPLOY_MISSING='{"tool_name":"Write","tool_input":{"file_path":"plan-update.json","content":"{\"task_id\":\"T-900\",\"track\":\"be\",\"from_status\":\"in-test\",\"to_status\":\"done\",\"artifacts\":[\"backend/src/handler.js\"],\"agent\":\"qa-exec\",\"timestamp\":\"2026-05-10T08:00:00Z\"}"}}'
+DONE_BOTH_MISSING='{"tool_name":"Write","tool_input":{"file_path":"plan-update.json","content":"{\"task_id\":\"T-900\",\"track\":\"be\",\"from_status\":\"in-test\",\"to_status\":\"done\",\"artifacts\":[\"backend/src/handler.js\"],\"agent\":\"qa-exec\",\"timestamp\":\"2026-05-10T08:00:00Z\"}"}}'
 # Non-done transitions should not trigger artifact check
-IP_TO_RFD='{"tool_name":"Write","tool_input":{"file_path":"plan-update.json","content":"{\"task_id\":\"T-900\",\"track\":\"be\",\"from_status\":\"in-progress\",\"to_status\":\"ready-for-deploy\",\"agent\":\"be-dev\",\"timestamp\":\"2026-05-10T08:00:00Z\"}"}}'
+IP_TO_RFD='{"tool_name":"Write","tool_input":{"file_path":"plan-update.json","content":"{\"task_id\":\"T-900\",\"track\":\"be\",\"from_status\":\"in-progress\",\"to_status\":\"ready-for-deploy\",\"artifacts\":[\"backend/src/handler.js\"],\"agent\":\"be-dev\",\"timestamp\":\"2026-05-10T08:00:00Z\"}"}}'
 
 run_exit "artifact gate: allows done when both reports exist" \
     0 "$VALIDATOR" "$DONE_BOTH_PRESENT" "CLAUDE_PROJECT_DIR=$FIX_ROOT/artifact-gate"
@@ -433,7 +433,7 @@ run_exit "artifact gate: passes when task has no Linked artifacts section" \
 run_exit "artifact gate: allows done with (when ready) suffix when files exist" \
     0 "$VALIDATOR" "$DONE_BOTH_PRESENT" "CLAUDE_PROJECT_DIR=$FIX_ROOT/artifact-when-ready"
 # Unknown task_id — no task file found, fail-open
-DONE_UNKNOWN='{"tool_name":"Write","tool_input":{"file_path":"plan-update.json","content":"{\"task_id\":\"T-999\",\"track\":\"be\",\"from_status\":\"in-test\",\"to_status\":\"done\",\"agent\":\"qa-exec\",\"timestamp\":\"2026-05-10T08:00:00Z\"}"}}'
+DONE_UNKNOWN='{"tool_name":"Write","tool_input":{"file_path":"plan-update.json","content":"{\"task_id\":\"T-999\",\"track\":\"be\",\"from_status\":\"in-test\",\"to_status\":\"done\",\"artifacts\":[\"backend/src/handler.js\"],\"agent\":\"qa-exec\",\"timestamp\":\"2026-05-10T08:00:00Z\"}"}}'
 run_exit "artifact gate: fail-open when task file not found" \
     0 "$VALIDATOR" "$DONE_UNKNOWN" "CLAUDE_PROJECT_DIR=$FIX_ROOT/artifact-missing-both"
 
@@ -2654,7 +2654,7 @@ echo "# api" > "$UI_FIX/docs/test-cases/by-task/T-180/api.md"
 ui_pu() {
   # $1 task_id, $2 to_status, $3 cwd, $4 track (optional, default fe)
   local tid="$1" tos="$2" cwd="$3" trk="${4:-fe}"
-  local content='{"task_id":"'"$tid"'","track":"'"$trk"'","from_status":"in-progress","to_status":"'"$tos"'","agent":"fe-dev","timestamp":"2026-06-04T00:00:00Z"}'
+  local content='{"task_id":"'"$tid"'","track":"'"$trk"'","from_status":"in-progress","to_status":"'"$tos"'","artifacts":["backend/src/handler.js"],"agent":"fe-dev","timestamp":"2026-06-04T00:00:00Z"}'
   python3 -c "
 import json, sys
 print(json.dumps({

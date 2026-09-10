@@ -101,6 +101,18 @@ fail-open:
   its recorded full commit SHA is an ancestor of current `HEAD`, and its journaled worktree no longer exists. It never
   deletes interrupted, malformed, stale-branch, or otherwise ambiguous entries.
 
+  **Scope limit — read this before relying on the marker.** The collector proves that *a* finalization commit landed;
+  it does NOT prove that commit contained every artifact the dispatch produced. A dispatch that ingested 3 of its 4
+  manifest paths satisfies the marker, satisfies this collector, and has still lost a quarter of its work. Content
+  completeness is verified separately at §9 Step 7 step 6b against `plan-update.json`'s `artifacts` manifest, and
+  enforced by `worktree-promotion-guard.cjs`. The marker is bookkeeping about the commit; the manifest check is
+  evidence about the content.
+
+- **`unpromoted-dispatch-audit.cjs` (SessionStart + UserPromptSubmit + Stop hook)** reports every dispatch whose
+  content is not provably on main — `ready-to-finalize`, `partially-promoted`, `unverifiable` (no manifest) and
+  `orphaned` residue. On `Stop` it refuses to end the turn for the first three; orphans are surfaced, never
+  auto-deleted.
+
 - **`session-init-summary.cjs` (SessionStart hook)** scans `.claude/dispatch-journal/*.json` and `.worktrees/*`. For
   each journal entry it prints a warning line naming the role, task-id, worktree, and `dispatched_at`. It also flags any
   `.worktrees/*` directory with **no** matching journal entry (orphans from a pre-journal session). This is a

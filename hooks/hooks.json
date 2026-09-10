@@ -9,6 +9,13 @@
             "args": [
               "${CLAUDE_PLUGIN_ROOT}/hooks/session-init-summary.cjs"
             ]
+          },
+          {
+            "type": "command",
+            "command": "node",
+            "args": [
+              "${CLAUDE_PLUGIN_ROOT}/hooks/unpromoted-dispatch-audit.cjs"
+            ]
           }
         ]
       }
@@ -35,6 +42,13 @@
             "command": "node",
             "args": [
               "${CLAUDE_PLUGIN_ROOT}/hooks/architecture-status-guard.cjs"
+            ]
+          },
+          {
+            "type": "command",
+            "command": "node",
+            "args": [
+              "${CLAUDE_PLUGIN_ROOT}/hooks/unpromoted-dispatch-audit.cjs"
             ]
           }
         ]
@@ -203,6 +217,13 @@
             "args": [
               "${CLAUDE_PLUGIN_ROOT}/hooks/local-worktree-git-guard.cjs"
             ]
+          },
+          {
+            "type": "command",
+            "command": "node",
+            "args": [
+              "${CLAUDE_PLUGIN_ROOT}/hooks/worktree-promotion-guard.cjs"
+            ]
           }
         ]
       },
@@ -302,6 +323,18 @@
             ]
           }
         ]
+      },
+      {
+        "matcher": "Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node",
+            "args": [
+              "${CLAUDE_PLUGIN_ROOT}/hooks/task-completion-commit-check.cjs"
+            ]
+          }
+        ]
       }
     ],
     "PostToolUse": [
@@ -313,6 +346,19 @@
             "command": "node",
             "args": [
               "${CLAUDE_PLUGIN_ROOT}/hooks/post-bash-security-audit.cjs"
+            ]
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node",
+            "args": [
+              "${CLAUDE_PLUGIN_ROOT}/hooks/unpromoted-dispatch-audit.cjs"
             ]
           }
         ]

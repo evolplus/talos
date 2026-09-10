@@ -13,7 +13,21 @@
 'use strict';
 
 const REQUIRED_FIELDS = ['task_id', 'track', 'from_status', 'to_status', 'agent', 'timestamp'];
-const OPTIONAL_FIELDS = ['design_sub_status', 'notes'];
+const OPTIONAL_FIELDS = ['design_sub_status', 'notes', 'artifacts'];
+
+// Roles the kit dispatches into a physical DETACHED worktree
+// (rules/worktree-isolation.md §5 rule 1). For these, `artifacts` is REQUIRED:
+// it is the promotion manifest — the paths the Orchestrator must ingest into
+// main at §9 Step 7 before the worktree is destroyed.
+//
+// Why this is required rather than nice-to-have: this kit integrates by
+// path-scoped ingestion, so "promote the approved paths" needs a definition of
+// WHICH paths. Without a manifest, a dispatch that shipped 3 of 4 DoD scopes
+// promotes 3 of 4 and every downstream signal reads green — which is exactly
+// the FR-022 batch-UI silent drop. The manifest turns promotion from a
+// judgement call into a checkable list, and lets worktree-promotion-guard.cjs
+// prove each path actually landed on HEAD before teardown.
+const PHYSICAL_WORKTREE_AGENTS = new Set(['be-dev', 'fe-dev', 'devops', 'qa-exec']);
 
 // Tracks: master-plan tracks per CLAUDE.md §3.3 + pre-implementation phases (BA/SA/TL).
 const VALID_TRACKS = new Set([
@@ -194,6 +208,45 @@ function validate(content) {
       errors.push(`invalid design_sub_status: "${obj.design_sub_status}" — allowed: ${[...VALID_DESIGN_SUB_STATUSES].join(', ')}`);
     }
   }
+  // Promotion manifest — required for physically-isolated (code-writing) roles.
+  // See rules/worktree-isolation.md §5 rule 3 (schema) + rule 5 (promotion).
+  if ('artifacts' in obj) {
+    if (!Array.isArray(obj.artifacts)) {
+      errors.push('field artifacts must be an array of repo-relative paths');
+    } else {
+      obj.artifacts.forEach((a, i) => {
+        if (typeof a !== 'string' || !a.trim()) {
+          errors.push(`artifacts[${i}] must be a non-empty string`);
+          return;
+        }
+        const v = a.trim();
+        if (v.startsWith('/')) {
+          errors.push(`artifacts[${i}] must be repo-relative, not absolute: "${v}"`);
+        }
+        if (v.split('/').includes('..')) {
+          errors.push(`artifacts[${i}] must not contain ".." path segments: "${v}"`);
+        }
+        if (v.startsWith('.worktrees/')) {
+          errors.push(
+            `artifacts[${i}] must be the path AS IT LANDS ON MAIN, not the worktree copy: "${v}" ` +
+            `(drop the .worktrees/<role>-<task-id>/ prefix)`
+          );
+        }
+      });
+    }
+  }
+  if ('agent' in obj && typeof obj.agent === 'string' && PHYSICAL_WORKTREE_AGENTS.has(obj.agent)) {
+    if (!Array.isArray(obj.artifacts) || obj.artifacts.length === 0) {
+      errors.push(
+        `missing required field for agent "${obj.agent}": artifacts — code-writing roles run in a ` +
+        `detached worktree, so the ready-to-finalize signal must list every path the Orchestrator ` +
+        `has to promote into main at §9 Step 7 (repo-relative, e.g. "backend/src/handler.js"). ` +
+        `A detached worktree removed before promotion leaves no ref and no recovery, and without ` +
+        `this manifest a partial promotion cannot be detected.`
+      );
+    }
+  }
+
   // State-machine transition check — core enforcement of
   // master-plan-discipline.md §8 allowed task statuses + legal transitions.
   // Identity transitions (from === to) are allowed: they represent a

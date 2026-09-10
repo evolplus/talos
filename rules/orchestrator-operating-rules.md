@@ -268,7 +268,12 @@ When the classified path is A, before doing anything else, the Orchestrator must
      worktree, never request the escape hatch as a first resort).
    - **Don't create worktrees for doc-writing roles.** A `git worktree add` for BA / SA / TL / QA-Author / UI/UX Designer dispatches is permitted (physical isolation never hurts) but not required. The default is to skip the worktree-add for these — they write doc paths directly under `docs/` from the main cwd. Skipping saves ~200ms per dispatch and keeps `.worktrees/` clean of inert directories.
 
-   Cleanup happens at §9 Step 7 after ingesting `plan-update.json`. If `git worktree list --porcelain` identifies the
+   **Cleanup happens at §9 Step 7 — after a VERIFIED promotion, never merely after ingesting `plan-update.json`.**
+   Step 6b must hold (finalization commit in `HEAD` history AND every `artifacts` manifest path present on `HEAD` and
+   matching the worktree) before step (7) removes anything. This worktree is **detached**: it has no ref, so removing
+   it before its content is on main makes those commits unreachable with no branch name to recover from.
+   `worktree-promotion-guard.cjs` enforces the ordering at runtime. See `.claude/rules/worktree-isolation.md` §5
+   rules 5, 5a and 7. If `git worktree list --porcelain` identifies the
    path as a registered worktree, run `git worktree remove --force .worktrees/<role>-<task-id>/`. Otherwise it is a
    logical-role handoff-only directory; run `rm -rf -- .worktrees/<role>-<task-id>/`. The Bash guard permits this exact
    transient cleanup surface.
@@ -282,7 +287,14 @@ When the classified path is A, before doing anything else, the Orchestrator must
    `docs/plan/` updates proposed by `plan-update.json`; (4) stage promoted artifacts + plan updates together; (5) create
    ONE main-worktree finalization commit containing both the artifact content and the master-plan transition; (6)
    atomically update the journal's `finalization` object to
-   `{"state":"finalized","main_commit":"<full finalization commit SHA>"}`; (7) clean up the dispatch directory—use
+   `{"state":"finalized","main_commit":"<full finalization commit SHA>"}`; **(6b) VERIFY the promotion before touching
+   the worktree** — `git merge-base --is-ancestor <main_commit> HEAD` must exit 0, AND every path in
+   `plan-update.json`'s `artifacts` manifest must exist on `HEAD` and match the worktree copy
+   (`git show HEAD:<path> | diff -q - .worktrees/<role>-<task-id>/<path>`). Step 6b is the closure condition: step (6)
+   only proves that *a* finalization commit exists, not that it contained everything, so a dispatch that promoted 3 of
+   its 4 artifacts passes (6) and fails (6b). If verification fails, go back to step (2) and finish the ingestion —
+   never proceed to (7). `worktree-promotion-guard.cjs` refuses step (7) when (6b) does not hold; (7) clean up the
+   dispatch directory—use
    `git worktree remove --force` for a registered Git worktree, otherwise `rm -rf --` for the logical-role plain
    `.worktrees/<role>-<task-id>/` handoff directory; (8) **delete the
    dispatch journal entry** `.claude/dispatch-journal/<role>-<task-id>.json` as the FINAL cleanup action. Never commit a
