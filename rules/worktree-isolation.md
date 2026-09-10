@@ -53,6 +53,10 @@ All sub-agents operate under **isolation** to enable safe parallel work — logi
      "to_status": "ready-for-deploy",
      "design_sub_status": "design-confirmed",
      "agent": "be-dev",
+     "artifacts": [
+       "backend/src/handlers/join.js",
+       "docs/api-contracts/join-v1.yaml"
+     ],
      "timestamp": "2026-05-06T10:30:00Z",
      "notes": "..."
    }
@@ -61,24 +65,91 @@ All sub-agents operate under **isolation** to enable safe parallel work — logi
    The `design_sub_status` field is optional. Populate it only when the proposal moves the design sub-status
    (UI/UX Designer, BA Phase 3, or the user-confirmation handler).
 
+   **`artifacts` is the PROMOTION MANIFEST and is REQUIRED for physically-isolated roles** (BE Dev, FE Dev, DevOps,
+   QA-Exec); logically-isolated doc roles omit it, since they write main directly. Each entry is the repo-relative path
+   **as it lands on main** — not the `.worktrees/<role>-<task-id>/` copy. It lists every path the Orchestrator must
+   ingest at §9 Step 7 step (2). `plan-update-validator.cjs` rejects a code-role proposal without it.
+
+   Rationale: this kit integrates by path-scoped ingestion, so "promote the approved paths" needs a definition of
+   *which* paths. Without a manifest, a dispatch that shipped 3 of 4 DoD scopes gets 3 of 4 promoted and every
+   downstream signal reads green — that is precisely the FR-022 batch-UI silent drop. The manifest turns promotion
+   from a judgement call into a checkable list, and it is what lets `worktree-promotion-guard.cjs` prove each path
+   actually reached HEAD before the worktree is destroyed.
+
 4. The Orchestrator reads `plan-update.json` from each returning worktree, validates the transition, and is the **sole
    writer** to anything under `docs/plan/` on the main branch.
 
    **Location invariant.** `plan-update.json` lives ONLY at `.worktrees/<role>-<task-id>/plan-update.json`. No suffixed variants (`plan-update-T-001.json`), no root-level writes, no copies under `docs/`. The `plan-update-location-guard.cjs` hook refuses any write to a `plan-update*.json` path outside `.worktrees/`; the Orchestrator's §9 Step 0.5 pre-flight cleans up any existing stragglers at root. If you're a sub-agent and your write is refused, verify your cwd is inside your worktree. A single `plan-update.json` typically results in the Orchestrator updating 1–3 files: always the task file (`docs/plan/phase-NN-name/tasks/T-NNN.md`), sometimes the phase file (`docs/plan/phase-NN-name/phase.md`) when the per-task summary changes, and rarely the top `docs/plan/master-plan.md` (only when the running-tasks set changes — i.e., the task entered or left `in-progress`). See `.claude/rules/master-plan-discipline.md` §8 for the file schemas.
-5. Role-owned artifacts (architecture, API contracts, test cases, code) are promoted from worktrees by **path-scoped ingestion**, never by `git merge`, `git cherry-pick`, or `git push`.
-   - The Orchestrator validates exit criteria, then copies/applies only the approved file paths from `.worktrees/<role>-<task-id>/` into the main worktree.
+5. **Promotion is a closure gate, not a housekeeping step.** Role-owned artifacts (architecture, API contracts, test
+   cases, code) are promoted from worktrees by **path-scoped ingestion**, never by `git merge`, `git cherry-pick`, or
+   `git push`. The promotion must be *verified*, not merely attempted, before anything is torn down.
+   - The Orchestrator validates exit criteria, then ingests **exactly the paths in the `artifacts` manifest** (rule 3)
+     from `.worktrees/<role>-<task-id>/` into the main worktree. The manifest is the definition of "approved file
+     paths" — promotion is never eyeballed from a directory listing.
    - The Orchestrator commits the promoted result on main with the task traceability and attribution trailers from the sub-agent's local commits/report.
+   - **Verification (the gate).** After the finalization commit and the journal marker, prove all three facts:
+
+     ```bash
+     # 1. the finalization commit really landed
+     git merge-base --is-ancestor "$MAIN_COMMIT" HEAD          # must exit 0
+
+     # 2. every manifest path exists on HEAD ...
+     git show "HEAD:$P" >/dev/null                             # for each $P in artifacts[]
+
+     # 3. ... and matches what the worktree produced (catches a PARTIAL promotion)
+     git show "HEAD:$P" | diff -q - ".worktrees/<role>-<task-id>/$P"
+     ```
+
+     Fact 1 alone only proves *a* commit happened, not that it contained everything — facts 2 and 3 are what catch the
+     dispatch that promoted most of its work. All three must hold; a manifest path that cannot be checked is a closure
+     blocker, not a vacuous pass.
+   - **On an ingestion conflict** (the path changed on main since the worktree's base ref): resolve it during ingestion
+     and re-verify, or halt with `NEEDS_CONTEXT` and leave the worktree intact. Never skip the path and continue — the
+     dispatch already passed exit criteria and the plan is about to read `ready-for-deploy`.
    - The worktree's detached Git history is discarded with the worktree. It must not become a branch on the remote.
    - The `local-worktree-git-guard.cjs` hook blocks branch-backed `.worktrees/` creation, `git push` from/against `.worktrees/`, and merge/cherry-pick/rebase/pull commands involving local worktrees or `agent/*` / `local-agent/*` branches.
+
+5a. **Two hooks enforce rule 5 at runtime.** `local-worktree-git-guard.cjs` already forbids promoting worktree history
+   *via git*; these two supply the missing counterpart — forbidding the worktree's **destruction** until its content has
+   actually been ingested:
+
+   - `worktree-promotion-guard.cjs` (PreToolUse, Bash) refuses `git worktree remove` and
+     `rm -rf .worktrees/<role>-<task-id>` while promotion is unproven. It classifies the dispatch via
+     `hooks/lib/dispatch-promotion-state.cjs` and blocks `ready-to-finalize` (signaled done, finalization unproven),
+     `partially-promoted` (marker says finalized but manifest paths are missing from or differ on HEAD) and
+     `unverifiable` (no manifest, so nothing can be checked). It **allows** `in-flight` (journal entry, no
+     `plan-update.json`) — that is `.claude/rules/crash-recovery.md` §14.4 discarding work whose exit criteria never
+     ran, which is throwaway by design.
+   - `unpromoted-dispatch-audit.cjs` (Stop / SessionStart / UserPromptSubmit) refuses to let a turn END with a completed
+     dispatch unpromoted, and reports residue at session start. This is the gate that covers `/sdlc-loop`, where no
+     operator watches any individual iteration.
+
+   Escape hatches: `CLAUDE_ALLOW_UNPROMOTED_CLEANUP=1` (operator-explicit; destroys completed work — document rationale
+   in SRS §10 Changelog), `CLAUDE_DISCARD_INTERRUPTED_DISPATCH=1` (crash-recovery discard when the journal entry is
+   already gone), `CLAUDE_SKIP_PROMOTION_AUDIT=1`.
+
+   **Why this needs hooks even though the prose was already right.** Rule 1 ships the worktree-*create* command
+   verbatim, and rule 7 ships the teardown commands verbatim — and the Bash guard explicitly *permits* those teardown
+   targets. Promotion, the step between them, was prose. A step described in prose, sitting between two steps shipped
+   as commands, is the step that gets skipped. And the consequence here is more severe than an unmerged branch: a
+   **detached** worktree has no ref, so the moment `git worktree remove --force` runs its commits are unreachable —
+   there is no branch name to recover from and no reflog entry to find. The kit's own recoverability story (the
+   `finalization` marker + `dispatch-journal-gc.cjs`) only proves that *a* finalization commit exists; it cannot
+   reconstruct content that was never ingested.
    **Ingestion vs git-merge.** The TL's `plan-proposal/` tree is **consumed via ingestion**, not git-merged: the Orchestrator reads the proposal, writes new files into `docs/plan/` from its main-repo cwd (the `master-plan-write-guard.cjs` hook allows by default; only `.worktrees/...` writes to `docs/plan/` are blocked), then **deletes** `plan-proposal/` along with the worktree at cleanup (rule 7). The proposal tree never lands on main. Same principle for any other transient handoff artifact (e.g., per-agent `plan-update.json`).
 
 6. **Promotion order:** Designer's `docs/uiux/handoffs/<task-id>.md` and BA's `docs/uiux/completeness-reports/<task-id>.md`
    are promoted to main before FE Dev starts (logically enforced by the design lifecycle gate). For BE+FE features, BE Dev artifacts are promoted
    before FE Dev so the API contract is on main when FE starts.
-7. Cleanup is the Orchestrator's responsibility once the task closes. Use the `git worktree remove --force` command
+7. **Cleanup is the Orchestrator's responsibility once the task closes — and it runs LAST, only after rule 5's
+   verification passes.** The order is: validate exit criteria → ingest the `artifacts` manifest → apply the
+   `docs/plan/` transition → ONE finalization commit containing both → write the `finalization` marker → **verify all
+   three facts** → remove the worktree → delete the journal entry. Use the `git worktree remove --force` command
    only for paths listed by `git worktree list --porcelain`. For a logical-role handoff-only directory, use
    `rm -rf -- .worktrees/<role>-<task-id>/`. Then remove the matching journal with
-   `rm -- .claude/dispatch-journal/<role>-<task-id>.json`. The Bash guard permits only these strict cleanup targets.
+   `rm -- .claude/dispatch-journal/<role>-<task-id>.json`. The Bash guard permits only these strict cleanup targets,
+   and `worktree-promotion-guard.cjs` additionally refuses them while promotion is unproven — because the Bash guard
+   permitting a target says the command is *well-formed*, not that it is *safe to run yet*.
 
 ### Command scoping for code-writing roles (Bash surface)
 

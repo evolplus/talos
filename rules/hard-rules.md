@@ -108,6 +108,34 @@ Many of these rules are ALSO declared in their owning agent's template Hard Rule
 
 - Every commit on any branch follows `.claude/skills/git-commit/SKILL.md` — identity configured, conventional message format with task traceability (`Refs: T-NNN` or in-subject `(T-NNN)`), no secrets, no PII, attribution trailers where applicable.
 - **Pre-flight git setup is mandatory.** The Orchestrator runs `git init` (if needed) + committer-identity check at every invocation per `.claude/rules/orchestrator-operating-rules.md` §9 Step 0. Without a working git context, sub-agent commits fail and the "commit before signaling ready-to-finalize" discipline collapses. Identity unset → halt with `NEEDS_CONTEXT`; never auto-configure from environment guesses.
+- **No worktree teardown before a verified promotion.** A dispatch that passed exit criteria is closed only when its
+  content is provably on main: the `finalization.main_commit` is an ancestor of `HEAD`, AND every path in
+  `plan-update.json`'s `artifacts` manifest exists on `HEAD` and matches the worktree copy (§9 Step 7 step 6b). Until
+  all of that holds, `git worktree remove` and `rm -rf .worktrees/<role>-<task-id>` are forbidden. The finalization
+  marker alone is not sufficient evidence — it proves *a* commit happened, not that the commit contained everything, so
+  a dispatch that promoted 3 of its 4 artifacts satisfies the marker and still loses a quarter of its work. On an
+  ingestion conflict, resolve during ingestion and re-verify, or halt with `NEEDS_CONTEXT`; never skip a manifest path
+  and continue. Promotion is by **path-scoped ingestion only** — `git merge` / `cherry-pick` / `push` of worktree or
+  `agent/*` history is blocked by `local-worktree-git-guard.cjs` by design, and reaching for
+  `CLAUDE_ALLOW_LOCAL_WORKTREE_GIT=1` to "just merge it" is the wrong repair. Enforced by
+  `worktree-promotion-guard.cjs` (PreToolUse Bash, blocks the teardown) and `unpromoted-dispatch-audit.cjs` (Stop,
+  refuses to end a turn with a completed dispatch unpromoted). Escape hatches:
+  `CLAUDE_ALLOW_UNPROMOTED_CLEANUP=1` (operator-explicit; destroys completed work — document rationale in SRS §10
+  Changelog), `CLAUDE_DISCARD_INTERRUPTED_DISPATCH=1` (the crash-recovery §14.4 discard of work whose exit criteria
+  never ran), `CLAUDE_SKIP_PROMOTION_AUDIT=1`.
+  **Why this is stricter than it looks.** These worktrees are created `--detach`, so they carry no ref. The instant
+  `git worktree remove --force` runs, the dispatch's commits are unreachable — there is no branch name to recover from
+  and no reflog entry to find. The kit's recoverability story (`finalization` marker + `dispatch-journal-gc.cjs`) can
+  prove a commit landed; it cannot reconstruct content that was never ingested. Rule 1 ships the create command
+  verbatim and rule 7 ships the teardown commands verbatim, so promotion — prose, sitting between two commands — was
+  the step that got skipped. See `.claude/rules/worktree-isolation.md` §5 rules 5, 5a, 7.
+
+- **Sub-agents list their promotion manifest when signaling ready-to-finalize.** `plan-update.json` from a
+  physically-isolated role (BE Dev, FE Dev, DevOps, QA-Exec) MUST carry `artifacts`: every repo-relative path the
+  Orchestrator has to ingest, written as it lands on main (no `.worktrees/<role>-<task-id>/` prefix, no absolute paths,
+  no `..`). `plan-update-validator.cjs` rejects the write without it. "Promote the approved paths" with no manifest has
+  no definition of *which* paths, which is how a partial promotion passes every gate it meets.
+
 - **Sub-agents commit before signaling ready-to-finalize.** Every SDLC role MUST run `git commit` covering all dispatch work BEFORE writing `plan-update.json` (the ready-to-finalize signal). The `task-completion-commit-check.cjs` hook refuses `plan-update.json` writes when `git status --porcelain` is non-empty. Non-SDLC roles MUST commit before returning to the Orchestrator (prose rule; Orchestrator validates at return-time). Agent Generator MUST commit generated agent files before returning. Intermediate commits during a dispatch are encouraged; the rule enforces only that the worktree is clean when the sub-agent signals ready-to-finalize. Escape hatch `CLAUDE_SKIP_COMMIT_CHECK=1` permits the write without committing — use sparingly, document rationale.
 - **Agent worktree commits are local-only.** `.worktrees/<role>-<task-id>/` is a detached scratch worktree. Sub-agent commits are clean-state checkpoints and attribution evidence; they are never pushed, merged, cherry-picked, pulled, or rebased into main. The Orchestrator promotes validated file content by path-scoped ingestion, commits that result on main, and discards the worktree. The `local-worktree-git-guard.cjs` hook blocks the dangerous Git promotion/sync commands at runtime.
 

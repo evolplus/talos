@@ -1,6 +1,6 @@
 # Hooks
 
-Runtime guardrails that fire on Claude Code tool events. Wired up in `.claude/settings.json` (project-level — applies to every session in this repo).
+Runtime guardrails that fire on Claude Code tool events. Wired up in `hooks/hooks.json` (the plugin's hook manifest; paths resolve through `${CLAUDE_PLUGIN_ROOT}`). When the kit is vendored into a repo rather than installed as a plugin, the equivalent wiring lives in `.claude/settings.json`.
 
 Hooks supplement the prose rules in `CLAUDE.md` and `.claude/rules/`. The rules describe what agents *should* do; hooks make sure they *can't* do certain things even if they try.
 
@@ -30,6 +30,8 @@ All hooks are **fail-open**: if a hook crashes or its event JSON is malformed, i
 | `orchestrator-write-guard.cjs` | PreToolUse (Write/Edit/MultiEdit/NotebookEdit) | Blocks Orchestrator writes outside its allow-list of router-owned paths |
 | `orchestrator-bash-guard.cjs` | PreToolUse (Bash) | Blocks state-mutating Bash from Orchestrator/main-repo context; permits cleanup-only `rm`/`rmdir` when every target is strictly below `.worktrees/` or `.claude/dispatch-journal/` |
 | `local-worktree-git-guard.cjs` | PreToolUse (Bash) | Blocks pushing, pulling, merging, rebasing, or cherry-picking local `.worktrees/` Git history and blocks branch-backed `.worktrees/` creation |
+| `worktree-promotion-guard.cjs` | PreToolUse (Bash) | Blocks `git worktree remove` / `rm -rf .worktrees/<role>-<task-id>` while the dispatch's content is not provably on main (§9 Step 7 step 6b). The counterpart to `local-worktree-git-guard`: that one forbids promoting worktree history *via git*, this one forbids *destroying* the worktree before path-scoped ingestion has happened. Allows the crash-recovery §14.4 discard of an in-flight dispatch |
+| `unpromoted-dispatch-audit.cjs` | Stop + SessionStart + UserPromptSubmit | On `Stop`, refuses to end a turn while a completed dispatch is unpromoted (the gate that covers unattended `/sdlc-loop` iterations). On SessionStart / UserPromptSubmit, reports unpromoted dispatches and orphaned residue as context. Honors `stop_hook_active` so it cannot wedge a session |
 | `plan-update-location-guard.cjs` | PreToolUse (Write/Edit/MultiEdit/NotebookEdit) | Blocks `plan-update*.json` outside `.worktrees/<role>-<task-id>/` |
 | `fe-dev-design-contract-guard.cjs` | PreToolUse (Write/Edit/MultiEdit/NotebookEdit) | Blocks FE Dev source writes until `docs/uiux/refs/<task-id>.md` is Frozen and has non-empty manifest/trace rows |
 | `ui-task-readiness-guard.cjs` | PreToolUse (Write) | Blocks `ready-for-deploy` proposals for UI tasks until handoff/refs/visual-spec/test artifacts are present and content-complete |
@@ -44,6 +46,7 @@ Plus shared utilities in `lib/`:
 | Util | Purpose |
 |---|---|
 | `lib/strip-fences.cjs` | Pure function used by markdown-parsing hooks to remove content inside ``` fenced blocks before regex matching. Prevents fenced "format reference" examples from being parsed as real data. |
+| `lib/dispatch-promotion-state.cjs` | Promotion-state classifier behind the promotion gate, shared by `worktree-promotion-guard` and `unpromoted-dispatch-audit`. `classifyDispatch(role, taskId)` returns `promoted` / `in-flight` (journal entry, no completion signal — safe to discard per §14.4) / `ready-to-finalize` (signaled done, finalization unproven) / `partially-promoted` (marker finalized but manifest paths missing or differing on HEAD) / `unverifiable` (no `artifacts` manifest) / `orphaned` / `unknown` (fail open). Promotion is proven by three independent facts: the finalization marker, that commit being an ancestor of `HEAD`, and every manifest path present on `HEAD` and matching the worktree copy. The third is the one that catches a partial promotion — the first two only prove *a* commit happened. |
 | `lib/worktree-scope.cjs` | Worktree-scope detection shared by `orchestrator-bash-guard` and `source-code-write-guard`. `isOperationWorktreeScoped(cwd, cmd)` is true when the cwd is inside `.worktrees/<role>-<task-id>/` OR the command scopes itself there (`cd .worktrees/<role>-<task-id> && …`, `git -C`, `--prefix`, `make -C`). `wellFormedWorktreePath(p)` resolves `..` then checks the write lands INSIDE a worktree (traversal escapes are rejected). It enforces *worktree-scoped*, not *agent-owns-this-worktree* — see the lib header for why the latter isn't runtime-achievable today. |
 
 ## dispatch-journal-gc.cjs (SessionStart)
@@ -441,3 +444,47 @@ The prevention counterpart to `post-bash-security-audit.cjs`: that hook detects 
 **Override per-session**: `export CLAUDE_SKIP_DEPENDENCY_VERIFY=1` (document rationale in SRS §10 Changelog). Test endpoints: `CLAUDE_VERIFY_OSV_BASE` / `CLAUDE_VERIFY_DEPSDEV_BASE`; per-request timeout `CLAUDE_VERIFY_TIMEOUT_MS` (default 4000).
 
 **Known limits**: lockfile-driven installs (`npm ci`, bare `npm install` with no args) carry no specs to pre-verify — the PostToolUse audit covers their outcome; version ranges/dist-tags resolve via deps.dev default version (approximation of the installer's resolver); transitive dependencies are not pre-verified (post-audit + lockfile diff covers them); deprecated-package flags not yet sourced. Tests: `tests/test-dependency-verifier.sh` (offline, self-stubbed).
+
+## worktree-promotion-guard.cjs + unpromoted-dispatch-audit.cjs (the promotion gate)
+
+This kit does not integrate agent work by git. Code roles run in a **detached** worktree
+(`git worktree add --detach`), commit there only to make the tree clean before signaling, and
+`local-worktree-git-guard.cjs` blocks push / merge / cherry-pick / rebase of that history on purpose. Integration is
+**path-scoped ingestion**: the Orchestrator copies approved paths into main and commits them together with the plan
+transition (§9 Step 7).
+
+That design left one side of the contract unenforced. `local-worktree-git-guard` says *"you may not promote worktree
+history via git."* Nothing said *"you may not destroy the worktree before its content has been ingested."* And the
+specificity ran the wrong way: rule 1 ships the worktree-create command verbatim, rule 7 ships the teardown commands
+verbatim — and the Bash guard explicitly permits those teardown targets — while promotion, the step between them, was
+prose. A step described in prose, sitting between two steps shipped as commands, is the step that gets skipped.
+
+The consequence is more severe here than an unmerged branch would be. A detached worktree has **no ref**: the moment
+`git worktree remove --force` runs, its commits are unreachable, with no branch name to recover from and no reflog
+entry to find. The kit's recoverability story (the `finalization` marker plus `dispatch-journal-gc.cjs`) proves that
+*a* finalization commit landed; it cannot reconstruct content that was never ingested.
+
+The fix has three layers:
+
+1. **A promotion manifest.** `plan-update.json` carries `artifacts` — every repo-relative path the Orchestrator must
+   ingest — required for BE Dev / FE Dev / DevOps / QA-Exec and validated by `plan-update-validator.cjs`. "Promote the
+   approved paths" with no manifest has no definition of *which* paths, which is how a dispatch that shipped 3 of 4 DoD
+   scopes gets 3 of 4 promoted with every downstream signal reading green (the FR-022 batch-UI silent drop).
+2. **A verification step with a command.** §9 Step 7 gains step **6b**: `main_commit` must be an ancestor of `HEAD`,
+   AND every manifest path must exist on `HEAD` and match the worktree copy. The marker check alone is insufficient by
+   construction — it proves a commit, not its contents.
+3. **Two hooks.** `worktree-promotion-guard.cjs` blocks the destructive moment; `unpromoted-dispatch-audit.cjs` blocks
+   the passive one (no teardown ran, finalization just never completed, turn ends). The `Stop` gate is what makes this
+   hold inside `/sdlc-loop`, where the plan would otherwise read `ready-for-deploy` while main never received the code —
+   so later iterations dispatch downstream work against artifacts that do not exist.
+
+**Deliberately not blocked:** the crash-recovery discard (`.claude/rules/crash-recovery.md` §14.4). A journal entry
+with no `plan-update.json` means exit criteria never ran, so that partial work is throwaway by design. The guard
+detects this automatically; `CLAUDE_DISCARD_INTERRUPTED_DISPATCH=1` covers the case where the journal entry is already
+gone.
+
+Escape hatches: `CLAUDE_ALLOW_UNPROMOTED_CLEANUP=1` (operator-explicit — **destroys completed work**; document
+rationale in SRS §10 Changelog), `CLAUDE_DISCARD_INTERRUPTED_DISPATCH=1`, `CLAUDE_SKIP_PROMOTION_AUDIT=1`.
+
+**Do not "repair" a blocked teardown with `CLAUDE_ALLOW_LOCAL_WORKTREE_GIT=1` and a merge.** That bypasses the kit's
+integration model rather than completing it. The repair is to finish the ingestion.

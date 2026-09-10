@@ -18,7 +18,9 @@ Without this rule, the orchestrator advances the project one operator prompt at 
 
 The loop is safe to run unattended because **every iteration durably checkpoints to disk** and **the orchestrator re-reads project state from disk each iteration** rather than holding the run in its context window:
 
-- Each iteration ends with a finalization commit containing both validated role-owned artifacts and the master-plan transition (`docs/plan/`), followed by worktree removal and dispatch-journal deletion (§9 Step 7).
+- Each iteration ends with a finalization commit containing both validated role-owned artifacts and the master-plan transition (`docs/plan/`), a **verified promotion** (§9 Step 7 step 6b: `finalization.main_commit` is an ancestor of `HEAD` AND every `artifacts` manifest path is present on `HEAD` and matches the worktree), and only then worktree removal and dispatch-journal deletion (§9 Step 7).
+
+  **The verification is load-bearing for the loop specifically.** Unattended iterations have no operator watching any single teardown, and the failure is doubly silent here: the plan file would read `ready-for-deploy` while main never received the code, so later iterations dispatch downstream work against artifacts that do not exist — the kit's FR-022 batch-UI silent drop, repeating once per iteration. Because agent worktrees are `--detach`, a worktree removed before promotion takes its commits with it: no ref, no branch name, nothing to recover. `unpromoted-dispatch-audit.cjs` fires on `Stop` and refuses to end the turn while a completed dispatch is unpromoted; `worktree-promotion-guard.cjs` blocks the teardown itself. Neither is optional inside the loop.
 - Project state is fully recoverable from `docs/SRS.md` + `docs/plan/` (`.claude/rules/master-plan-discipline.md`).
 - Therefore **"the invocation ran out of tokens mid-loop" is identical to a crash** — there is no special token-exhaustion handling to get right. The next invocation runs §9 Step 0.6 reconciliation (`.claude/rules/crash-recovery.md` §14), rolls back any interrupted dispatch, and resumes from the exact same eligible-task frontier.
 
@@ -67,6 +69,8 @@ To stop the loop spinning or burning budget on wedged work:
 
 - **Per-task failure cap.** If the same `task_id` reaches `failed` (QA-Exec) OR a dispatch for it returns an error 2 times within the loop, halt (H5) instead of re-dispatching a 3rd time. Report the task, both failure reasons, and the responsible track.
 - **No-progress guard.** If a full iteration completes with ZERO task transitions while eligible tasks existed (everything dispatched returned without advancing), halt (H5). One no-progress iteration is enough — a second identical pass would not differ.
+- **Unpromoted-dispatch guard.** If an iteration's finalization transaction cannot satisfy §9 Step 7 step 6b for a returning dispatch — an ingestion conflict that is not mechanically resolvable, a manifest path that will not verify, anything — halt (H5) naming the dispatch and the failing paths. Do NOT keep iterating with an unpromoted dispatch: its plan status already reads `ready-for-deploy`, so the next iteration will dispatch downstream work against artifacts that are not on main, and the loop would accumulate invisible lost work at exactly the rate it accumulates apparent progress.
+
 - **Per-invocation iteration cap.** A soft ceiling (default 50, override via `--max-iterations`) bounds a single invocation even if nothing else fires. On hitting it, treat as H7: checkpoint summary + stop; re-run resumes. (Token budget usually hits before this in `aggressive` mode.)
 
 ### 15.7 Continuation
@@ -76,7 +80,7 @@ To stop the loop spinning or burning budget on wedged work:
 
 ### 15.8 Hard rules
 
-- **The loop never bypasses a gate.** Sign-off (§2), architecture validation (§3.7 / sub-agent-registry §3.11), design-confirmed (parallel-execution §4 Step 4), brownfield Stage 4 (§12), Dependency Approver, open-issues triage (§6), worktree isolation (§5), commit-before-ready-to-finalize, role-specialized dispatch (§10) — all hold inside the loop. The loop's autonomy is "keep dispatching eligible work," never "skip a confirmation."
+- **The loop never bypasses a gate.** Sign-off (§2), architecture validation (§3.7 / sub-agent-registry §3.11), design-confirmed (parallel-execution §4 Step 4), brownfield Stage 4 (§12), Dependency Approver, open-issues triage (§6), worktree isolation (§5), commit-before-ready-to-finalize, **promotion-verified-before-teardown (§5 rules 5/5a/7)**, role-specialized dispatch (§10) — all hold inside the loop. The loop's autonomy is "keep dispatching eligible work," never "skip a confirmation."
 - **Eligibility is read from disk every iteration.** Never dispatch from a stale in-context task list (§15.2).
 - **The loop honors the workload tier.** It does not force `aggressive`; it runs at whatever §13.3 resolves (or `--tier`).
 - **The loop is Orchestrator-only behavior.** It dispatches sub-agents per §9; it never performs sub-agent work itself, never writes source code, never manually flips a gate Status (§10).
