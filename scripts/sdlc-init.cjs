@@ -9,6 +9,8 @@ const PLUGIN_ROOT = path.resolve(__dirname, '..');
 const RULES_SOURCE = path.join(PLUGIN_ROOT, 'rules', 'CLAUDE.md');
 const SETTINGS_SOURCE = path.join(PLUGIN_ROOT, 'settings', 'original-settings.json');
 const HOOKS_SOURCE = path.join(PLUGIN_ROOT, 'hooks');
+const LINEAGE_SOURCE = path.join(PLUGIN_ROOT, 'kit-lineage.json');
+const LINEAGE_TARGET_REL = path.join('.claude', 'kit-lineage.json');
 const INIT_RECEIPT_REL = path.join('.claude', 'hooks', '.state', 'sdlc-init-receipt.json');
 
 const INSTRUCTION_TARGETS = {
@@ -840,6 +842,34 @@ function mergeSettingsObject(target, source, pathParts, result) {
   return changed;
 }
 
+// Vendoring the kit's registrations into a project's .claude/settings.json while
+// the same kit is ALSO installed as a plugin means every shared hook is
+// registered twice and therefore RUNS twice: duplicated stderr, duplicated
+// open-issues entries from detection hooks, and two copies of the same validator
+// disagreeing if the plugin cache is a different version than the files vendored
+// here. That last case is the one that bites — a validator required a field in
+// one copy and rejected it as `unknown field` in the other, leaving no writable
+// payload at all (see § "plan-update.json is a distributed contract" in
+// rules/worktree-isolation.md).
+//
+// Pick ONE mode per project: installed plugin, or vendored copy. This warns
+// rather than refuses, because vendoring on purpose (to pin or patch the kit for
+// one project) is legitimate — but then the plugin should be disabled here.
+function warnIfDoubleRegistration(options, result) {
+  const pluginRoot = process.env.CLAUDE_PLUGIN_ROOT;
+  if (!pluginRoot) return;
+  const vendoredHere = path.resolve(pluginRoot) === path.resolve(PLUGIN_ROOT);
+  result.warnings.push(
+    'Double registration risk: this kit is running as an INSTALLED PLUGIN ' +
+    `(CLAUDE_PLUGIN_ROOT=${pluginRoot})${vendoredHere ? '' : ' from a different location than this script'} ` +
+    'and you are also vendoring its hook registrations into .claude/settings.json. ' +
+    'Every shared hook will then run twice, and if the installed plugin is a different ' +
+    'version than the files vendored here, two copies of plan-update-validator.cjs can ' +
+    'enforce incompatible schemas — which makes plan-update.json unwritable. ' +
+    'Choose one mode: disable the plugin for this project, or re-run with --skip-settings --skip-hooks.'
+  );
+}
+
 function injectSettings(options, result) {
   if (options.skipSettings) {
     recordUnchanged(result, 'Skipped .claude/settings.json injection.');
@@ -956,6 +986,58 @@ function backupConflictingHook(targetFile, rel, options) {
     fs.copyFileSync(targetFile, backupFile);
   }
   return backupFile;
+}
+
+// Stamp the kit's integration lineage into the project.
+//
+// Lineage-specific guards (worktree-promotion-guard, unpromoted-dispatch-audit)
+// call hooks/lib/kit-lineage.cjs to decide whether they apply here. Their
+// fallback is structural inference from `rules/worktree-isolation.md` — but
+// sdlc-init only vendors `rules/CLAUDE.md`, so that file is absent in a
+// vendored project and inference cannot fire. Without an explicit marker the
+// lineage resolves to `unknown`, which correctly means "enforce", so a
+// same-lineage project still works; the marker matters for the co-installation
+// case, where an unmarked project cannot tell a foreign-lineage guard to stand
+// down. Writing it here is what makes that detection possible at all.
+//
+// This is additive and never overwrites a project's own marker: a project that
+// deliberately declares `branch-merge` keeps that declaration.
+function injectLineageMarker(options, result) {
+  if (!fs.existsSync(LINEAGE_SOURCE)) {
+    result.warnings.push(`Plugin lineage marker not found: ${LINEAGE_SOURCE}; skipped.`);
+    return;
+  }
+
+  const targetFile = path.join(options.projectRoot, LINEAGE_TARGET_REL);
+
+  if (fs.existsSync(targetFile)) {
+    const sourceBuffer = fs.readFileSync(LINEAGE_SOURCE);
+    const targetBuffer = fs.readFileSync(targetFile);
+    if (buffersEqual(sourceBuffer, targetBuffer)) {
+      recordUnchanged(result, `${LINEAGE_TARGET_REL} already declares this kit's lineage.`);
+      recordInstallReceiptFile(options, targetFile);
+      return;
+    }
+    let declared = null;
+    try { declared = JSON.parse(targetBuffer.toString('utf8')).lineage || null; } catch { declared = null; }
+    result.warnings.push(
+      `${LINEAGE_TARGET_REL} already declares lineage ${declared ? `"${declared}"` : '(unparseable)'}; ` +
+      `kept the project file. This kit is the "ingestion" lineage. If those differ, the two models ` +
+      `are mutually exclusive — see § "Lineage exclusivity" in rules/worktree-isolation.md — and you ` +
+      `should not run both in this project.`
+    );
+    return;
+  }
+
+  if (!options.dryRun) {
+    fs.mkdirSync(path.dirname(targetFile), { recursive: true });
+    fs.copyFileSync(LINEAGE_SOURCE, targetFile);
+  }
+  recordInstallReceiptFile(options, targetFile);
+  recordChange(
+    result,
+    `${options.dryRun ? 'Would write' : 'Wrote'} ${LINEAGE_TARGET_REL} declaring the "ingestion" integration lineage.`
+  );
 }
 
 function injectHooks(options, result) {
@@ -1079,8 +1161,10 @@ function main() {
 
   injectProjectInstructions(options, result);
   if (options.target === 'claude' || options.target === 'both') {
+    warnIfDoubleRegistration(options, result);
     injectSettings(options, result);
     injectHooks(options, result);
+    injectLineageMarker(options, result);
   } else {
     recordUnchanged(result, 'Skipped .claude/settings.json injection for Codex target.');
     recordUnchanged(result, 'Skipped .claude/hooks sync for Codex target.');

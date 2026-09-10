@@ -1,6 +1,8 @@
 # Hooks
 
-Runtime guardrails that fire on Claude Code tool events. Wired up in `hooks/hooks.json` (the plugin's hook manifest; paths resolve through `${CLAUDE_PLUGIN_ROOT}`). When the kit is vendored into a repo rather than installed as a plugin, the equivalent wiring lives in `.claude/settings.json`.
+Runtime guardrails that fire on Claude Code tool events. Wired up in `hooks/hooks.json` (the plugin's hook manifest; paths resolve through `${CLAUDE_PLUGIN_ROOT}`). When the kit is vendored into a repo rather than installed as a plugin, the equivalent wiring is `settings/original-settings.json`, which `scripts/sdlc-init.cjs` merges into that project's `.claude/settings.json`.
+
+**`settings/original-settings.json` is generated from `hooks/hooks.json` — do not hand-edit it.** Run `node scripts/sync-settings-template.cjs` after changing the manifest (`--check` fails on drift, and `hooks/tests/test-vendored-parity.sh` asserts it). The two were hand-maintained and drifted by seven hooks plus an entire event; because `sdlc-init` copies every hook file but merges only the template's registrations, vendored projects ended up with hooks on disk that were never invoked. **A hook file existing is not evidence that it runs.**
 
 Hooks supplement the prose rules in `CLAUDE.md` and `.claude/rules/`. The rules describe what agents *should* do; hooks make sure they *can't* do certain things even if they try.
 

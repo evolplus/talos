@@ -5,11 +5,11 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/dispatch-journal-gc.cjs\""
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/session-init-summary.cjs\""
           },
           {
             "type": "command",
-            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/session-init-summary.cjs\""
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/unpromoted-dispatch-audit.cjs\""
           }
         ]
       }
@@ -28,6 +28,10 @@
           {
             "type": "command",
             "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/architecture-status-guard.cjs\""
+          },
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/unpromoted-dispatch-audit.cjs\""
           }
         ]
       }
@@ -102,6 +106,23 @@
           {
             "type": "command",
             "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/external-integration-adequacy-validator.cjs\""
+          },
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/environment-config-validator.cjs\""
+          },
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/srs-design-flow-validator.cjs\""
+          }
+        ]
+      },
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/design-substatus-validator.cjs\""
           }
         ]
       },
@@ -129,6 +150,14 @@
           {
             "type": "command",
             "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/docker-scope-guard.cjs\""
+          },
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/local-worktree-git-guard.cjs\""
+          },
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/worktree-promotion-guard.cjs\""
           }
         ]
       },
@@ -203,6 +232,15 @@
             "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/pre-install-dependency-verifier.cjs\""
           }
         ]
+      },
+      {
+        "matcher": "Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/task-completion-commit-check.cjs\""
+          }
+        ]
       }
     ],
     "PostToolUse": [
@@ -212,6 +250,16 @@
           {
             "type": "command",
             "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/post-bash-security-audit.cjs\""
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/unpromoted-dispatch-audit.cjs\""
           }
         ]
       }
