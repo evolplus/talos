@@ -45,6 +45,13 @@
 
 const path = require('path');
 
+let L;
+try {
+  L = require(path.join(__dirname, 'lib', 'kit-lineage.cjs'));
+} catch {
+  L = null;  // lineage detection unavailable -> enforce normally
+}
+
 let S;
 try {
   S = require(path.join(__dirname, 'lib', 'dispatch-promotion-state.cjs'));
@@ -151,6 +158,15 @@ function blockMessage(findings) {
 }
 
 async function main() {
+  // Lineage exclusivity: this guard enforces the "ingestion" integration model.
+  // If the project declares the other model, enforcing here would forbid the
+  // step that project's own rules mandate, leaving a dispatch no legal way to
+  // close. Unknown lineage => enforce normally.
+  if (L && L.shouldStandDown('ingestion')) {
+    process.stderr.write(L.standDownNotice('ingestion', 'worktree-promotion-guard'));
+    process.exit(0);
+  }
+
   let raw = '';
   process.stdin.setEncoding('utf8');
   for await (const chunk of process.stdin) raw += chunk;

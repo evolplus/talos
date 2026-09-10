@@ -13,7 +13,28 @@
 'use strict';
 
 const REQUIRED_FIELDS = ['task_id', 'track', 'from_status', 'to_status', 'agent', 'timestamp'];
-const OPTIONAL_FIELDS = ['design_sub_status', 'notes', 'artifacts'];
+// TOLERANT SUPERSET — this list must accept every key any sibling copy of this
+// validator writes, including copies from other kit lineages and older cached
+// plugin versions. `plan-update.json` is a DISTRIBUTED CONTRACT: the same hook
+// name is registered from a project's vendored `.claude/settings.json` AND from
+// an installed plugin's `hooks.json`, at whatever versions each happens to be,
+// and the write must satisfy ALL of them simultaneously. A key that one copy
+// requires and another rejects as `unknown field` makes the signal unwritable —
+// no JSON satisfies the pair, and every code-role dispatch wedges.
+//
+// So: `artifacts` (this lineage's promotion manifest) and `branch` + `head_sha`
+// (the branch-merge lineage's merge target) are BOTH accepted here, whether or
+// not this lineage consumes them. Accepting a field you ignore costs nothing;
+// rejecting a field a sibling writes costs the whole pipeline.
+//
+// Rule for future edits: additive-optional only. Never make a new key REQUIRED,
+// and never remove a key from this list. See § "plan-update.json is a
+// distributed contract" in rules/worktree-isolation.md §5 rule 3.
+const OPTIONAL_FIELDS = [
+  'design_sub_status', 'notes',
+  'artifacts',            // consumed by this lineage (promotion manifest)
+  'branch', 'head_sha',   // written by the branch-merge lineage; accepted, unused here
+];
 
 // Roles the kit dispatches into a physical DETACHED worktree
 // (rules/worktree-isolation.md §5 rule 1). For these, `artifacts` is REQUIRED:
@@ -171,14 +192,15 @@ function isPlanUpdatePath(p) {
 
 function validate(content) {
   const errors = [];
+  const warnings = [];
   let obj;
   try {
     obj = JSON.parse(content);
   } catch (e) {
-    return [`not valid JSON: ${e.message}`];
+    return { errors: [`not valid JSON: ${e.message}`], warnings };
   }
   if (typeof obj !== 'object' || obj === null || Array.isArray(obj)) {
-    return ['root must be a JSON object'];
+    return { errors: ['root must be a JSON object'], warnings };
   }
 
   for (const f of REQUIRED_FIELDS) {
@@ -235,14 +257,30 @@ function validate(content) {
       });
     }
   }
+  // Promotion manifest — WARN, never block, when absent.
+  //
+  // The manifest is what makes a partial promotion detectable, so it is strongly
+  // wanted. But a missing manifest is NOT a reason to refuse the signal:
+  //
+  //   1. Enforcement already lives at the dangerous moment. `worktree-promotion-guard.cjs`
+  //      classifies a completed dispatch with no manifest as `unverifiable` and REFUSES
+  //      TEARDOWN, and `unpromoted-dispatch-audit.cjs` refuses to end the turn. Absence
+  //      of evidence is already treated as a closure blocker there. Blocking the write
+  //      adds no safety on top of that.
+  //   2. Blocking the write only wedges the dispatch. A sub-agent that cannot signal
+  //      ready-to-finalize cannot hand off at all: the work sits in the detached worktree,
+  //      the plan never transitions, and nothing is promoted — the very outcome the
+  //      manifest exists to prevent.
+  //
+  // Enforce at the moment that destroys work, not at the moment that reports it.
   if ('agent' in obj && typeof obj.agent === 'string' && PHYSICAL_WORKTREE_AGENTS.has(obj.agent)) {
     if (!Array.isArray(obj.artifacts) || obj.artifacts.length === 0) {
-      errors.push(
-        `missing required field for agent "${obj.agent}": artifacts — code-writing roles run in a ` +
-        `detached worktree, so the ready-to-finalize signal must list every path the Orchestrator ` +
-        `has to promote into main at §9 Step 7 (repo-relative, e.g. "backend/src/handler.js"). ` +
-        `A detached worktree removed before promotion leaves no ref and no recovery, and without ` +
-        `this manifest a partial promotion cannot be detected.`
+      warnings.push(
+        `no promotion manifest declared for agent "${obj.agent}" (artifacts absent or empty) — ` +
+        `code-writing roles run in a detached worktree, so this signal SHOULD list every path the ` +
+        `Orchestrator must promote into main at §9 Step 7 (repo-relative, e.g. "backend/src/handler.js"). ` +
+        `Without it a partial promotion cannot be detected. Allowed through: ` +
+        `worktree-promotion-guard.cjs still refuses teardown, classifying this dispatch as "unverifiable".`
       );
     }
   }
@@ -354,7 +392,7 @@ function validate(content) {
     errors.push(`notes must be a string when present`);
   }
 
-  return errors;
+  return { errors, warnings };
 }
 
 async function main() {
@@ -378,7 +416,15 @@ async function main() {
   if (!isPlanUpdatePath(toolInput.file_path)) process.exit(0);
 
   const content = typeof toolInput.content === 'string' ? toolInput.content : '';
-  const errors = validate(content);
+  const { errors, warnings } = validate(content);
+
+  // Warnings never block. They are advisory on stderr so the agent sees them
+  // while the write proceeds — the enforcement that matters happens later, at
+  // teardown, where absent evidence actually costs something.
+  for (const w of warnings) {
+    process.stderr.write(`plan-update-validator: WARNING — ${w}\n`);
+  }
+
   if (errors.length === 0) process.exit(0);
 
   process.stderr.write(
@@ -386,7 +432,12 @@ async function main() {
   );
   for (const e of errors) process.stderr.write(`  - ${e}\n`);
   process.stderr.write(
-    `\n  Required: ${REQUIRED_FIELDS.join(', ')}\n  Optional: ${OPTIONAL_FIELDS.join(', ')}\n`
+    `\n  Required: ${REQUIRED_FIELDS.join(', ')}\n  Optional: ${OPTIONAL_FIELDS.join(', ')}\n` +
+    `\n  Note: this schema is a tolerant superset on purpose. The same hook is registered\n` +
+    `  from a project's .claude/settings.json AND from an installed plugin's hooks.json, at\n` +
+    `  possibly different versions, and your write must satisfy every copy at once. If you hit\n` +
+    `  "unknown field: <x>" from one copy while another wants <x>, one of them is stale —\n` +
+    `  fix the registration or the plugin version, do NOT drop the field.\n`
   );
   process.exit(2);
 }

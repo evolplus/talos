@@ -204,8 +204,15 @@ PU_WTPREFIX='{"task_id":"T-042","track":"be","from_status":"in-progress","to_sta
 PU_NOTARRAY='{"task_id":"T-042","track":"be","from_status":"in-progress","to_status":"ready-for-deploy","agent":"be-dev","artifacts":"backend/src/handler.js","timestamp":"2026-09-09T10:30:00Z"}'
 PU_DOC='{"task_id":"T-042","track":"sa","from_status":"not-started","to_status":"in-progress","agent":"sa","timestamp":"2026-09-09T10:30:00Z"}'
 run_exit "code role WITH manifest passes"        0 "$VALIDATOR" "$(ev "$PU_OK")" "$SANDBOX"
-run_exit "code role without manifest rejected"   2 "$VALIDATOR" "$(ev "$PU_NONE")" "$SANDBOX"
-run_exit "empty manifest rejected"               2 "$VALIDATOR" "$(ev "$PU_EMPTY")" "$SANDBOX"
+# Changed 2026-09-10: an absent/empty manifest WARNS, it does not block. Blocking
+# the ready-to-finalize signal made the field required in a distributed contract
+# whose other copies reject it as `unknown field`, leaving no writable payload.
+# The gate lives at teardown (worktree-promotion-guard classifies this dispatch
+# `unverifiable` and refuses removal), so nothing is lost by letting it through.
+run_exit "code role without manifest allowed"    0 "$VALIDATOR" "$(ev "$PU_NONE")" "$SANDBOX"
+run_exit "empty manifest allowed"                0 "$VALIDATOR" "$(ev "$PU_EMPTY")" "$SANDBOX"
+run_contains "absent manifest warns" "$VALIDATOR" "$(ev "$PU_NONE")" "$SANDBOX" "no promotion manifest declared"
+run_contains "empty manifest warns"  "$VALIDATOR" "$(ev "$PU_EMPTY")" "$SANDBOX" "no promotion manifest declared"
 run_exit "absolute path rejected"                2 "$VALIDATOR" "$(ev "$PU_ABS")" "$SANDBOX"
 run_exit "traversal path rejected"               2 "$VALIDATOR" "$(ev "$PU_DOTDOT")" "$SANDBOX"
 run_exit "worktree-prefixed path rejected"       2 "$VALIDATOR" "$(ev "$PU_WTPREFIX")" "$SANDBOX"
