@@ -1,0 +1,4 @@
+{
+  "lineage": "ingestion",
+  "_comment": "Declares which integration model this kit uses, so a co-installed kit of the OTHER lineage stands down instead of enforcing an incompatible model. ingestion: code roles work in a DETACHED worktree and the Orchestrator integrates by path-scoped file ingestion; `git merge`/`cherry-pick`/`push` of agent history is forbidden (local-worktree-git-guard.cjs). branch-merge: code roles work on agent/<role>/<task-id> and the Orchestrator integrates with `git merge --no-ff`. The two are mutually exclusive: this kit's local-worktree-git-guard.cjs BLOCKS a branch-merge kit's mandated merge-back step. See § 'Lineage exclusivity' in rules/worktree-isolation.md."
+}

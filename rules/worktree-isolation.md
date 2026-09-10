@@ -151,6 +151,65 @@ All sub-agents operate under **isolation** to enable safe parallel work — logi
    and `worktree-promotion-guard.cjs` additionally refuses them while promotion is unproven — because the Bash guard
    permitting a target says the command is *well-formed*, not that it is *safe to run yet*.
 
+### plan-update.json is a distributed contract
+
+`plan-update.json` is not a local file format. The **same hook name is registered from more than one place**: a
+project's vendored `.claude/settings.json` runs `$CLAUDE_PROJECT_DIR/.claude/hooks/plan-update-validator.cjs`, and an
+installed plugin's `hooks.json` runs `${CLAUDE_PLUGIN_ROOT}/hooks/plan-update-validator.cjs` — at whatever versions
+each happens to be, including stale plugin caches that never refreshed. **A single write must satisfy every registered
+copy simultaneously.**
+
+That makes the schema a compatibility surface with hard rules:
+
+1. **Additive-optional only. Never make a new key REQUIRED.** The validator uses a strict allowlist, so an unknown key
+   is an error. If copy A requires `x` and copy B rejects `x` as `unknown field`, then **no JSON satisfies both** — the
+   intersection is empty and every code-role dispatch wedges with nothing to fix in the payload.
+2. **Tolerant reader.** `OPTIONAL_FIELDS` accepts every key any sibling lineage writes, consumed or not — `branch` +
+   `head_sha` (branch-merge lineage) and `artifacts` (ingestion lineage) are all accepted everywhere. Accepting a field
+   you ignore costs nothing; rejecting a field a sibling writes costs the pipeline. Never remove a key from that list.
+3. **Enforce at the moment that destroys work, not the moment that reports it.** Absent evidence (no merge target, no
+   promotion manifest) emits a stderr **WARNING** and lets the write through. The teardown guards already treat absence
+   as a closure blocker, and they can derive what they need from role + task-id. Blocking the *signal* adds no safety
+   and only prevents handoff: the work sits in the worktree, the plan never transitions, and nothing is integrated —
+   the exact outcome the field exists to prevent. Malformed values remain hard errors, because a wrong ref or a
+   traversal path is worse than an absent one.
+4. **Any schema change requires a version bump.** A plugin whose `version` is unchanged will never invalidate its
+   cache, so the fix cannot propagate and the source silently diverges from what every consumer actually runs. Bump
+   `.claude-plugin/plugin.json` **and** `.claude-plugin/marketplace.json` together.
+5. **Redundant registration is a smell, incompatible registration is a defect.** Two registrations of the same hook
+   merely duplicate its output. Two registrations of *different lineages'* hooks contradict each other — see below.
+
+**Incident (2026-09-10).** A merge-target requirement was added to the branch-merge copy and a promotion-manifest
+requirement to the ingestion copy, with no version bump. Result: four validator copies in play (two edited sources,
+two identical stale caches) where **every candidate payload passed exactly one and was rejected by the other three**.
+Sub-agents reported `missing required field for agent "be-dev": artifacts` from one copy and `unknown field: artifacts`
+from another, in the same dispatch. The reported root cause — agents inventing extra keys — was only the surface: `commit`
+was indeed nobody's field, but the mutually-exclusive requirement was real and self-inflicted. The fix is rules 1–4.
+
+### Lineage exclusivity
+
+Two kit lineages exist with **mutually exclusive integration models**:
+
+| Lineage | Worktree | Integration | Closure check |
+|---|---|---|---|
+| `branch-merge` | `git worktree add -b agent/<role>/<task-id>` | `git merge --no-ff` of that branch | `git merge-base --is-ancestor <branch> HEAD` |
+| `ingestion` | `git worktree add --detach` | path-scoped file ingestion; `git merge` of agent history **forbidden** | finalization marker + `artifacts` manifest present on HEAD |
+
+**They cannot both be active in one project.** An ingestion kit's `local-worktree-git-guard.cjs` blocks
+`git merge agent/...`, which is precisely the branch-merge kit's mandated closure step — so a co-installed pair leaves
+every code-role dispatch **no legal way to close**. Verified empirically: that guard returns exit 2 on the branch-merge
+kit's own §9 Step 7d command.
+
+Each repo therefore declares its model in `kit-lineage.json` (`.claude/kit-lineage.json` for a vendored kit), and every
+**lineage-specific** guard calls `lib/kit-lineage.cjs` `shouldStandDown()` and exits 0 with a notice when the project
+declares the other model. Lineage-*neutral* guards (privacy, source layout, plan schema) ignore this entirely. An
+**unknown** lineage means enforce normally — an unlabelled project must never silently lose its guards. Override with
+`CLAUDE_KIT_LINEAGE=<branch-merge|ingestion>`.
+
+Stand-down covers the guards this mechanism owns. It does **not** retrofit the pre-existing
+`local-worktree-git-guard.cjs`, so the operational rule stands: **do not enable an ingestion-lineage plugin in a
+branch-merge project**, or its merge-back will be blocked with no in-repo remedy.
+
 ### Command scoping for code-writing roles (Bash surface)
 
 Because the Task tool does not accept a per-dispatch `cwd`, every sub-agent inherits the project-root cwd. File-tool source writes are kept in the worktree by `source-code-write-guard.cjs` (which now resolves `..` and exempts only *well-formed* `.worktrees/<role>-<task-id>/` paths). The Bash surface is held to the same discipline by `orchestrator-bash-guard.cjs`, which (via `.claude/hooks/lib/worktree-scope.cjs`) treats a command as worktree-scoped when its cwd is inside a worktree OR it scopes itself there (`cd .worktrees/<role>-<task-id> && …`, `git -C`, `--prefix`, `make -C`). Unscoped builds / installs / mutations run against the shared root tree and are blocked — that is the cross-agent-conflict and source-tree-contamination risk the rule exists to prevent.
