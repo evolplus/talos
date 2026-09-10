@@ -186,6 +186,43 @@ Sub-agents reported `missing required field for agent "be-dev": artifacts` from 
 from another, in the same dispatch. The reported root cause — agents inventing extra keys — was only the surface: `commit`
 was indeed nobody's field, but the mutually-exclusive requirement was real and self-inflicted. The fix is rules 1–4.
 
+### Two install modes, one registration set
+
+The kit registers its hooks two ways, for two install modes:
+
+| Mode | Registration surface | Paths |
+|---|---|---|
+| installed plugin | `hooks/hooks.json` | `${CLAUDE_PLUGIN_ROOT}/hooks/…` |
+| vendored copy | `settings/original-settings.json`, merged into `<project>/.claude/settings.json` by `scripts/sdlc-init.cjs` | `$CLAUDE_PROJECT_DIR/.claude/hooks/…` |
+
+**Both must register the same hook set, and `settings/original-settings.json` is GENERATED — never hand-edit it.**
+Run `node scripts/sync-settings-template.cjs` after any change to `hooks/hooks.json`;
+`--check` fails on drift and belongs in CI.
+
+Why generated: the two were hand-maintained and drifted. By 2026-09-10 the vendored template was missing seven hooks
+the plugin manifest had (`environment-config-validator`, `srs-design-flow-validator`, `design-substatus-validator`,
+`local-worktree-git-guard`, `worktree-promotion-guard`, `task-completion-commit-check`, `unpromoted-dispatch-audit`)
+plus the entire `Stop` event, while still carrying a standalone `dispatch-journal-gc` entry that the plugin manifest
+correctly drops because `session-init-summary.cjs` requires it in-process (a standalone entry double-runs it).
+
+That was not cosmetic. `sdlc-init` **copies the whole `hooks/` directory** into a project but merges only this
+template's registrations — so a vendored project received new hook **files** on disk alongside old **registrations** in
+`settings.json`. Hooks physically present, never invoked. This is the manufacturing origin of the
+"documented as hook-enforced, enforced by nothing" class of bug, and it is why a hook file being on disk is never
+evidence that it runs. `hooks/tests/test-vendored-parity.sh` locks the invariant down: template in sync, generator
+idempotent, no dangling registrations, no unregistered files in either surface, and an end-to-end `sdlc-init` run whose
+resulting project has registrations matching the files copied into it.
+
+**Never run both modes in one project.** Vendoring while the plugin is installed registers every shared hook twice, so
+it runs twice — duplicated output, duplicated detection-hook side effects, and, if the two copies are different
+versions, two validators enforcing incompatible schemas (see § "plan-update.json is a distributed contract").
+`sdlc-init` warns when `CLAUDE_PLUGIN_ROOT` is set; pick one mode — disable the plugin for that project, or re-run with
+`--skip-settings --skip-hooks`.
+
+**Version identities must agree.** `.claude-plugin/plugin.json`, `.claude-plugin/marketplace.json` and
+`.codex-plugin/plugin.json` are three separate declarations of the same release and drifted to 0.7 / 0.7 / 0.5.0. A
+stale identity means a consumer's cache never invalidates, so a fix cannot propagate no matter how correct it is.
+
 ### Lineage exclusivity
 
 Two kit lineages exist with **mutually exclusive integration models**:
