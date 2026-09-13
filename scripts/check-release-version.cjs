@@ -23,13 +23,20 @@
 // The shipped surface is what a consumer actually runs. Docs and tests are
 // excluded: changing a test must not force a release.
 //
+// The fingerprint is taken over the COMMITTED tree (`git cat-file` at HEAD), not
+// the working tree. A consumer receives what is committed, so hashing local
+// edits would record something nobody can reproduce: the first recording here
+// was made with two unrelated files dirty, and the value did not match a clean
+// clone of the very commit that carried it. Hashing HEAD also means a developer
+// with unrelated work in progress is never blocked by it. Outside a git
+// checkout (an extracted plugin cache) it falls back to the filesystem.
+//
 //   node scripts/check-release-version.cjs           # verify (exit 1 on drift)
 //   node scripts/check-release-version.cjs --update  # after bumping, re-record
 //
-// ORDER MATTERS: --update records a hash of the shipped surface as it is at that
-// moment, so it must be the LAST step before committing a release. Any shipped
-// edit made afterwards — including to rules/ — puts the fingerprint behind the
-// tree again and the check will (correctly) fail.
+// Because the hash is taken at HEAD, record the fingerprint AFTER committing the
+// release's shipped changes, then amend or add a follow-up commit for the
+// fingerprint file itself (which is excluded from its own hash).
 //
 // Consistency is also enforced: .claude-plugin/plugin.json,
 // .claude-plugin/marketplace.json and .codex-plugin/plugin.json declare the
@@ -42,6 +49,7 @@
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+const { execFileSync } = require('child_process');
 
 const ROOT = path.resolve(__dirname, '..');
 const FINGERPRINT = path.join(ROOT, '.claude-plugin', 'release-fingerprint.json');
@@ -74,18 +82,51 @@ function walk(dir, out) {
   return out;
 }
 
+function excluded(relPosix) {
+  const parts = relPosix.split('/');
+  if (parts.some(p => EXCLUDE_SEGMENTS.has(p))) return true;
+  return EXCLUDE_FILES.has(parts[parts.length - 1]);
+}
+
+// Committed paths under the shipped directories, or null when not in a checkout.
+function committedFiles() {
+  try {
+    const out = execFileSync('git', ['ls-tree', '-r', '--name-only', 'HEAD', '--', ...SHIPPED], {
+      cwd: ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'],
+    });
+    const files = out.split('\n').map(l => l.trim()).filter(Boolean).filter(f => !excluded(f));
+    return files.sort();
+  } catch {
+    return null;
+  }
+}
+
+function committedContent(relPosix) {
+  return execFileSync('git', ['cat-file', 'blob', `HEAD:${relPosix}`], {
+    cwd: ROOT, stdio: ['ignore', 'pipe', 'ignore'],
+  });
+}
+
 function fingerprint() {
+  const h = crypto.createHash('sha256');
+  const tracked = committedFiles();
+
+  if (tracked) {
+    for (const rel of tracked) {
+      h.update(rel); h.update('\0');
+      h.update(committedContent(rel)); h.update('\0');
+    }
+    return { hash: h.digest('hex'), count: tracked.length, source: 'HEAD' };
+  }
+
   const files = [];
   for (const d of SHIPPED) walk(path.join(ROOT, d), files);
   files.sort();
-  const h = crypto.createHash('sha256');
   for (const f of files) {
-    h.update(path.relative(ROOT, f).split(path.sep).join('/'));
-    h.update('\0');
-    h.update(fs.readFileSync(f));
-    h.update('\0');
+    h.update(path.relative(ROOT, f).split(path.sep).join('/')); h.update('\0');
+    h.update(fs.readFileSync(f)); h.update('\0');
   }
-  return { hash: h.digest('hex'), count: files.length };
+  return { hash: h.digest('hex'), count: files.length, source: 'worktree' };
 }
 
 function versions() {
@@ -135,7 +176,8 @@ function main() {
       'utf8'
     );
     process.stdout.write(
-      `check-release-version: recorded ${version} over ${fp.count} shipped files (${fp.hash.slice(0, 12)}…)\n`
+      `check-release-version: recorded ${version} over ${fp.count} shipped files ` +
+      `from ${fp.source} (${fp.hash.slice(0, 12)}…)\n`
     );
     return;
   }
@@ -172,7 +214,7 @@ function main() {
   }
 
   process.stdout.write(
-    `check-release-version: ${version} — manifests agree, shipped surface matches the recorded release\n`
+    `check-release-version: ${version} — manifests agree, shipped surface (${fp.source}) matches the recorded release\n`
   );
 }
 
