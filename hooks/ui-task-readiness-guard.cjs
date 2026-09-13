@@ -52,6 +52,7 @@
 const fs = require('fs');
 const path = require('path');
 const { stripFencedCodeBlocks } = require('./lib/strip-fences.cjs');
+const IDS = require('./lib/artifact-ids.cjs');
 
 function findProjectRoot(start) {
   // Walk up from `start` until we hit a `.git` dir or a `.claude` dir; that's
@@ -185,7 +186,7 @@ function getSection(content, heading) {
 }
 
 function sectionHasDemRow(content, heading) {
-  return /\bDEM-\d+\b/i.test(getSection(content, heading));
+  return IDS.idPattern('DEM').test(getSection(content, heading));
 }
 
 function sectionMatches(content, heading, pattern) {
@@ -214,10 +215,18 @@ function contentIssues(check, content) {
       continue;
     }
     if (rule.requireDemRows && !sectionHasDemRow(content, rule.heading)) {
-      issues.push('## ' + rule.heading + ' has no DEM-* rows');
+      issues.push(IDS.describeMismatch('DEM', getSection(content, rule.heading), rule.heading));
     }
     if (rule.requirePattern && !sectionMatches(content, rule.heading, rule.requirePattern)) {
-      issues.push('## ' + rule.heading + ' lacks required evidence rows');
+      // When the rule is an artifact-ID rule, say WHICH shape failed and show the
+      // tokens that are actually there. "lacks required evidence rows" sent an
+      // author to rewrite a correct document (ISSUE-179); naming the real IDs
+      // sends them to the pattern instead.
+      issues.push(
+        rule.idPrefix
+          ? IDS.describeMismatch(rule.idPrefix, getSection(content, rule.heading), rule.heading)
+          : '## ' + rule.heading + ' lacks required evidence rows'
+      );
     }
     if (rule.rejectPattern && sectionMatches(content, rule.heading, rule.rejectPattern)) {
       issues.push('## ' + rule.heading + ' contains blocked/incomplete rows');
@@ -246,10 +255,10 @@ function checkArtifacts(projectRoot, worktreeRoot, taskId) {
       sectionRules: [
         { heading: 'Reference Render', requirePattern: /\b(Node ID|Figma Node ID)\b[\s\S]*\b(SHA-?256|checksum)\b/i },
         { heading: 'Visual Composition Contract', requirePattern: /\b(viewport|layer order|root layout|constraints?)\b/i },
-        { heading: 'Asset Export Manifest', requirePattern: /\bAST-(?:\d+|NONE)\b/i, rejectPattern: /^\|?[^\r\n]*\bAST-\d+\b[^\r\n]*\bblocked\b/im },
+        { heading: 'Asset Export Manifest', idPrefix: 'AST', requirePattern: IDS.idOrNonePattern('AST'), rejectPattern: IDS.rowPattern('AST', '\\bblocked\\b') },
         { heading: 'Design Element Manifest', requireDemRows: true },
-        { heading: 'Asset Implementation Trace Matrix', requirePattern: /\bAST-(?:\d+|NONE)\b/i },
-        { heading: 'Composition Implementation Trace Matrix', requirePattern: /\bCMP-(?:\d+|NONE)\b/i },
+        { heading: 'Asset Implementation Trace Matrix', idPrefix: 'AST', requirePattern: IDS.idOrNonePattern('AST') },
+        { heading: 'Composition Implementation Trace Matrix', idPrefix: 'CMP', requirePattern: IDS.idOrNonePattern('CMP') },
         { heading: 'Implementation Trace Matrix', requireDemRows: true, rejectOpenTraceStatuses: true },
       ],
     },
@@ -261,7 +270,7 @@ function checkArtifacts(projectRoot, worktreeRoot, taskId) {
       sectionRules: [
         { heading: 'Reference Render', requirePattern: /\b(Node ID|Figma Node ID)\b[\s\S]*\b(SHA-?256|checksum)\b/i },
         { heading: 'Visual Composition Contract', requirePattern: /\b(viewport|layer order|root layout|constraints?)\b/i },
-        { heading: 'Asset Export Manifest', requirePattern: /\bAST-(?:\d+|NONE)\b/i, rejectPattern: /^\|?[^\r\n]*\bAST-\d+\b[^\r\n]*\bblocked\b/im },
+        { heading: 'Asset Export Manifest', idPrefix: 'AST', requirePattern: IDS.idOrNonePattern('AST'), rejectPattern: IDS.rowPattern('AST', '\\bblocked\\b') },
         { heading: 'Design Element Manifest', requireDemRows: true },
       ],
       requiresDesignSystemSource: true,
@@ -272,8 +281,8 @@ function checkArtifacts(projectRoot, worktreeRoot, taskId) {
       kind: 'file',
       doc: 'QA-Author by-task produces this. sub-agent-registry.md §3.4.',
       sectionRules: [
-        { heading: 'Visual Composition Assertions', requirePattern: /\bCMP-(?:\d+|NONE)\b/i },
-        { heading: 'Asset Assertions', requirePattern: /\bAST-(?:\d+|NONE)\b/i },
+        { heading: 'Visual Composition Assertions', idPrefix: 'CMP', requirePattern: IDS.idOrNonePattern('CMP') },
+        { heading: 'Asset Assertions', idPrefix: 'AST', requirePattern: IDS.idOrNonePattern('AST') },
         { heading: 'Design Element Assertions', requireDemRows: true },
       ],
     },

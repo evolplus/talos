@@ -13,6 +13,7 @@
 const fs = require('fs');
 const path = require('path');
 const { stripFencedCodeBlocks } = require('./lib/strip-fences.cjs');
+const IDS = require('./lib/artifact-ids.cjs');
 
 const TASK_PATH_RE = /(^|\/)docs\/plan\/[^/]+\/tasks\/(T-[A-Za-z0-9_-]+)\.md$/i;
 
@@ -114,7 +115,7 @@ function getSection(content, heading) {
 
 function sectionHasDemRows(content, heading) {
   const section = getSection(content, heading);
-  return /\bDEM-\d+\b/i.test(section);
+  return IDS.idPattern('DEM').test(section);
 }
 
 function sectionHasPattern(content, heading, pattern) {
@@ -162,9 +163,9 @@ function checkHandoff(root, taskId) {
     violations.push(rel + ' is missing non-empty ## Visual Composition Contract evidence.');
   }
   if (!hasHeading(content, 'Asset Export Manifest') ||
-      !sectionHasPattern(content, 'Asset Export Manifest', /\bAST-(?:\d+|NONE)\b/i)) {
+      !sectionHasPattern(content, 'Asset Export Manifest', IDS.idOrNonePattern('AST'))) {
     violations.push(rel + ' is missing ## Asset Export Manifest AST-* rows.');
-  } else if (sectionHasPattern(content, 'Asset Export Manifest', /^\|?[^\r\n]*\bAST-\d+\b[^\r\n]*\bblocked\b/im)) {
+  } else if (sectionHasPattern(content, 'Asset Export Manifest', IDS.rowPattern('AST', '\\bblocked\\b'))) {
     violations.push(rel + ' has blocked Asset Export Manifest rows.');
   }
   return violations;
