@@ -130,16 +130,28 @@ console.log("registrations:"+reg.size+" files:"+disk.length);
 ' "$PROJ" >"$S/p.out" 2>"$S/p.err" && ok "no copied-but-unregistered and no dangling ($(cat "$S/p.out"))" \
   || bad "vendored project is incoherent" "$(cat "$S/p.err")"
 
-echo "version identities agree across all three manifests"
+echo "release integrity: identities agree and the shipped surface matches the version"
+# Byte-identical, not merely equal-after-normalizing: "0.7" and "0.7.0" mean the
+# same release but compare unequal to exact-match tooling, and both shapes have
+# already shipped here.
 node -e '
 const fs=require("fs"),path=require("path");const r=process.argv[1];
-const norm=v=>String(v).split(".").slice(0,2).join(".");
-const a=norm(JSON.parse(fs.readFileSync(path.join(r,".claude-plugin/plugin.json"),"utf8")).version);
-const b=norm(JSON.parse(fs.readFileSync(path.join(r,".claude-plugin/marketplace.json"),"utf8")).plugins[0].version);
-const c=norm(JSON.parse(fs.readFileSync(path.join(r,".codex-plugin/plugin.json"),"utf8")).version);
-if(!(a===b&&b===c)){console.error(`plugin=${a} marketplace=${b} codex=${c}`);process.exit(1);}
+const a=JSON.parse(fs.readFileSync(path.join(r,".claude-plugin/plugin.json"),"utf8")).version;
+const b=JSON.parse(fs.readFileSync(path.join(r,".claude-plugin/marketplace.json"),"utf8")).plugins[0].version;
+const c=JSON.parse(fs.readFileSync(path.join(r,".codex-plugin/plugin.json"),"utf8")).version;
+if(!(a===b&&b===c)){console.error(`plugin=${JSON.stringify(a)} marketplace=${JSON.stringify(b)} codex=${JSON.stringify(c)}`);process.exit(1);}
+if(!/^\d+\.\d+\.\d+$/.test(a)){console.error("not MAJOR.MINOR.PATCH: "+JSON.stringify(a));process.exit(1);}
 console.log(a);
-' "$ROOT" >"$S/v.out" 2>"$S/v.err" && ok "all manifests at $(cat "$S/v.out")" || bad "version identities disagree" "$(cat "$S/v.err")"
+' "$ROOT" >"$S/v.out" 2>"$S/v.err" && ok "all manifests byte-identical at $(cat "$S/v.out")" || bad "version identities disagree" "$(cat "$S/v.err")"
+
+# The rule "a behaviour change requires a version bump" was written on
+# 2026-09-10 and broken twice in three days, including by the change that
+# introduced it. Prose could not hold it; this can.
+if node "$ROOT/scripts/check-release-version.cjs" >"$S/r.out" 2>"$S/r.err"; then
+  ok "shipped surface matches the recorded release"
+else
+  bad "shipped surface changed without a version bump" "$(sed -n '1,6p' "$S/r.err")"
+fi
 
 printf "\n  %s passed, %s failed\n" "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ] || exit 1
