@@ -171,7 +171,16 @@ Rules:
 - Capture direct-child bounds, Auto Layout direction/alignment/gap/padding, absolute-positioned children, constraints, min/max/fixed/hug/fill sizing, z-order, clipping, masks, opacity/blend, and image crop/focal behavior.
 - For responsive designs, cite a distinct Figma variant or explicit constraints. Do not invent a mobile/desktop rearrangement from general best practice.
 - A complete component list with missing composition data is an incomplete handoff.
-- `Composition ID` values are stable within the handoff (`CMP-001`, `CMP-002`, ...); preserve them across revisions when the composition is unchanged.
+- `Composition ID` values are stable within the handoff; preserve them across revisions when the composition is unchanged.
+
+  **ID grammar (applies to `CMP-`, `AST-` and `DEM-` alike).** `<PREFIX>-<NNN>` or
+  `<PREFIX>-<QUALIFIER>-<NNN>`, where qualifier segments are alphanumeric and up to four may be chained:
+  `CMP-001`, `CMP-GW-001`, `AST-ICON-12`, `DEM-A1-B2-07`. Use a qualifier when IDs need to be unique or meaningful
+  across flows or surfaces (e.g. `GW` for a grace-window flow). `<PREFIX>-NONE` asserts that the artifact genuinely
+  has **no** regions of that kind — it is a statement about the design, never a way to satisfy a check.
+
+  Downstream guards match this grammar via `hooks/lib/artifact-ids.cjs`. If a guard rejects IDs that follow it,
+  the guard is wrong: raise an open issue against that lib rather than renaming IDs an Approver has confirmed.
 
 ## Asset Export Manifest
 

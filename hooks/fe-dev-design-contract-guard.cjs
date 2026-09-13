@@ -40,6 +40,7 @@
 const fs = require('fs');
 const path = require('path');
 const { stripFencedCodeBlocks } = require('./lib/strip-fences.cjs');
+const IDS = require('./lib/artifact-ids.cjs');
 
 // ─── Frontend source extensions ───
 const FE_SOURCE_EXTENSIONS = new Set([
@@ -156,7 +157,7 @@ function getSection(content, heading) {
 }
 
 function sectionHasDemRow(content, heading) {
-  return /\bDEM-\d+\b/i.test(getSection(content, heading));
+  return IDS.idPattern('DEM').test(getSection(content, heading));
 }
 
 function sectionMatches(content, heading, pattern) {
@@ -184,10 +185,10 @@ function designContractIssues(content) {
     if (!re.test(stripped)) issues.push('missing ## ' + heading);
   }
   if (hasHeading(content, 'Design Element Manifest') && !sectionHasDemRow(content, 'Design Element Manifest')) {
-    issues.push('## Design Element Manifest has no DEM-* rows');
+    issues.push(IDS.describeMismatch('DEM', getSection(content, 'Design Element Manifest'), 'Design Element Manifest'));
   }
   if (hasHeading(content, 'Implementation Trace Matrix') && !sectionHasDemRow(content, 'Implementation Trace Matrix')) {
-    issues.push('## Implementation Trace Matrix has no DEM-* trace rows');
+    issues.push(IDS.describeMismatch('DEM', getSection(content, 'Implementation Trace Matrix'), 'Implementation Trace Matrix'));
   }
   if (hasHeading(content, 'Reference Render') &&
       !sectionMatches(content, 'Reference Render', /\b(Node ID|Figma Node ID)\b[\s\S]*\b(SHA-?256|checksum)\b/i)) {
@@ -198,17 +199,17 @@ function designContractIssues(content) {
     issues.push('## Visual Composition Contract lacks layout evidence');
   }
   for (const heading of ['Asset Export Manifest', 'Asset Implementation Trace Matrix']) {
-    if (hasHeading(content, heading) && !sectionMatches(content, heading, /\bAST-(?:\d+|NONE)\b/i)) {
-      issues.push('## ' + heading + ' has no AST-* rows');
+    if (hasHeading(content, heading) && !sectionMatches(content, heading, IDS.idOrNonePattern('AST'))) {
+      issues.push(IDS.describeMismatch('AST', getSection(content, heading), heading));
     }
   }
   if (hasHeading(content, 'Asset Export Manifest') &&
-      sectionMatches(content, 'Asset Export Manifest', /^\|?[^\r\n]*\bAST-\d+\b[^\r\n]*\bblocked\b/im)) {
+      sectionMatches(content, 'Asset Export Manifest', IDS.rowPattern('AST', '\\bblocked\\b'))) {
     issues.push('## Asset Export Manifest contains blocked assets');
   }
   if (hasHeading(content, 'Composition Implementation Trace Matrix') &&
-      !sectionMatches(content, 'Composition Implementation Trace Matrix', /\bCMP-(?:\d+|NONE)\b/i)) {
-    issues.push('## Composition Implementation Trace Matrix has no CMP-* rows');
+      !sectionMatches(content, 'Composition Implementation Trace Matrix', IDS.idOrNonePattern('CMP'))) {
+    issues.push(IDS.describeMismatch('CMP', getSection(content, 'Composition Implementation Trace Matrix'), 'Composition Implementation Trace Matrix'));
   }
   return issues;
 }
