@@ -223,6 +223,42 @@ function inspectMapping(root, version) {
   return { path: rel, violations };
 }
 
+// Grandfather baseline: suppress Design-Flow A conditions that were already
+// present and accepted at the last SRS Signed-off, so an iteration that adds no
+// NEW UI surface is not re-blocked on pre-existing design-debt. Violations NOT
+// matched by a waiver still block (gate-the-delta). See ISSUE-109 + the config
+// file header. Fails open (returns []) when the config is absent or malformed.
+function loadWaivers(root) {
+  const p = path.join(root, '.claude', 'hooks', 'config', 'design-flow-baseline.json');
+  const raw = readFileSafe(p);
+  if (raw === null) return [];
+  let cfg;
+  try { cfg = JSON.parse(raw); } catch { return []; }
+  if (!cfg || !Array.isArray(cfg.waived)) return [];
+  return cfg.waived
+    .map(w => (w && typeof w.signature === 'string') ? w.signature : null)
+    .filter(Boolean);
+}
+
+// Collapse any figma-mappings version token (v1.6.md, v1.md, ...) so a waiver
+// survives SRS version bumps that do not change the underlying condition.
+function normalizeViolation(s) {
+  return (s || '').toString().replace(/v\d+(?:\.\d+)*\.md/gi, 'v<VER>.md').toLowerCase();
+}
+
+function partitionWaived(violations, waivers) {
+  if (waivers.length === 0) return { blocking: violations, grandfathered: [] };
+  const normSigs = waivers.map(normalizeViolation);
+  const blocking = [];
+  const grandfathered = [];
+  for (const v of violations) {
+    const nv = normalizeViolation(v);
+    if (normSigs.some(sig => nv.includes(sig))) grandfathered.push(v);
+    else blocking.push(v);
+  }
+  return { blocking, grandfathered };
+}
+
 async function main() {
   let raw = '';
   process.stdin.setEncoding('utf8');
@@ -278,13 +314,24 @@ async function main() {
   }
   violations.push(...findDesignReferenceNodeGaps(finalContent));
 
-  if (violations.length === 0) process.exit(0);
+  // Suppress conditions grandfathered at the last Signed-off; only NEW design
+  // debt introduced by this iteration remains blocking (gate-the-delta).
+  const { blocking, grandfathered } = partitionWaived(violations, loadWaivers(root));
+  if (grandfathered.length > 0) {
+    process.stderr.write(
+      'srs-design-flow-validator: ' + grandfathered.length +
+      ' pre-existing Design-Flow A condition(s) GRANDFATHERED (accepted at prior Signed-off; see .claude/hooks/config/design-flow-baseline.json + ISSUE-109):\n' +
+      grandfathered.slice(0, 20).map(v => '    ~ ' + v).join('\n') + '\n'
+    );
+  }
+
+  if (blocking.length === 0) process.exit(0);
 
   process.stderr.write(
     'srs-design-flow-validator: BLOCKED - Design-Flow A SRS cannot enter sign-off state without complete Figma evidence.\n' +
     '  SRS Status: ' + status + '\n' +
-    '  Violations (' + violations.length + '):\n' +
-    violations.slice(0, 20).map(v => '    - ' + v).join('\n') + '\n\n' +
+    '  Violations (' + blocking.length + ', excludes ' + grandfathered.length + ' grandfathered):\n' +
+    blocking.slice(0, 20).map(v => '    - ' + v).join('\n') + '\n\n' +
     '  Required Flow A sequence:\n' +
     '    1. UI/UX Designer extract mode writes docs/requirements/design-extracted/<figma-file-id>-<date>.md with Section 6 token evidence.\n' +
     '    2. UI/UX Designer map mode writes docs/uiux/figma-mappings/v<version>.md and pins every in-scope SRS surface node ID.\n' +

@@ -244,6 +244,41 @@ function validateEnvironmentConfig(content) {
   return violations;
 }
 
+// Grandfather baseline: suppress env-config conditions that pre-existed and were
+// implicitly accepted before this hook was installed (it post-dates the last SRS
+// Signed-off), so an iteration that adds no NEW env-config surface is not blocked
+// on the section's historical absence. Violations NOT matched still block
+// (gate-the-delta) — including every granular §3.4.6 check. See ISSUE-110 + the
+// config header. Fails open (returns []) when the config is absent or malformed.
+function loadWaivers(root) {
+  const p = path.join(root, '.claude', 'hooks', 'config', 'environment-config-baseline.json');
+  let raw;
+  try { raw = fs.readFileSync(p, 'utf8'); } catch { return []; }
+  let cfg;
+  try { cfg = JSON.parse(raw); } catch { return []; }
+  if (!cfg || !Array.isArray(cfg.waived)) return [];
+  return cfg.waived
+    .map(w => (w && typeof w.signature === 'string') ? w.signature : null)
+    .filter(Boolean);
+}
+
+function normalizeViolation(s) {
+  return (s || '').toString().replace(/v\d+(?:\.\d+)*\.md/gi, 'v<VER>.md').toLowerCase();
+}
+
+function partitionWaived(violations, waivers) {
+  if (waivers.length === 0) return { blocking: violations, grandfathered: [] };
+  const normSigs = waivers.map(normalizeViolation);
+  const blocking = [];
+  const grandfathered = [];
+  for (const v of violations) {
+    const nv = normalizeViolation(v);
+    if (normSigs.some(sig => nv.includes(sig))) grandfathered.push(v);
+    else blocking.push(v);
+  }
+  return { blocking, grandfathered };
+}
+
 async function main() {
   let raw = '';
   process.stdin.setEncoding('utf8');
@@ -271,13 +306,25 @@ async function main() {
   const status = normalize(header(finalContent, 'Status'));
   if (!SIGNOFF_STATUSES.has(status)) process.exit(0);
 
-  const violations = validateEnvironmentConfig(finalContent);
+  const allViolations = validateEnvironmentConfig(finalContent);
+
+  // Suppress conditions grandfathered before this hook existed; only NEW
+  // env-config debt introduced by this iteration remains blocking (gate-the-delta).
+  const { blocking: violations, grandfathered } = partitionWaived(allViolations, loadWaivers(root));
+  if (grandfathered.length > 0) {
+    process.stderr.write(
+      'environment-config-validator: ' + grandfathered.length +
+      ' pre-existing condition(s) GRANDFATHERED (accepted before this hook was installed; see .claude/hooks/config/environment-config-baseline.json + ISSUE-110):\n' +
+      grandfathered.slice(0, 20).map(v => '    ~ ' + v).join('\n') + '\n'
+    );
+  }
+
   if (violations.length === 0) process.exit(0);
 
   process.stderr.write(
     'environment-config-validator: BLOCKED - SRS cannot enter sign-off state without an environment configuration contract.\n' +
     '  SRS Status: ' + status + '\n' +
-    '  Violations (' + violations.length + '):\n' +
+    '  Violations (' + violations.length + ', excludes ' + grandfathered.length + ' grandfathered):\n' +
     violations.map(v => '    - ' + v).join('\n') + '\n\n' +
     '  Required: SRS §3.4.6 Environment Configuration must declare local, testing/staging, production, and runtime config variables.\n' +
     '  For frontend+backend systems, FE must consume a non-secret backend/API endpoint env var instead of hardcoding URLs.\n'
