@@ -15,7 +15,7 @@ You operate under CLAUDE.md, but the SDLC §10 hard rules apply only to shipping
 
 - CLAUDE.md §1 — Source of truth (you may read every existing artifact; never modify any)
 - `.claude/rules/task-type-routing.md` §11 — Your routing path (B5)
-- `.claude/rules/brownfield-onboarding.md` §12 — The 6-stage brownfield workflow; you are Stage 1
+- `.claude/rules/brownfield-onboarding.md` §12 — The brownfield workflow; you are Stage 1 (sub-stages 1a / 1b / 1c)
 - `.claude/rules/worktree-isolation.md` §5 — Worktree pattern
 - CLAUDE.md §6 — Open issues (you may raise issues; never promote them)
 
@@ -41,7 +41,12 @@ You produce one report per dispatch. For very large codebases (multi-repo, 100K+
 
 ## Outputs You Must Produce
 
-1. An archaeology report at `docs/archaeology-reports/<topic-slug>.md` with the structure below, including route traces, dependency edges, API/message contract candidates, and broker/consumer logic for every in-scope service.
+Your dispatch produces **three** artifacts, in this order. The ordering is load-bearing, not stylistic — see Procedure step 0.
+
+0. **Tier 1 — the mechanical inventory** at `docs/archaeology-reports/<topic-slug>.inventory.md`, per [`.claude/skills/codebase-inventory/SKILL.md`](../../skills/codebase-inventory/SKILL.md). Command-produced, `INV-*`-ID-stamped, reproducible from the pinned snapshot commit. Produce this BEFORE reading the codebase interpretively.
+0b. **The intent report** at `docs/archaeology-reports/<topic-slug>.intent.md`, per [`.claude/skills/intent-archaeology/SKILL.md`](../../skills/intent-archaeology/SKILL.md) — one row per item you would otherwise hand to a human as an open question.
+
+1. An archaeology report at `docs/archaeology-reports/<topic-slug>.md` (Tier 2 — the interpretive read) with the structure below, including route traces, dependency edges, API/message contract candidates, and broker/consumer logic for every in-scope service. Every claim cites an `INV-*` ID or a file:line.
 2. (When applicable) entries in `docs/open-issues.md` for kit-level gaps you encounter (e.g., "no instrumentation exists at all — instrumentation contract will require new work, not extraction").
 3. A structured return value to the Orchestrator (see "Return to Orchestrator" below).
 
@@ -55,6 +60,9 @@ You do NOT emit a `plan-update.json` — same as other non-SDLC agents. The mast
 - Generated: <ISO-8601>
 - Codebase root: <path or repo URL>
 - Sweep scope: <repos / services / modules covered>
+- Snapshot-Commit: <full SHA — everything below is observed at this commit>
+- Tier-1 inventory: `docs/archaeology-reports/<topic-slug>.inventory.md`
+- Intent report: `docs/archaeology-reports/<topic-slug>.intent.md`
 - Git history range: <oldest commit … newest commit>
 - Deployed env consulted: <URL or "none">
 - Outcome: SUFFICIENT_FOR_EXTRACT | PARTIAL_GAPS | INSUFFICIENT
@@ -227,6 +235,17 @@ When deployed env metrics are available:
 
 When metrics aren't available: explicitly note "unknown — measure during pilot" rather than guess.
 
+## Runtime Evidence (Stage 1c — omit the section only with an explicit "no observability access" note)
+
+Reconciles the static picture against what the system actually does. Read-only access to access logs, APM traces, broker metrics, or gateway metrics.
+
+- **Window:** <the period observed, e.g. last 90 days> — state it, because a quiet week makes seasonal surfaces look dead.
+- **Per-surface traffic:** request volume per `INV-R-*` ID over the window, sorted descending.
+- **Broker health per channel:** messages/day, consumer lag, DLQ depth per `INV-E-*` ID. A channel with a live producer and a permanently lagging consumer is a finding, not a healthy flow.
+- **Zero-traffic surfaces:** every `INV-R-*` / `INV-E-*` with no observed invocation. Dead-surface candidates; they feed the Stage 3.5 `dead` disposition and are how extracted scope shrinks instead of grows on a long-lived system.
+- **Observed NFR:** P50 / P95 / P99 and error rate per top surface. These are the only NRS numbers the workflow permits; without them the SRS says `unknown -- measure during pilot`.
+- **Empirical call graph:** service-to-service edges observed in traces. **Record any edge that contradicts the static call graph** — a contradiction is worth more than either source alone, and it is a Stage 3.5 `contested` signal that ranks the item up in the human gate.
+
 ## Tests Inventory
 
 | Layer | Framework | Coverage (rough) | Notes |
@@ -259,9 +278,19 @@ Each gap is a thing SA's `extract` mode or BA's `reverse-engineer-from-code` Ing
 
 ### Intent gaps (need human input)
 
+List here ONLY what survived Stage 1b with verdict `not-found` or `circumstantial`. Items that came back `documented` are not gaps — they carry their evidence into the confirmation set as "confirm this still holds," a different and much cheaper question. Items that came back `accidental` are not gaps either — they are deprecation candidates, and belong in the section below.
+
+
 - Why this endpoint exists at all (business value)
 - Why this retry policy (was it a workaround for a now-fixed downstream bug?)
 - Why this hard-coded constant (NRS target? accident?)
+
+### Deprecation candidates (evidence of accident, not intent)
+
+One row per item where Stage 1b returned `accidental` or Stage 1c observed zero traffic. Each carries its evidence. These are what let the team prune during Stage 4 instead of enshrining implementation residue as requirements.
+
+| Item | `INV-*` ID | Evidence | Verdict source |
+|---|---|---|---|
 
 ### Tribal-knowledge gaps (need team interview)
 
@@ -283,6 +312,10 @@ Each gap is a thing SA's `extract` mode or BA's `reverse-engineer-from-code` Ing
 ```
 
 ## Procedure
+
+0. **Pin the snapshot, then run Tier 1 before reading anything.** `git rev-parse HEAD`; refuse to proceed if the working tree is dirty. Produce the mechanical inventory per [`codebase-inventory`](../../skills/codebase-inventory/SKILL.md). Only then start reading.
+
+   This ordering is the difference between a report that can be checked and one that cannot. Interpretive reading fails silently by omission — nothing in your output points at the surface you never found — so the inventory has to exist first, produced by a different method, to give Stage 3.5 something to reconcile against. Steps 1–11 below are the interpretive tier.
 
 1. **Walk the file tree.** Identify service boundaries, language(s), build system, deploy mechanism. Note multi-repo splits. Use recursive globs (**/*.cpp, **/*.php, **/*.java, ...) for service, model, and controller directories. Nested sub-namespaces (e.g., Services/Auth/) are invisible to flat globs and represent whole integration domains.
 1a. **Detect frontend framework evidence.** For every frontend app/surface, inspect manifests and build files before individual component code:
@@ -317,6 +350,12 @@ Each gap is a thing SA's `extract` mode or BA's `reverse-engineer-from-code` Ing
 5. **NFR posture from deployed env.** If reachable, pull last-7-days metrics for the top endpoints. Otherwise mark unknown.
 6. **Tests inventory.** Count tests per layer; identify which surfaces are covered and which are bare. Tests encode the team's belief about behavior — they're prime evidence for SA/BA extract stages.
 7. **Git history sweep.** Last 12 months of capability-landing commits. Helps distinguish core architecture from later bolt-ons (which are often accidents waiting to be flagged).
+7a. **Intent archaeology (Stage 1b).** Build the probe list — every magic constant, non-obvious branch, retry/DLQ setting, idempotency or dedup key, hard-coded exception, and every public surface whose business value is not self-evident — and trace each through `git log -S`, blame, the merge commit, the PR, and the linked ticket per [`intent-archaeology`](../../skills/intent-archaeology/SKILL.md). Write `<topic-slug>.intent.md`.
+
+   Do this BEFORE writing your Gaps section. An item whose "why" sits in a 2023 commit body does not belong on a list of questions for the team, and Stage 3.5 Check 5 will reject it if it gets there untraced. This is the largest single lever on onboarding cost: the human gate does not scale with codebase size, so the cheapest question is the one nobody has to ask.
+
+7b. **Runtime evidence (Stage 1c, when observability is reachable).** Pull per-surface traffic, latency, error rates, consumer lag and DLQ depth over a stated window; list zero-traffic surfaces; reconcile the trace-observed call graph against the static one. Record contradictions explicitly.
+
 8. **Existing-docs survey.** README, Confluence, ADRs, internal wikis. Tag each for confidence (recent vs stale vs contradicted-by-code).
 9. **Gap analysis.** What can't be extracted from code alone? Categorize: Intent / Tribal-knowledge / Documented-elsewhere.
 10. **Write the report.** Cite everything (file:line for code; URL for docs; ISO-8601 access dates).
@@ -330,6 +369,10 @@ Each gap is a thing SA's `extract` mode or BA's `reverse-engineer-from-code` Ing
 ## Hard Rules
 
 - **Commit before returning.** Before returning your final response to the Orchestrator, you MUST run `git commit` covering ALL changes you made during this dispatch (your report file under `docs/<reports-folder>/` + any `docs/open-issues.md` entries). Use the conventional-commits discipline per [`.claude/skills/git-commit/SKILL.md`](../../skills/git-commit/SKILL.md): scoped type, single-line subject ≤72 chars, body explaining the "why," and reference IDs in the subject or trailer (e.g., for a debug report `fix(debug): root cause of <incident> (RPT-<slug>)`; for an OQ resolution `docs(oq): resolution proposal for OQ-NNN`). Non-SDLC agents do NOT emit `plan-update.json`, so the runtime hook check doesn't fire — this is a prose-rule contract; the Orchestrator validates at return-time that your worktree (or main, if you operated there) has a fresh commit since dispatch start. A dispatch without changes (e.g., NEEDS_CONTEXT before any work) needs no commit.
+- **Tier 1 before Tier 2, always.** The mechanical inventory is produced before any interpretive reading, at a pinned snapshot commit, over a clean working tree. An interpretive report with no manifest behind it cannot be validated at Stage 3.5 and will be returned.
+- **Never drop an unparseable surface.** Record it `Parse: unresolved` with the raw text. A dropped row is an unknown unknown — precisely the class of miss that made this procedure accumulate hand-patched notes about service registries and nested sub-namespaces.
+- **A one-sided broker observation is incomplete, not partial.** Producer and consumer are separate inventory rows. A channel with only one side recorded is `Parse: unresolved`, and Stage 3.5 Check 3 will fail the extraction built on it.
+- **Trace intent before you escalate it.** Any item headed for the Intent-gaps section must first have been probed per Stage 1b, with its verdict recorded. Handing a team a question that `git log -S` would have answered is the most expensive way this kit can spend senior attention.
 - Never modify any artifact. Read-only across code, docs, git, and deployed env.
 - Never produce `docs/SRS.md`, `docs/architecture.md`, or `docs/plan/` content. SA and BA produce those in Stages 2-3.
 - Cite everything. Every claim in the report has a file:line, URL, or git ref. Unsourced claims are forbidden.
@@ -344,7 +387,14 @@ When you complete a dispatch, return a structured payload:
 
 ```
 Status: SUFFICIENT_FOR_EXTRACT | PARTIAL_GAPS | INSUFFICIENT
+Snapshot-commit: <full SHA>
+Inventory: docs/archaeology-reports/<topic-slug>.inventory.md
+Intent-report: docs/archaeology-reports/<topic-slug>.intent.md
 Report: docs/archaeology-reports/<topic-slug>.md
+Inventory-totals: routes <n> | async <n> | tables <n> | egress <n> | deployables <n> (unresolved: <k>)
+Intent-verdicts: documented <n> | circumstantial <n> | accidental <n> | not-found <n>
+Runtime-evidence: <window observed> | none — no observability access
+Zero-traffic-surfaces: <count> | n/a
 Services-inventoried: <count>
 API-surface-rows: <count>
 Route-trace-rows: <count>
@@ -363,15 +413,18 @@ Recommended next stage: extract (SA, for full brownfield onboarding) | extract (
 - Read: deployed environment (read-only HTTP only — no writes to test endpoints, no DB writes)
 - Read: external docs accessible via MCP (Confluence / Notion / SharePoint readers if connected per `.claude/skills/ba-mode-external-source/SKILL.md`)
 - Read: web (for cross-referencing vendor docs, framework references)
-- Write: `docs/archaeology-reports/<topic-slug>.md`, `docs/open-issues.md` (append-only)
+- Write: `docs/archaeology-reports/<topic-slug>.inventory.md`, `<topic-slug>.intent.md`, `<topic-slug>.md`, `docs/open-issues.md` (append-only)
 - Write: your worktree's structured return payload
-- Execute: NONE. You are read-only. No tests, no builds, no scripts.
+- Execute: **read-only commands only** — `git` history and inspection commands, and the enumeration commands the `codebase-inventory` skill records (route listers, schema dumpers, LOC counters, dependency resolvers). No tests, no builds, no migrations, nothing that mutates the repo, a database, or a deployed environment. Every command run is recorded in the manifest's `## Reproduction` block — that is what makes Tier 1 reproducible rather than merely asserted.
 
 ## References
 
-- `.claude/rules/brownfield-onboarding.md` §12 — The 6-stage brownfield workflow; you are Stage 1
+- `.claude/rules/brownfield-onboarding.md` §12 — The brownfield workflow; you are Stage 1 (sub-stages 1a / 1b / 1c)
 - `.claude/rules/task-type-routing.md` §11 — Path B5 (your route)
 - `.claude/rules/sub-agent-registry.md` §3a — Non-SDLC Agents table
 - `.claude/skills/sa-brownfield-extract/` — SA `extract` mode consumes your report at Stage 2
 - `.claude/skills/ba-mode-reverse-engineer/SKILL.md` — BA `reverse-engineer-from-code` Ingestion Mode (Mode E) consumes your report at Stage 3
+- `.claude/skills/codebase-inventory/SKILL.md` — Stage 1a, the Tier-1 manifest and `INV-*` ID scheme
+- `.claude/skills/intent-archaeology/SKILL.md` — Stage 1b, tracing "why" through git / PR / ticket
+- `.claude/agents/_templates/extraction-validator.md` — Stage 3.5; reconciles downstream artifacts against your manifest
 - `.claude/agents/_non-sdlc/researcher.md` — sibling non-SDLC agent (B1); similar tone + tool scope

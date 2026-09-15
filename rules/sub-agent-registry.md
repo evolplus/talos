@@ -42,14 +42,14 @@ SRS is Signed-off.
   Generator-Version: 1.0
   SRS-Status-At-Generation: <Draft | In-Review | absent>
   Mode: bootstrap
-  Dispatch-Intent: <ba-first-dispatch | sa-extract | sa-external-integration-adequacy>
+  Dispatch-Intent: <ba-first-dispatch | sa-extract | sa-external-integration-adequacy | extraction-validation>
   Will-Be-Regenerated-On: SRS Status → Signed-off
   ```
 
   No `## Project Specialization` is added in bootstrap mode.
 - **Triggered when:**
   1. **Default mode**: SRS Status transitions Draft → Signed-off (the primary regen trigger); architecture is created or substantially changed; operator runs `/regenerate-agents`; or default-mode dispatch of any SDLC role finds its file absent post-sign-off. **On subsequent sign-off transitions (after the first ever), the Orchestrator halts at §9 Step 4.5 with an operator regen-confirmation gate — three options (skip / targeted regen / full regen) with smart default based on SRS diff size. Default mode supports a `target_roles:` parameter for the targeted-regen path.**
-  2. **Bootstrap mode**: Orchestrator §9 Step 4.5 detects a pre-sign-off dispatch (BA first-ever, SA `extract`, SA `external-integration-adequacy`) and the target role's file is absent. Dispatch input names `mode: bootstrap` + `target: <role>` + (for SA) `dispatch_intent: <extract | external-integration-adequacy>`.
+  2. **Bootstrap mode**: Orchestrator §9 Step 4.5 detects a pre-sign-off dispatch (BA first-ever, SA `extract`, SA `external-integration-adequacy`, `extraction-validator` at brownfield Stage 3.5) and the target role's file is absent. Dispatch input names `mode: bootstrap` + `target: <role>` + (for SA) `dispatch_intent: <extract | external-integration-adequacy>`. The Extraction Validator is always a bootstrap generation — it runs before any SRS sign-off by construction.
 - **Exit criteria:**
   - Default mode: every SDLC role per §3a has a file; every file's `Generated-From-SRS-Hash` equals the current SRS hash; no skeleton rule dropped.
   - Bootstrap mode: the one named role has a file with `Mode: bootstrap` header; no other roles touched.
@@ -174,6 +174,13 @@ The pre-flight Step 0 (orchestrator-operating-rules.md §9 Step 0) guarantees a 
 - **Exit criteria:** Verdict written; architecture Status correctly handled (`qualified` → `Validated`; `unqualified` → stays `Draft` with a revision list); `plan-update.json` signals routing to Orchestrator.
 - **Authority:** The **sole** role permitted to write `Status: Validated` to `docs/architecture.md`. SA cannot self-validate; TL cannot start until `Validated`; the Orchestrator cannot manually flip Status; the operator cannot override (no escape hatch). Closes the kit's last self-attested load-bearing artifact — same author-≠-approver discipline the two SRS validators apply to the SRS.
 
+### 3.12 Extraction Validator (independent brownfield gate; post-BA-Mode-E, pre-human-confirmation)
+
+- **Input:** `docs/archaeology-reports/<slug>.inventory.md` (Tier-1 manifest) + `<slug>.intent.md` + `docs/architecture.md` with `Source: extracted` + the extracted `docs/api-contracts/` stubs + `docs/SRS.md` with `Source: extracted` / `Status: Draft` + every extracted `docs/user-stories/<US-ID>.md` and `docs/frs/<FR-ID>.md` + the `codebase-inventory` / `intent-archaeology` skills + the codebase at the pinned `snapshot_commit`. Dispatched by the Orchestrator at brownfield Stage 3.5, after BA Mode E returns and BEFORE the Stage 4 human gate.
+- **Output:** `docs/extraction-validation-reports/<slug>-v<n>.md` — append-only, one `## Validation run <N>` per dispatch; seven checks (citation resolution / reverse coverage / contract-stub coverage / forward traceability + confidence-tier conformance / intent-trace completeness / invention detection / risk-ranked confirmation set). On a qualified governance verdict, also `docs/brownfield-confirmation/<slug>.md` — the ranked set with a stated budget and a Product / Engineering audience split.
+- **Exit criteria:** Verdict written; on `qualified` the `Extraction-Validated` header is stamped on `docs/architecture.md` and `docs/SRS.md`; on `unqualified` the headers are untouched and every finding names the stage it routes to (1a / 1b / 2 / 3); `plan-update.json` carries `verdict` + `next_action`.
+- **Authority:** The **sole** role permitted to write `Extraction-Validated` — the header that unblocks Stage 4. SA cannot self-validate its extract; BA cannot self-validate Mode E; the Orchestrator cannot stamp it; the operator cannot override. Closes the last place in the kit where the author was also the approver: `srs-source-validator` validates against `docs/requirements/`, which brownfield leaves empty, and `architecture-validator` presupposes a signed-off SRS and skips coverage in its brownfield carve-out. `qualified` certifies fidelity to the code and nothing more — it is never a substitute for the Stage 4 human gate.
+
 ---
 
 ## 3a. Sub-Agent Registry
@@ -194,6 +201,7 @@ The roles in Section 3 are conceptual. The actual invokable sub-agents are defin
 | SRS Source Validator | `.claude/agents/srs-source-validator.md` | `srs-source-validator` | Read entire repo (especially `docs/requirements/`, `docs/SRS.md`, `docs/user-stories/`, `docs/frs/`, `docs/external-integrations/`); Write `docs/SRS.md` (Status + Changelog + OQ appends only), `docs/srs-validation-reports/v<srs-version>.md`, `docs/open-issues.md`, `plan-update.json` |
 | SRS Feasibility Validator | `.claude/agents/srs-feasibility-validator.md` | `srs-feasibility-validator` | Read entire repo + `docs/architecture.md` (when present) + `docs/decisions/` + skills `solution-defaults`, `third-party-dependency-evaluation`; Write `docs/SRS.md` (Status + Changelog + OQ appends only), `docs/srs-feasibility-reports/v<srs-version>.md`, `docs/open-issues.md`, `plan-update.json` |
 | Architecture Validator | `.claude/agents/architecture-validator.md` | `architecture-validator` | Read entire repo (esp. `docs/architecture.md`, `docs/decisions/`, `docs/instrumentation-contract.md`, `docs/SRS.md`, `docs/user-stories/`, `docs/frs/`, `docs/external-integrations/`) + skills `solution-defaults`, `format-boundary-contracts`, `data-lifecycle-contracts`; Write `docs/architecture.md` (Status + `Validated-by` + Changelog only), `docs/architecture-validation-reports/v<arch-version>.md`, `docs/open-issues.md`, `plan-update.json` |
+| Extraction Validator | `.claude/agents/extraction-validator.md` | `extraction-validator` | Read entire repo at the pinned snapshot commit (esp. `docs/archaeology-reports/`, `docs/architecture.md`, `docs/api-contracts/`, `docs/SRS.md`, `docs/user-stories/`, `docs/frs/`) + skills `codebase-inventory`, `intent-archaeology`; Write `docs/extraction-validation-reports/<slug>-v<n>.md`, `docs/brownfield-confirmation/<slug>.md`, `docs/architecture.md` + `docs/SRS.md` (`Extraction-Validated` header only), `docs/open-issues.md`, `plan-update.json` |
 | Agent Generator | `.claude/agents/_meta/agent-generator.md` (static, hand-maintained) | `agent-generator` | Read SRS, architecture, templates; Write `.claude/agents/*.md` (excluding `_templates/`) |
 
 **Runtime dispatch contract.** Every kit-defined role has a corresponding Claude Code sub-agent identified by the `Dispatch subagent_type` column. The Orchestrator MUST use this value when calling Claude Code's `Task` tool — never `subagent_type: general-purpose`. See CLAUDE.md §10 hard rule "Role-specialized dispatch required" and orchestrator-operating-rules.md §9 Step 4.5 (Sub-agent availability check) for the enforcement contract.

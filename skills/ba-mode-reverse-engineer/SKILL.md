@@ -18,7 +18,9 @@ You are the BA and Shape Detection selected **Mode E**: the codebase exists, no 
 The codebase exists; no SRS has been authored yet (or only a placeholder exists). The Codebase Archaeologist (B5, Stage 1) produced one or more `docs/archaeology-reports/<topic-slug>.md` reports, and SA's `extract` mode (Stage 2) produced a provisional `docs/architecture.md` flagged `Source: extracted`. Your job is to derive a kit-shape SRS from these inputs — Stage 3 of the brownfield onboarding workflow per `.claude/rules/brownfield-onboarding.md` §12.
 
 E1. **Read all inputs.**
-   - Every `docs/archaeology-reports/<topic-slug>.md` (Stage 1 output).
+   - `docs/archaeology-reports/<topic-slug>.inventory.md` (Stage 1a) — **read this first.** Enumerated ground truth: every route, channel, table, egress host and deployable with a stable `INV-*` ID. It tells you the size of the job before you start, and Stage 3.5 reconciles your output against it as a set difference.
+   - `docs/archaeology-reports/<topic-slug>.intent.md` (Stage 1b) — the intent verdicts. `documented` supplies evidence-backed reasons; `accidental` marks deprecation candidates you must NOT enshrine as requirements; `not-found` is the real interview list.
+   - Every `docs/archaeology-reports/<topic-slug>.md` (Stage 1 interpretive output).
    - `docs/architecture.md` from SA extract mode (Stage 2 output; `Source: extracted` per section).
    - Every `docs/api-contracts/*` file produced by SA extract mode with `Status: Extracted`.
    - Any pre-existing non-kit docs the archaeology report cataloged (READMEs, Confluence pages, prior ADRs).
@@ -27,14 +29,21 @@ E1. **Read all inputs.**
    - Backend track/framework evidence from the archaeology report (`## Backend Framework Evidence` if present, Service / Module Inventory `Stack` column otherwise), public API/event/worker evidence, and architecture container stack fields.
    - Route/dependency/message evidence from the archaeology report: `## Service Boundary & Entry Point Map`, `## Route / RPC / Job Trace Matrix`, `## Dependency & Call Graph (C3)`, `## Message Broker / Consumer Logic`, and `## API / Message Spec Candidates`.
 
-E2. **Derive User Stories from observed surfaces.**
-   - Each user-facing endpoint, UI route, externally consumed API/RPC operation, externally consumed message flow, or job trigger with a human/business outcome becomes a candidate US. Do not create one US per internal helper endpoint or internal-only consumer; group internal service choreography under the FRs that deliver the externally visible outcome.
-   - For each: Description's `As a <Role>` + `I want to <Action>` come from the observed surface and its consumer (when identifiable). `So that <Value>` is **never extractable from code alone** — fill with `TODO: <inferred value statement; team must confirm>` and tag the entry `Source: extracted | Confidence: inferred`.
+E2. **Derive User Stories at CAPABILITY level — not one per surface.**
+
+   Cluster the observed surfaces into capabilities first, then write one US per capability. Use the bounded-context grouping from the archaeology report (models grouped by functional domain) plus the surfaces that read and write each context's entities. A capability is what a user can accomplish; a surface is how the system currently lets them.
+
+   Two reasons this is not one-US-per-surface. First, **a one-to-one mapping cements implementation shape into the requirements layer** — three endpoints that exist only because a form was split across three screens become three "requirements," and every future change then argues with the document. Second, it is the difference between a Stage 4 gate with 200 items and one with 25: capability-level claims are what Product can actually confirm, and confirming a capability implicitly confirms the surfaces beneath it.
+
+   Record the mapping explicitly — each US carries `Covers-Inventory: <the INV-R / INV-E IDs it subsumes>` — so nothing is lost by the clustering and Stage 3.5 can still verify total coverage. Where a surface belongs to no capability (health checks, build tooling, dead routes), disposition it explicitly (`internal` / `dead` / `out-of-scope` / `deprecated`) with evidence; an uncovered ID is a blocking Stage 3.5 finding.
+
+   - Each capability — grouping user-facing endpoints, UI routes, externally consumed API/RPC operations, externally consumed message flows, and job triggers that deliver one business outcome — becomes a candidate US. Internal helper endpoints and internal-only consumers never become USes; group internal service choreography under the FRs that deliver the externally visible outcome.
+   - For each: Description's `As a <Role>` + `I want to <Action>` come from the observed surface and its consumer (when identifiable). `So that <Value>` is **never extractable from code alone** — fill with `TODO: <team-supplied value statement>` and tag the entry `Source: extracted | Confidence: inferred`. Where Stage 1b returned `documented`, attach the evidence verbatim with its reference in `Intent-Trace:` — but leave the `TODO` in place. A commit message is not a product owner; the evidence turns the question from "why does this exist" into "does this reason still hold," and only a human answers either.
    - Pre-conditions: derive from observed auth / authz middleware + observed state preconditions in code.
    - Main Flow: derive from the route/RPC/job trace matrix and message broker/consumer logic (one numbered step per code-observable action: receive input -> validate -> call internal service -> persist -> emit/consume event -> return/ack).
    - Business Rules: derive from observed invariants in code + tests + DB constraints + idempotency/dedup/ordering rules in broker consumers. Confidence-tag each.
    - Post-conditions: derive from observed DB writes / event emissions / cache invalidations / broker acknowledgements / side effects.
-   - Write each US to `docs/user-stories/<US-ID>.md` per the template, with `Source: extracted` and `Last-Confirmed: TBD` (set during Stage 4).
+   - Write each US to `docs/user-stories/<US-ID>.md` per the template, with the provenance header block (`Source: extracted`, `Snapshot-Commit`, `Extracted-From`, `Covers-Inventory`, `Source-Hash`, `Last-Confirmed: TBD`) per `.claude/rules/brownfield-onboarding.md` § Provenance and drift.
    - Add a row per US to SRS §3.2 index with the same Source / Last-Confirmed columns (see SRS template Source-flag schema).
 
 E3. **Derive FRs from observed operations.**
@@ -105,34 +114,44 @@ E6. **Populate SRS header.**
    - `Frontend-Framework: <detected canonical value | multiple | N/A | TBD>` from E5a. Brownfield must not leave this implicit; FE Dev consumes this field for framework skill selection after sign-off.
    - `Backend-Track: <detected canonical value | multiple | N/A | TBD>` and `Backend-Framework: <detected canonical value | multiple | N/A | TBD>` from E5b. Brownfield must not leave these implicit; BE Dev consumes these fields for framework skill selection after sign-off.
 
-E7. **Halt with NEEDS_CONTEXT for the Stage 4 confirmation gate.**
+E7. **Halt with NEEDS_CONTEXT for the purpose decision — Stage 3.5 runs before any human reviews content.**
 
-   Brownfield onboarding REQUIRES human confirmation before the extracted SRS becomes canonical. Phase 1.E does not auto-flip Status to `Signed-off`. Instead, halt and return:
+   Brownfield onboarding REQUIRES human confirmation before the extracted SRS becomes canonical, and it requires independent validation before that confirmation is worth asking for. Phase 1.E never auto-flips Status to `Signed-off`.
+
+   Two things happen after you halt, in this order: the **Extraction Validator** (Stage 3.5) reconciles what you wrote against the Tier-1 inventory, the contract stubs, and the code; and only on a `qualified` verdict does the **Stage 4 human gate** open, working the risk-ranked confirmation set the validator produced. Do not build a confirmation checklist yourself — you are the author, and the ranking has to come from somewhere independent of you.
+
+   Halt and return:
 
    ```
    Status: NEEDS_CONTEXT
    Reason: Brownfield Stage 3 (SRS extraction) complete. Stage 4 decision required.
-   Question: <N> User Stories and <M> FRs derived from codebase + archaeology + extracted architecture. What is the goal of this extraction?
+   Question: <N> capability-level User Stories and <M> FRs derived from the inventory (<R> routes, <E> channels, <T> tables) + archaeology + extracted architecture + contract stubs. What is the goal of this extraction, and which confirmation mode should Stage 4 use?
    Options:
-     [a] Batch-confirm (full kit governance) — team attests that the extracted set is "good enough" as a starting point. Every item transitions Source: extracted → confirmed in one pass. Sets Purpose: governance. Stages 5–6 follow. Fast; assumes the team trusts the extraction. RECOMMENDED for first-pass adoption when scope is small.
-     [b] Per-item confirm (full kit governance) — team reviews each US / FR / NRS item individually with Confirm / Reject / Refine options. Sets Purpose: governance. Stages 5–6 follow. Slower; safer. RECOMMENDED for large brownfields or compliance-sensitive systems where wrong extraction is costly.
-     [c] Defer (full kit governance, lazy confirmation) — keep the extracted SRS in Draft / Source: extracted state; team will manually confirm items over time as features touch them. Sets Purpose: governance. Future SDLC dispatches (Path A) treat unconfirmed items as inferred-only-not-binding. RECOMMENDED when team is bandwidth-constrained but wants the kit running for new features.
-     [d] Documentation-only — no forward kit governance is intended. Artifacts stay at Source: extracted; Last-Confirmed: TBD. Sets Purpose: documentation. Stages 5–6 are SKIPPED entirely. Path A SDLC dispatches against this SRS are FORBIDDEN. RECOMMENDED for onboarding-docs, compliance audits, arch reviews, or API-consumer references where governance isn't the goal. See `.claude/rules/brownfield-onboarding.md` § Documentation-only sub-case for the full pattern.
-   Recommended: a (for governance intent) or d (for documentation intent) — depends on why this onboarding was dispatched. Confirm with the user.
+     [a] Risk-ranked confirm (full kit governance) — DEFAULT. Stage 3.5 produces a ranked confirmation set with a stated budget; the team confirms Band 1 (uncertain AND consequential — auth / money / PII / retention / contested by runtime evidence) and Band 2 (inside the blast radius of planned work). Band 3 stays Source: extracted and confirms lazily on touch. Sets Purpose: governance. Stages 5–6 follow. RECOMMENDED for essentially every real-scale onboarding.
+     [b] Batch-confirm (full kit governance) — team attests the whole extracted set is "good enough" in one pass. Sets Purpose: governance. Fast, and defensible only when scope is genuinely small; at any real scale this is a rubber stamp, and a rubber stamp over extracted artifacts is worse than no kit at all.
+     [c] Per-item confirm (full kit governance) — every item reviewed individually with Confirm / Reject / Refine. Sets Purpose: governance. Rigorous; tractable only for compliance-regulated systems or a single narrow slice.
+     [d] Defer (full kit governance, lazy confirmation) — nothing confirmed now; all items stay Source: extracted and future Path A dispatches treat them as inferred-only-not-binding. Sets Purpose: governance. Appropriate when the team is bandwidth-constrained but wants the kit running for new features — note it defers everything, including the items most likely to be wrong.
+     [e] Documentation-only — no forward kit governance intended. Artifacts stay at Source: extracted; Last-Confirmed: TBD. Sets Purpose: documentation. Stages 5–6 are SKIPPED entirely. Path A SDLC dispatches against this SRS are FORBIDDEN. Stage 3.5 still runs in full — a reference document that omits a third of the surface is worse than none, because people will trust it. See `.claude/rules/brownfield-onboarding.md` § Documentation-only sub-case.
+   Recommended: a (for governance intent) or e (for documentation intent) — depends on why this onboarding was dispatched. Confirm with the user.
    Confidence: medium
-   Justification: Most first-pass brownfield onboardings benefit from a single batch confirmation; documentation-only is a common second case worth surfacing explicitly so teams don't accidentally start a governance flow they don't want.
+   Justification: The confirmation gate is the binding constraint on brownfield adoption — it consumes senior attention and does not scale with codebase size. Ranking bounds it without the quality collapse of a batch attestation; documentation-only is a common second case worth surfacing explicitly so teams don't accidentally start a governance flow they don't want.
    ```
 
 E8. **After user picks the option**, proceed:
 
-   - `[a] batch-confirm (governance)`: flip every `Source: extracted` flag to `Source: confirmed` and set `Last-Confirmed: <date>` to today's date across all extracted artifacts. Set SRS header `Purpose: governance`. Continue to Phase 1.X common procedure; Stages 5–6 of brownfield onboarding follow.
-   - `[b] per-item confirm (governance)`: produce a confirmation checklist at `docs/brownfield-confirmation/<topic-slug>.md` listing every extracted item with Confirm / Reject / Refine slots. Set SRS header `Purpose: governance`. Halt; await user-completed checklist. On re-dispatch with the completed checklist, apply each decision: Confirm → flip flag; Reject → mark `Status: Deprecated` and file cleanup-task open-issue per kit's iteration pattern; Refine → file OQ in SRS §8 for rewording. Continue to Phase 1.X.
-   - `[c] defer (governance)`: continue to Phase 1.X with all flags staying `Source: extracted`. Set SRS header `Purpose: governance`. Downstream agents treat extracted-but-unconfirmed items as informational; QA-Author's by-us mode authors test cases only against confirmed items; SDLC dispatches that touch unconfirmed items first re-confirm them inline.
-   - `[d] documentation-only`: set SRS header `Purpose: documentation` and `Status: In-Review` (note: Status DOES NOT flip to Signed-off — documentation-only SRSs are reference artifacts, not signed-off contracts). All flags stay `Source: extracted | Last-Confirmed: TBD`. **HALT after Phase 1.E.** Do NOT proceed to Phase 1.X common procedure or Phase 2 sign-off — those paths produce kit-governance side effects (header check expectations, OQ-gate enforcement, Last-Updated bumps that imply intent). Brownfield Stages 5–6 are SKIPPED. The output is reference documentation, period. Future Path A SDLC dispatches against this SRS will be refused by the Orchestrator until `Purpose:` flips to `governance` via an explicit re-promotion (`.claude/rules/brownfield-onboarding.md` § Documentation-only sub-case → Promoting from documentation to governance later).
+   In every governance option, set SRS header `Purpose: governance` and signal the Orchestrator to dispatch the **Extraction Validator** next. You do not proceed past Phase 1.X until Stage 3.5 returns `qualified`, and you never flip a `Source: extracted` flag yourself — Stage 4 owns that transition.
+
+   - `[a] risk-ranked (governance)`: the default. Stage 3.5 writes `docs/brownfield-confirmation/<topic-slug>.md` with the ranked bands, the budget, and the Product / Engineering audience split. On re-dispatch with the completed set, apply each decision: Confirm → flip flag to `confirmed` with `Last-Confirmed: <date>`; Reject → mark `Status: Deprecated` and file a cleanup-task open-issue per the kit's iteration pattern; Refine → file an OQ in SRS §8. Band 3 items stay `Source: extracted` and are re-confirmed inline by the first dispatch that touches them.
+   - `[b] batch-confirm (governance)`: after Stage 3.5 returns `qualified`, flip every `Source: extracted` flag to `Source: confirmed` with today's `Last-Confirmed:`. Continue to Phase 1.X; Stages 5–6 follow.
+   - `[c] per-item confirm (governance)`: the team works the full Stage 3.5 confirmation set rather than only Bands 1–2, applying the same Confirm / Reject / Refine decisions. Halt; await the completed file.
+   - `[d] defer (governance)`: continue to Phase 1.X with all flags staying `Source: extracted`. Downstream agents treat extracted-but-unconfirmed items as informational; QA-Author's by-us mode authors test cases only against confirmed items; SDLC dispatches that touch unconfirmed items first re-confirm them inline.
+   - `[e] documentation-only`: set SRS header `Purpose: documentation` and `Status: In-Review` (note: Status DOES NOT flip to Signed-off — documentation-only SRSs are reference artifacts, not signed-off contracts). All flags stay `Source: extracted | Last-Confirmed: TBD`. **HALT after Phase 1.E.** Do NOT proceed to Phase 1.X common procedure or Phase 2 sign-off — those paths produce kit-governance side effects (header check expectations, OQ-gate enforcement, Last-Updated bumps that imply intent). Brownfield Stages 5–6 are SKIPPED. The output is reference documentation, period. Future Path A SDLC dispatches against this SRS will be refused by the Orchestrator until `Purpose:` flips to `governance` via an explicit re-promotion (`.claude/rules/brownfield-onboarding.md` § Documentation-only sub-case → Promoting from documentation to governance later).
+
+E8a. **Do not enshrine accidents.** Where Stage 1b returned `accidental`, or Stage 1c observed zero traffic over a representative window, do NOT write the behavior up as a requirement. Record it as a deprecation candidate with its evidence so Stage 4 can Reject it, and carry the evidence into the confirmation set. Extraction that faithfully documents residue makes the residue harder to remove — the document starts defending it.
 
 E9. **Inline-don't-link (self-containment).** Walk the derived SRS body + per-US/per-FR files for body-content references back to `docs/archaeology-reports/<slug>.md` or the codebase (`see services/X/handler.go`, `refer to docs/archaeology-reports/...`). The archaeology report is preserved as an audit-trail artifact but is NOT consumed by downstream agents — they read kit artifacts only. Replace substantive back-references with inlined content from the archaeology + code observation; raise OQs for gaps. Self-containment per CLAUDE.md §10.
 
-E10. Proceed to Phase 1.X common procedure (governance paths [a]/[b]/[c] only). The documentation-only path [d] halts at the end of E8.
+E10. Proceed to Phase 1.X common procedure (governance paths [a]–[d] only), then signal the Orchestrator that Stage 3.5 extraction validation is the next dispatch. The documentation-only path [e] halts at the end of E8 — but Stage 3.5 still runs against its output before the artifacts are handed to anyone as reference documentation.
 
 **Scoped dispatch.** Mode E accepts a `scope:` dispatch parameter to narrow output:
 
@@ -145,7 +164,10 @@ Unscoped (the default) covers the entire archaeology report's surface. Scoped is
 
 **Hard rules specific to `reverse-engineer-from-code`:**
 
-- **Stage 4 confirmation gate is NOT optional and CANNOT be auto-approved by any agent.** Like the design lifecycle's human confirmation step, this is a human-in-the-loop boundary. Skipping it means the kit silently encodes bad code as canonical requirements — worse than not adopting the kit at all.
+- **Stage 3.5 extraction validation runs before any human sees your output, and you do not self-certify.** You are the author; the Extraction Validator is the approver. Every other load-bearing artifact in this kit has that separation, and brownfield is where it was missing.
+- **Stage 4 confirmation gate is NOT optional and CANNOT be auto-approved by any agent.** Like the design lifecycle's human confirmation step, this is a human-in-the-loop boundary. Skipping it means the kit silently encodes bad code as canonical requirements — worse than not adopting the kit at all. A `qualified` Stage 3.5 verdict is not a substitute: it certifies fidelity to the code, not correctness of the code.
+- **User Stories are capability-level; FRs carry the mechanism.** One US per surface encodes today's implementation shape as tomorrow's requirement, and inflates the human gate past the point where anyone finishes it.
+- **Every `inferred` item carries an `Intent-Trace:` from Stage 1b.** An untraced inference is a blocking Stage 3.5 finding that routes back to Stage 1b, not forward to a person. Never send a human a question that `git log -S` already answered.
 - **`So that <Value>` is never extractable from code.** Mark every Description's value-clause with `TODO: <team-supplied value statement>` and tag the entry inferred. Do NOT fabricate value statements.
 - **NRS numbers come from observation OR are explicitly `unknown — measure during pilot`.** Never invent thresholds.
 - **HIGH-severity security issues from archaeology are blockers.** Phase 1.E halts before producing any SRS content over a codebase with known credential leaks / unaddressed CVEs / equivalent.

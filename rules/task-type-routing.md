@@ -90,9 +90,9 @@ Work that produces a document, not shipping code. The kit hosts these via dedica
 | | |
 |---|---|
 | **Triggers** | onboard kit to existing project, reverse-engineer codebase, document as-built system, brownfield ingestion, "what does this code do", "we have N years of code with no SRS" |
-| **Path** | `.claude/agents/_non-sdlc/codebase-archaeologist.md` — read-only sweep across code + git history + deployed env + existing non-kit docs |
-| **Output** | `docs/archaeology-reports/<topic-slug>.md` (one per dispatch; multi-service projects may have multiple) |
-| **Gate** | Report is informational ONLY. NOT a kit-canonical artifact. SA's `extract` mode and BA's `reverse-engineer-from-code` Ingestion Mode (Mode E) consume the report at Stages 2–3 of `.claude/rules/brownfield-onboarding.md` §12. Confirmation by humans at Stage 4 is what produces canonical artifacts. |
+| **Path** | `.claude/agents/_non-sdlc/codebase-archaeologist.md` — three sub-stages at a pinned snapshot commit: 1a mechanical inventory (`codebase-inventory` skill), 1b intent archaeology (`intent-archaeology` skill), 1c runtime evidence (optional), then the interpretive report |
+| **Output** | `docs/archaeology-reports/<topic-slug>.inventory.md` + `.intent.md` + `.md` (one set per dispatch; multi-service projects may have several) |
+| **Gate** | Reports are informational ONLY. NOT kit-canonical artifacts. SA's `extract` mode and BA's `reverse-engineer-from-code` Ingestion Mode (Mode E) consume them at Stages 2–3 of `.claude/rules/brownfield-onboarding.md` §12; the **Extraction Validator** reconciles those outputs against the Tier-1 inventory and the contract stubs at Stage 3.5; human confirmation at Stage 4 is what produces canonical artifacts. |
 
 ### Path C — Direct skill invocation
 

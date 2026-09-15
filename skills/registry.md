@@ -24,7 +24,7 @@ Skills consulted by any agent or human committing or operating in the repo, rega
 | [`ba-mode-multi-doc`](./ba-mode-multi-doc/SKILL.md) | Ingestion **Mode B** setup (Phase 1.B) — existing SRS + per-US/FR files with pairing orphans | active |
 | [`ba-mode-external-source`](./ba-mode-external-source/SKILL.md) | Ingestion **Mode C** setup (Phase 1.C) — SRS content in Confluence/Notion/Jira/SharePoint via MCP; + re-ingestion path | active |
 | [`ba-mode-augment`](./ba-mode-augment/SKILL.md) | Ingestion **Mode D** setup (Phase 1.D) — steady state; verbatim-captures new requirements before synthesis | active |
-| [`ba-mode-reverse-engineer`](./ba-mode-reverse-engineer/SKILL.md) | Ingestion **Mode E** setup (Phase 1.E) — brownfield Stage 3; derive SRS from code + archaeology + extracted architecture | active |
+| [`ba-mode-reverse-engineer`](./ba-mode-reverse-engineer/SKILL.md) | Ingestion **Mode E** setup (Phase 1.E) — brownfield Stage 3; derive capability-level USes + as-built FRs from the Tier-1 inventory + archaeology + extracted architecture + contract stubs | active |
 | [`ba-mode-requirements-folder`](./ba-mode-requirements-folder/SKILL.md) | Ingestion **Mode F** setup (Phase 1.F) — greenfield; synthesize SRS from docs/requirements/ fragments | active |
 | [`ba-ingestion-pipeline`](./ba-ingestion-pipeline/SKILL.md) | Every ingestion dispatch after the mode skill — Phase 1.X common + Phase 1.Z delta + Phase 2 sign-off gate | active |
 | [`ba-design-completeness`](./ba-design-completeness/SKILL.md) | Phase 3 — design completeness verification against a UI/UX Designer handoff (post-sign-off, pre-FE) | active |
@@ -47,6 +47,16 @@ Skills consulted by any agent or human committing or operating in the repo, rega
 | [`c4-author`](./c4-author/SKILL.md) | Authoring C1/C2/C3 C4 diagrams in `docs/architecture.md` (design mode) or extracting to C3 (brownfield extract mode). C4-PlantUML notation; worked example + pitfalls. | active |
 | [`data-lifecycle-contracts`](./data-lifecycle-contracts/SKILL.md) | Identifying gate fields and authoring `docs/architecture.md` §6 Cross-Component Data Contracts table — write-ownership for columns read by one component to gate behavior. Prevents the class of bug where ORM-convenience patterns silently break downstream skip / state-machine / eligibility gates. | active |
 | [`format-boundary-contracts`](./format-boundary-contracts/SKILL.md) | Identifying format boundaries (data crossing systems with different format specs for the same conceptual type — ISO-8601 vs MySQL DATETIME, integer-cents vs decimal-string, etc.) and authoring `docs/architecture.md` §6 format-boundary rows. Prevents the class of bug where each layer (DAL, ORM, tests, retry logic) assumes someone else handled format conversion. Sibling to `data-lifecycle-contracts`; both live in §6. | active |
+
+### Brownfield — Codebase Archaeologist, SA extract, Extraction Validator
+
+Skills consulted during the brownfield onboarding workflow (`.claude/rules/brownfield-onboarding.md` §12), where the flow inverts to code → architecture → SRS.
+
+| Skill | When | Status |
+|---|---|---|
+| [`codebase-inventory`](./codebase-inventory/SKILL.md) | Stage 1a — the mechanical Tier-1 manifest at a pinned snapshot commit (routes, channels, schema, egress, deployables, prod libraries, test specs), ID-stamped and reproducible. Run BEFORE any interpretive reading; it is the ground truth Stage 3.5 reconciles against. | active |
+| [`intent-archaeology`](./intent-archaeology/SKILL.md) | Stage 1b — trace the "why" through `git log -S` / blame / merge commit / PR / ticket before escalating an item to a human. Consult whenever an item is about to be tagged `Confidence: inferred`. | active |
+| [`sa-brownfield-extract`](./sa-brownfield-extract/SKILL.md) | Stage 2 — SA `extract` mode: provisional architecture + extracted contract stubs from the manifest and archaeology reports | active |
 
 ### TL — Tech Lead
 
