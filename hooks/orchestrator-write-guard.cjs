@@ -39,6 +39,13 @@
 //     either add the path to the ownership map OR use a different
 //     dispatch route).
 //
+// Evaluated BEFORE all of the above:
+//   - Path is outside CLAUDE_PROJECT_DIR                          → ALLOW
+//     (out of jurisdiction — the ownership map describes project paths
+//     only; see isOutsideProjectRoot below. Skipped when the env var is
+//     unset or the path is relative, so the check can never widen the
+//     guard by being unable to locate the root.)
+//
 // Trade-off (documented in CLAUDE.md §10 + .claude/rules/worktree-isolation.md §5):
 //   An Orchestrator manually editing docs/SRS.md from main cwd is now
 //   allowed by this hook (because the path is BA-owned and any Write to
@@ -55,7 +62,69 @@
 'use strict';
 
 const path = require('path');
-const role = require(path.join(__dirname, 'lib', 'role-ownership.cjs'));
+const fs = require('fs');
+// Ownership map: PROJECT FIRST, bundled map as the fallback. The project
+// registers its own copy of this guard, so both copies run; each used to load
+// the map beside ITSELF and could then disagree about the SAME path. On the
+// phase-54 T-248 dispatch an admin-web e2e row present only in the project map
+// made the project copy allow a write this copy blocked, so a QA-Author spec
+// could not land. Reading the project map first makes them agree by
+// construction, and makes project-local rows authoritative. Projects with no
+// local map are unaffected.
+const role = (() => {
+  const d = process.env.CLAUDE_PROJECT_DIR;
+  if (d) {
+    const pm = path.join(d, '.claude', 'hooks', 'lib', 'role-ownership.cjs');
+    try { if (fs.existsSync(pm)) return require(pm); } catch {}
+  }
+  return require(path.join(__dirname, 'lib', 'role-ownership.cjs'));
+})();
+
+// ─── Jurisdiction ───
+// The ownership map is a statement about paths INSIDE the project. It has no
+// project-root awareness of its own: `normalize()` only strips a leading `./`
+// and every row matches by tail (`(^|\/)docs\/...`), so without this check the
+// guard classifies absolute paths anywhere on the filesystem and blocks
+// anything it does not recognize.
+//
+// The motivating failure: Claude Code's own per-user state under
+// `$CLAUDE_CONFIG_DIR/projects/...` is not a project file, not a kit artifact,
+// and owned by no kit role — so it fell through to `unrecognized-path` and the
+// memory facility was unusable from the project. On a DEFAULT install the path
+// contains a `/.claude/` segment and is rescued by accident by the kit-internal
+// row; relocate `CLAUDE_CONFIG_DIR` and the same write blocks. The bug was
+// therefore latent for everyone on defaults.
+//
+// The fix is jurisdictional, not an ownership row: no portable row can be
+// written for a per-user, env-dependent absolute path, and labelling it
+// role-owned would assert an ownership the kit does not have. The same check
+// clears the whole class — caches, temp, any user-global state.
+//
+// Fails CLOSED on purpose:
+//   - `CLAUDE_PROJECT_DIR` unset → cannot determine the root → skip the check
+//     and fall through to classification. Never default to `process.cwd()`;
+//     that would let any write escape by running from a different cwd.
+//   - Relative paths are project-relative by construction → skip.
+//   - On case-insensitive filesystems (macOS default, Windows) a case mismatch
+//     between the harness-supplied root and path must not read as "outside".
+function isOutsideProjectRoot(p) {
+  const root = process.env.CLAUDE_PROJECT_DIR;
+  if (!root) return false;
+  if (!path.isAbsolute(p)) return false;
+
+  const outside = (a, b) => {
+    const rel = path.relative(a, b);
+    return rel.startsWith('..') || path.isAbsolute(rel);
+  };
+
+  const absRoot = path.resolve(root);
+  const abs = path.resolve(p);
+  if (!outside(absRoot, abs)) return false;
+  if (process.platform === 'darwin' || process.platform === 'win32') {
+    if (!outside(absRoot.toLowerCase(), abs.toLowerCase())) return false;
+  }
+  return true;
+}
 
 // Worktree-path detection — secondary signal, kept for sub-agents that DO
 // explicitly write under .worktrees/<role>-<task-id>/ (typically BE Dev /
@@ -82,6 +151,11 @@ function extractPaths(toolName, toolInput) {
 function decide(p) {
   // Returns { decision: 'allow' | 'block', reason, hint }
   if (typeof p !== 'string' || !p) return { decision: 'allow', reason: 'no path' };
+
+  // Out of jurisdiction — this guard adjudicates project paths only.
+  if (isOutsideProjectRoot(p)) {
+    return { decision: 'allow', reason: 'outside-project-root' };
+  }
 
   // Secondary signal — worktree-path passes immediately
   if (isInWorktree(p)) {

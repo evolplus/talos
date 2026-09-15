@@ -2131,7 +2131,11 @@ run_exit "orch-write: allows docs/plan/.../tasks/T-001.md"    0 "$ORCH_WRITE_GUA
 run_exit "orch-write: allows docs/open-issues.md"             0 "$ORCH_WRITE_GUARD" "$(w 'docs/open-issues.md')"
 run_exit "orch-write: allows docs/iteration-plan/v3.md"       0 "$ORCH_WRITE_GUARD" "$(w 'docs/iteration-plan/v3.md')"
 run_exit "orch-write: allows .claude/agents/ba.md"            0 "$ORCH_WRITE_GUARD" "$(w '.claude/agents/ba.md')"
-run_exit "orch-write: allows absolute Claude memory path"      0 "$ORCH_WRITE_GUARD" "$(w '/Users/test/.claude/projects/repo/memory/MEMORY.md')"
+# Default config dir only: this passes because the path happens to contain a
+# `/.claude/` segment and is rescued by the kit-internal row — NOT because the
+# guard understands Claude Code's config dir. The relocated-config-dir cases in
+# the jurisdiction block below are the ones that actually cover this facility.
+run_exit "orch-write: allows absolute Claude memory path (via .claude/ segment)" 0 "$ORCH_WRITE_GUARD" "$(w '/Users/test/.claude/projects/repo/memory/MEMORY.md')"
 run_exit "orch-write: allows .claude/rules/foo.md"            0 "$ORCH_WRITE_GUARD" "$(w '.claude/rules/foo.md')"
 run_exit "orch-write: allows .claude/hooks/bar.cjs"           0 "$ORCH_WRITE_GUARD" "$(w '.claude/hooks/bar.cjs')"
 run_exit "orch-write: allows CLAUDE.md"                       0 "$ORCH_WRITE_GUARD" "$(w 'CLAUDE.md')"
@@ -2165,6 +2169,33 @@ run_exit "orch-write: allows docker-compose.yml (DevOps-owned)"     0 "$ORCH_WRI
 run_exit "orch-write: blocks .env"                            2 "$ORCH_WRITE_GUARD" "$(w '.env')"
 run_exit "orch-write: allows tsconfig.json (FE/BE Dev-owned)"                   0 "$ORCH_WRITE_GUARD" "$(w 'tsconfig.json')"
 run_exit "orch-write: allows Cargo.toml (BE Dev-owned)"                      0 "$ORCH_WRITE_GUARD" "$(w 'Cargo.toml')"
+
+# === Jurisdiction: paths outside CLAUDE_PROJECT_DIR are not this guard's business ===
+# Regression for the blocked memory write: Claude Code's per-user state under
+# $CLAUDE_CONFIG_DIR/projects/... is not a project file and no kit role owns it.
+# With the config dir relocated there is no `/.claude/` segment to rescue it, so
+# before the jurisdiction check it fell through to unrecognized-path and blocked.
+PROJ="CLAUDE_PROJECT_DIR=/Users/viet/repo"
+run_exit "orch-write: allows relocated config-dir memory write (outside root)" 0 "$ORCH_WRITE_GUARD" "$(w '/Users/viet/.config/claude/projects/repo/memory/MEMORY.md')" "$PROJ"
+run_exit "orch-write: allows any user-global path outside root (cache)"        0 "$ORCH_WRITE_GUARD" "$(w '/Users/viet/.cache/some-tool/state.json')" "$PROJ"
+run_exit "orch-write: allows /tmp scratch outside root"                        0 "$ORCH_WRITE_GUARD" "$(w '/tmp/scratch/notes.md')" "$PROJ"
+
+# Fail-closed: with no CLAUDE_PROJECT_DIR the root cannot be determined, so the
+# check is skipped entirely and the prior classification stands. The guard must
+# never widen just because it could not locate the project.
+run_exit "orch-write: blocks unrecognized absolute path when root unset"        2 "$ORCH_WRITE_GUARD" "$(w '/Users/viet/.config/claude/projects/repo/memory/MEMORY.md')"
+
+# The check must not widen anything INSIDE the root.
+run_exit "orch-write: still blocks unrecognized in-root path with root set"     2 "$ORCH_WRITE_GUARD" "$(w '/Users/viet/repo/random/thing.md')" "$PROJ"
+run_exit "orch-write: still blocks in-root .env with root set"                  2 "$ORCH_WRITE_GUARD" "$(w '/Users/viet/repo/.env')" "$PROJ"
+run_exit "orch-write: still allows in-root docs/SRS.md with root set"           0 "$ORCH_WRITE_GUARD" "$(w '/Users/viet/repo/docs/SRS.md')" "$PROJ"
+
+# Relative paths are project-relative by construction — never treated as outside.
+run_exit "orch-write: relative docs/SRS.md unaffected by root set"              0 "$ORCH_WRITE_GUARD" "$(w 'docs/SRS.md')" "$PROJ"
+run_exit "orch-write: relative .env still blocked with root set"                2 "$ORCH_WRITE_GUARD" "$(w '.env')" "$PROJ"
+
+# Edit tool takes the same path as Write.
+run_exit "orch-write: Edit outside root allowed"                               0 "$ORCH_WRITE_GUARD" "$(e '/Users/viet/.config/claude/projects/repo/memory/MEMORY.md')" "$PROJ"
 
 # === Sub-agent context (path inside .worktrees/) — always allow ===
 run_exit "orch-write: allows .worktrees/ba-T-001/docs/SRS.md"      0 "$ORCH_WRITE_GUARD" "$(w '.worktrees/ba-T-001/docs/SRS.md')"
