@@ -151,27 +151,55 @@ function promotionManifest(paths) {
 }
 
 // Which manifest paths are not yet promoted, and why. `missing` = absent from
-// HEAD entirely; `differing` = present but its content differs from the
+// main entirely; `differing` = present but its content never matched the
 // worktree copy (a partial or stale promotion).
-function unpromotedPaths(paths, manifest) {
+//
+// THE PROMOTION IS AN EVENT, NOT A CURRENT STATE.
+// This compared each manifest path against HEAD only, which asks the wrong
+// question: "does main look like the worktree right now?" A promotion happened
+// at `finalization.main_commit`, and main is expected to advance afterwards —
+// the Orchestrator triages `docs/open-issues.md`, a later dispatch amends a
+// contract, a doc is edited. Every one of those made a CORRECTLY promoted path
+// read as `differing`, classified a finished dispatch `partially-promoted`, and
+// blocked its teardown. Worse, the block is sticky: the un-teardownable dispatch
+// leaves its journal entry behind, so the false positive survives into every
+// later session (ISSUE-224 predicted exactly this).
+//
+// A path is promoted if the worktree content matched main at EITHER point:
+//   - at `finalization.main_commit` — the promotion the journal claims, so main
+//     advancing past it afterwards is main moving forward, by design; or
+//   - at HEAD — the path was promoted in a commit later than the marker.
+// Matching neither is the real failure and is still reported. The gate is not
+// weakened: content that was never on main matches neither commit.
+function unpromotedPaths(paths, manifest, mainCommit) {
   if (!manifest || manifest.length === 0) return { missing: [], differing: [], checked: 0 };
   const missing = [];
   const differing = [];
+  // Ordered, de-duplicated: the claimed promotion commit first, then HEAD.
+  const refs = [];
+  if (typeof mainCommit === 'string' && mainCommit.trim()) refs.push(mainCommit.trim());
+  if (!refs.includes('HEAD')) refs.push('HEAD');
+
   for (const rel of manifest) {
     // Reject traversal / absolute specs rather than resolving them.
     if (rel.startsWith('/') || rel.split('/').includes('..')) continue;
-    const onHead = git(['show', `HEAD:${rel}`], paths.root);
-    if (onHead === null) {
+
+    const onRef = refs.map(ref => git(['show', `${ref}:${rel}`], paths.root));
+    if (onRef.every(c => c === null)) {
+      // Absent at the claimed promotion AND at HEAD — genuinely never promoted.
       missing.push(rel);
       continue;
     }
+
     const wtFile = path.join(paths.worktreePath, rel);
     if (!existsSafe(wtFile)) continue; // nothing to compare against
     let wtContent = null;
     try { wtContent = fs.readFileSync(wtFile, 'utf8').trim(); } catch { wtContent = null; }
-    if (wtContent !== null && wtContent !== onHead) differing.push(rel);
+    if (wtContent === null) continue;
+    // Promoted if it matched main at any checked point.
+    if (!onRef.some(c => c !== null && c === wtContent)) differing.push(rel);
   }
-  return { missing, differing, checked: manifest.length };
+  return { missing, differing, checked: manifest.length, refsChecked: refs };
 }
 
 // Lifecycle classification.
@@ -239,7 +267,7 @@ function classifyDispatch(role, taskId, root) {
     return { ...base, state: 'unverifiable', manifest: null, unpromoted: null };
   }
 
-  const unpromoted = unpromotedPaths(paths, manifest);
+  const unpromoted = unpromotedPaths(paths, manifest, mainCommit);
   const anyUnpromoted = unpromoted.missing.length > 0 || unpromoted.differing.length > 0;
 
   if (!claimsFinalized || !commitInHead) {

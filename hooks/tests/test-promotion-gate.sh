@@ -88,6 +88,16 @@ JSON
       orphaned)
         rm -rf "$WT"
         write_journal ready-to-finalize "" ;;
+      postpromotion)
+        # Correctly and completely promoted -- then main advanced past the
+        # promotion commit, exactly as it does when the Orchestrator triages
+        # docs/open-issues.md after closing a dispatch. The worktree copy is now
+        # stale relative to HEAD while the promotion itself is intact.
+        write_pu
+        SHA="$(promote backend/src/handler.js docs/api-contracts/join-v1.yaml)"
+        printf 'openapi: 3.1.0\n# amended on main AFTER the promotion commit\n' > docs/api-contracts/join-v1.yaml
+        git add -A && git commit -qm "docs: triage after promotion (main moves forward)"
+        write_journal finalized "$SHA" ;;
       bigblob)
         # Fully and correctly promoted, but one artifact is larger than Node's
         # 1 MiB execFileSync default. `git show HEAD:<path>` must still be read.
@@ -168,6 +178,7 @@ R_UNVERIF="$(make_repo unverif unverifiable)"
 R_INFLIGHT="$(make_repo inflight inflight)"
 R_ORPHAN="$(make_repo orphan orphaned)"
 R_BIGBLOB="$(make_repo bigblob bigblob)"
+R_POSTPROMO="$(make_repo postpromo postpromotion)"
 
 RM_WT='git worktree remove --force .worktrees/be-dev-T-042'
 RM_DIR='rm -rf -- .worktrees/be-dev-T-042/'
@@ -187,6 +198,19 @@ run_contains "block does NOT suggest git merge"    "$GUARD" "$(bash_event "$RM_W
 
 echo "worktree-promotion-guard.cjs — states that must NOT be blocked"
 run_exit "allows teardown after verified promotion" 0 "$GUARD" "$(bash_event "$RM_WT")" "$R_PROMOTED"
+
+# A promotion is an EVENT, not a current state. Comparing the manifest against
+# HEAD only asks "does main look like the worktree right now?", which any
+# post-promotion edit on main answers no -- so a finished dispatch was classified
+# partially-promoted and its teardown blocked. The block is sticky: the journal
+# entry survives into every later session (ISSUE-224). The content is checked at
+# finalization.main_commit as well as HEAD; matching either is promoted.
+run_exit "allows teardown when main advanced past the promotion" 0 "$GUARD" "$(bash_event "$RM_WT")" "$R_POSTPROMO"
+run_contains_not "post-promotion edit is not reported as differing" "$GUARD" "$(bash_event "$RM_WT")" "$R_POSTPROMO" "DIFFERS from HEAD"
+# The gate is not weakened: content that was never on main matches NEITHER the
+# promotion commit nor HEAD, and is still blocked and still named.
+run_exit "still blocks a genuinely unpromoted path"             2 "$GUARD" "$(bash_event "$RM_WT")" "$R_PARTIAL"
+
 
 # A promoted artifact larger than Node's 1 MiB execFileSync default must not read
 # as missing. Before GIT_MAX_BUFFER, `git show HEAD:<path>` overflowed, the catch
