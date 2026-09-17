@@ -2080,6 +2080,24 @@ run_exit "blocks Write to Go src/ file"                     2 "$SRC_GUARD" "$(w 
 run_exit "blocks Write to Java src/ file"                   2 "$SRC_GUARD" "$(w 'app/src/main/java/com/example/App.java')"
 run_exit "blocks Write to React component"                  2 "$SRC_GUARD" "$(w 'web/src/components/Button.tsx')"
 run_exit "blocks Write to e2e spec"                         2 "$SRC_GUARD" "$(w 'e2e/spectator-join.spec.ts')"
+
+# === QA-Author executable specs are role-owned, not "source code" ===
+# A case pack has two halves in different trees: the case docs under docs/test-cases/
+# and the executable specs that drive them. isE2ESpecPath() classified the spec half as
+# source, so a logically isolated QA-Author dispatch could land its case pack and NOT its
+# spec (hit on T-248; earlier on T-219/T-220, where 27 written specs were stranded).
+# isSourceCodePath() now consults the ownership map, which already decided who owns these.
+#
+# Note the asymmetry this closes: isE2ESpecPath is an EXEMPTION in layoutViolation() (the
+# worktree-relative check) but a POSITIVE match here, so an e2e spec in the shared tree
+# counted as source while the same spec inside a worktree did not.
+run_exit "src-guard: allows Playwright by-us spec (QA-Author-owned)"   0 "$SRC_GUARD" "$(w 'frontend/admin-web/e2e/specs/by-us/us-044.spec.ts')"
+run_exit "src-guard: allows Playwright by-task spec (QA-Author-owned)" 0 "$SRC_GUARD" "$(w 'frontend/admin-web/e2e/specs/by-task/T-248.spec.ts')"
+run_exit "src-guard: allows Flutter by_us spec (QA-Author-owned)"      0 "$SRC_GUARD" "$(w 'integration_test/by_us/us_002_plan_adopt_test.dart')"
+# The exemption is scoped to the two per-mode pack directories. An e2e spec that is not
+# part of a pack is still source, so the ownership map cannot be used to launder one.
+run_exit "src-guard: still blocks non-pack e2e spec"                   2 "$SRC_GUARD" "$(w 'frontend/admin-web/e2e/specs/smoke.spec.ts')"
+run_exit "src-guard: still blocks app source under lib/src"            2 "$SRC_GUARD" "$(w 'lib/src/main.dart')"
 run_exit "blocks Write to Rust src/ file"                   2 "$SRC_GUARD" "$(w 'crates/api/src/lib.rs')"
 run_exit "blocks absolute main-repo path"                   2 "$SRC_GUARD" "$(w '/Users/viet/repo/src/api/handler.ts')"
 
@@ -2235,6 +2253,25 @@ run_exit "orch-write: allows docs/uiux/completeness-reports/T-168.md (BA)"     0
 run_exit "orch-write: allows docs/uiux/post-implementation-reports/T-168.md"   0 "$ORCH_WRITE_GUARD" "$(w 'docs/uiux/post-implementation-reports/T-168.md')"
 run_exit "orch-write: allows docs/uiux/figma-mappings/v29.md (Designer)"       0 "$ORCH_WRITE_GUARD" "$(w 'docs/uiux/figma-mappings/v29.md')"
 run_exit "orch-write: allows docs/test-cases/by-task/T-168/api.md"             0 "$ORCH_WRITE_GUARD" "$(w 'docs/test-cases/by-task/T-168/api.md')"
+# The executable half of the same case packs. Without these rows the spec trees resolved
+# to null ownership and were refused as `unrecognized-path`, so the pack landed and the
+# spec did not.
+run_exit "orch-write: allows integration_test/by_us/ spec (QA-Author)"        0 "$ORCH_WRITE_GUARD" "$(w 'integration_test/by_us/us_002_plan_adopt_test.dart')"
+run_exit "orch-write: allows integration_test/by_task/ spec (QA-Author)"      0 "$ORCH_WRITE_GUARD" "$(w 'integration_test/by_task/T_144/api_test.dart')"
+run_exit "orch-write: allows e2e/specs/by-us/ spec (QA-Author, Playwright)"   0 "$ORCH_WRITE_GUARD" "$(w 'frontend/admin-web/e2e/specs/by-us/us-044.spec.ts')"
+run_exit "orch-write: allows e2e/specs/by-task/ spec (QA-Author, Playwright)" 0 "$ORCH_WRITE_GUARD" "$(w 'frontend/admin-web/e2e/specs/by-task/T-248.spec.ts')"
+# Scoped to the per-mode pack directories, NOT to the whole spec tree: helpers, fixtures,
+# pages, goldens and app-bootstrap tests are shared across modes and owned by nobody, so
+# they must still force operator classification.
+run_exit "orch-write: blocks integration_test/helpers/ (shared, unowned)"     2 "$ORCH_WRITE_GUARD" "$(w 'integration_test/helpers/shared.dart')"
+run_exit "orch-write: blocks integration_test app-boot test (unowned)"        2 "$ORCH_WRITE_GUARD" "$(w 'integration_test/app_boot_test.dart')"
+run_exit "orch-write: blocks non-pack e2e spec (unowned)"                     2 "$ORCH_WRITE_GUARD" "$(w 'frontend/admin-web/e2e/specs/smoke.spec.ts')"
+# The separator trap, pinned in both directions: the Flutter tree is by_us/by_task
+# (UNDERSCORE) and the Playwright tree is by-us/by-task (HYPHEN). A row written with the
+# wrong separator silently never matches, which is how a whole tree goes unowned without
+# anything failing. Each spelling must match ONLY its own tree.
+run_exit "orch-write: blocks hyphen by-us in the Flutter tree"                2 "$ORCH_WRITE_GUARD" "$(w 'integration_test/by-us/x.dart')"
+run_exit "orch-write: blocks underscore by_us in the Playwright tree"         2 "$ORCH_WRITE_GUARD" "$(w 'frontend/admin-web/e2e/specs/by_us/x.spec.ts')"
 run_exit "orch-write: allows docs/srs-diffs/v29-to-v30.md (BA iteration)"      0 "$ORCH_WRITE_GUARD" "$(w 'docs/srs-diffs/v29-to-v30.md')"
 run_exit "orch-write: allows docs/brownfield-confirmation/auth.md (BA Mode E)" 0 "$ORCH_WRITE_GUARD" "$(w 'docs/brownfield-confirmation/auth.md')"
 run_exit "orch-write: allows docs/oq-resolutions/OQ-005.md (OQ Resolver)"      0 "$ORCH_WRITE_GUARD" "$(w 'docs/oq-resolutions/OQ-005.md')"

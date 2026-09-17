@@ -108,6 +108,26 @@ const OWNERSHIP_MAP = [
   { re: /(^|\/)docs\/test-cases\/by-us\//,                kind: 'role-owned-doc',    role: 'QA-Author',    mode: 'by-us mode (post-SRS-sign-off)' },
   { re: /(^|\/)docs\/test-cases\/by-task\//,              kind: 'role-owned-doc',    role: 'QA-Author',    mode: 'by-task mode (post-TL + design-confirmed)' },
   { re: /(^|\/)docs\/uiux\/visual-specs\//,               kind: 'role-owned-doc',    role: 'QA-Author',    mode: 'by-task (UI)' },
+  // Executable specs for the case packs above. A case pack has TWO halves that live in
+  // different trees: the selectable case docs under `docs/test-cases/` (rows above) and
+  // the executable specs that drive them. The kit defines the spec layout for both
+  // clients — `integration_test/by_{us,task}/` for Flutter, `frontend/<app>/e2e/specs/
+  // by_{us,task}/` for the Playwright suites — but had no row for either, so those paths
+  // resolved to `null` ownership and two guards refused them: `orchestrator-write-guard`
+  // as `unrecognized-path`, and `source-code-write-guard` because `isSourceCodePath()`
+  // treats `e2e/**/*.spec.*` as source (see the asymmetry note in that guard). The
+  // consequence was that a QA-Author dispatch could land its case pack and not its spec —
+  // hit on T-248, and earlier on T-219/T-220, where 27 already-written specs were stranded.
+  // Scoped to the two per-mode subdirectories rather than all of `integration_test/` or
+  // `e2e/`: `helpers/`, `fixtures/`, `pages/`, `goldens/` and `utils/` there are shared
+  // across modes and app-bootstrap tests, not QA-Author-owned.
+  { re: /(^|\/)integration_test\/by_us\//,                kind: 'role-owned-doc',    role: 'QA-Author',    mode: 'by-us mode — executable specs for the by-us case packs' },
+  { re: /(^|\/)integration_test\/by_task\//,              kind: 'role-owned-doc',    role: 'QA-Author',    mode: 'by-task mode — executable specs for the by-task case packs' },
+  // NOTE the separator, because the two trees disagree and a row written for one silently
+  // never matches the other: the Flutter tree is `integration_test/by_us|by_task/`
+  // (UNDERSCORE) while the Playwright tree is `e2e/specs/by-us|by-task/` (HYPHEN).
+  { re: /(^|\/)frontend\/[^/]+\/e2e\/specs\/by-us\//,     kind: 'role-owned-doc',    role: 'QA-Author',    mode: 'by-us mode — executable specs for the by-us case packs (Playwright)' },
+  { re: /(^|\/)frontend\/[^/]+\/e2e\/specs\/by-task\//,   kind: 'role-owned-doc',    role: 'QA-Author',    mode: 'by-task mode — executable specs for the by-task case packs (Playwright)' },
 
   // ─── BE Dev ───
   { re: /(^|\/)docs\/api-contracts\//,                    kind: 'role-owned-doc',    role: 'BE Dev',       mode: 'normal dispatch (sub-agent publishes contract)' },

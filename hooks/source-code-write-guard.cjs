@@ -63,6 +63,7 @@
 
 const { wellFormedWorktreePath, worktreeRelativePath } = require('./lib/worktree-scope.cjs');
 const { getAllowedSourceRoots, isUnderAllowedRoot } = require('./lib/source-layout.cjs');
+const { isRoleOwnedDoc } = require('./lib/role-ownership.cjs');
 
 // ─── Source code file extensions ───
 // Covers mainstream languages. Only files with these extensions under a source
@@ -190,6 +191,25 @@ function isSourceCodePath(p) {
   // shared root tree is NOT treated as worktree-scoped and falls through to the
   // source-code block below.
   if (wellFormedWorktreePath(p)) return false;
+  // A path the ownership map grants a kit role is not "source code" for this
+  // guard's purposes — the map already decided who may write it. Without this,
+  // the two guards disagreed about the same path: the ownership map says
+  // QA-Author owns `integration_test/by_*/` and `frontend/<app>/e2e/specs/by_*/`,
+  // but this function classified e2e specs as source and blocked a logically
+  // isolated doc-role from writing one to the shared tree — so a QA-Author
+  // dispatch could land its case pack and not its spec.
+  //
+  // Note the asymmetry this closes, because it is the trap: `isE2ESpecPath` is an
+  // EXEMPTION in `layoutViolation()` (the worktree-relative check) but a POSITIVE
+  // match here, so an e2e spec in the shared tree counted as source. Consulting
+  // the map settles both consistently instead of maintaining a second hard-coded
+  // list that can drift from it. Fails closed: if the map is unavailable the
+  // exemption does not fire and the block stands.
+  try {
+    if (isRoleOwnedDoc(p)) return false;
+  } catch {
+    /* map unavailable — fall through to the block */
+  }
   return isSrcDirPath(p) || isE2ESpecPath(p) || isCustomDirPath(p);
 }
 
