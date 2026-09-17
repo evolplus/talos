@@ -34,6 +34,7 @@
 'use strict';
 
 const fs = require('fs');
+const os = require('os');
 const path = require('path');
 const { isOperationWorktreeScoped } = require('./lib/worktree-scope.cjs');
 
@@ -113,13 +114,67 @@ function hasSymlinkComponent(candidate, root) {
   return false;
 }
 
-function isOrchestratorCleanupRemoval(command, cwd) {
-  const words = splitSimpleShellWords(command.trim());
-  if (!words || words.length < 2) return false;
+// Reasons a removal that LOOKS like Orchestrator cleanup is nonetheless refused.
+// Each maps to a remedy the author can act on. Naming the real disqualifier is a
+// hard requirement: a guard whose message misdescribes its own failure pushes the
+// author to rewrite correct work instead of fixing the command (ISSUE-179).
+const CLEANUP_REFUSALS = {
+  composition:
+    'the command is composed (shell operators, pipes, redirects, or unbalanced quotes). ' +
+    'The carve-out inspects a single plain removal only, because composition defeats the ' +
+    'word-splitter that proves every operand stays inside a cleanup root. Issue the rm on its own.',
+  'rmdir-parents':
+    'rmdir -p / --parents can remove ancestors above the named target, including the cleanup root itself.',
+  'no-targets': 'the command names no removal target.',
+  'unexpanded-variable':
+    'a target still contains a shell variable or command substitution after expansion. ' +
+    '$CLAUDE_PROJECT_DIR, ${CLAUDE_PROJECT_DIR}, $PWD, ${PWD} and a leading ~/ are expanded; ' +
+    'anything else cannot be resolved before the shell runs, so the target cannot be proven in-scope.',
+  'outside-cleanup-roots':
+    'a target does not resolve STRICTLY below .worktrees/ or .claude/dispatch-journal/. ' +
+    'The roots themselves are not removable, and a single command may not mix cleanup targets with other paths.',
+  'symlink-or-glob':
+    'a target traverses a symlink, uses a brace expansion, or globs above its final path segment — ' +
+    'none of which can be proven to stay inside the cleanup root.',
+};
+
+// Expand only the path prefixes the Orchestrator rules themselves write. The kit
+// documents Step 7f as `rm .claude/dispatch-journal/<role>-<task-id>.json`, but
+// $CLAUDE_PROJECT_DIR-rooted and ~-rooted spellings are equally idiomatic and must
+// not be refused on shape alone — the strict-descendant check below, not the
+// spelling, is what makes this safe. Every other substitution stays refused.
+function expandCleanupTarget(target, projectRoot, commandCwd) {
+  let expanded = target;
+  if (expanded.startsWith('~/')) expanded = path.join(os.homedir(), expanded.slice(2));
+  else if (expanded === '~') return null;
+  expanded = expanded
+    .replace(/^\$\{CLAUDE_PROJECT_DIR\}/, projectRoot)
+    .replace(/^\$CLAUDE_PROJECT_DIR(?=\/|$)/, projectRoot)
+    .replace(/^\$\{PWD\}/, commandCwd)
+    .replace(/^\$PWD(?=\/|$)/, commandCwd);
+  if (expanded.includes('$') || expanded.includes('`')) return null;
+  return expanded;
+}
+
+// Returns null when the command is not a removal at all (nothing to say about it),
+// { allowed: true } when it is Orchestrator-owned transient cleanup, or
+// { allowed: false, reason } naming why an apparent cleanup was refused.
+function classifyCleanupRemoval(command, cwd) {
+  const trimmed = command.trim();
+  const words = splitSimpleShellWords(trimmed);
+
+  const looksLikeRemoval = /(^|[\s;&|(])(\/bin\/|\/usr\/bin\/)?rm(dir)?(\s|$)/.test(trimmed);
+  if (!looksLikeRemoval) return null;
+  // Only a removal that actually names a cleanup surface is an *attempted* carve-out
+  // use. Without this, every ordinary `rm docs/old/` would be re-explained as a
+  // malformed cleanup, burying the correct "sub-agent territory" guidance.
+  if (!/\.worktrees(\/|\b)|dispatch-journal/.test(trimmed)) return null;
+  if (!words) return { allowed: false, reason: 'composition' };
+  if (words.length < 2) return null;
 
   const executable = words[0];
   const allowedExecutables = new Set(['rm', '/bin/rm', '/usr/bin/rm', 'rmdir', '/bin/rmdir', '/usr/bin/rmdir']);
-  if (!allowedExecutables.has(executable)) return false;
+  if (!allowedExecutables.has(executable)) return { allowed: false, reason: 'composition' };
 
   const isRmdir = executable.endsWith('rmdir');
   const targets = [];
@@ -131,12 +186,14 @@ function isOrchestratorCleanupRemoval(command, cwd) {
     }
     if (!optionsEnded && word.startsWith('-')) {
       // rmdir -p/--parents can remove ancestors above the named target.
-      if (isRmdir && (word === '-p' || word === '--parents' || word.startsWith('--parents=') || /^-[^-]*p/.test(word))) return false;
+      if (isRmdir && (word === '-p' || word === '--parents' || word.startsWith('--parents=') || /^-[^-]*p/.test(word))) {
+        return { allowed: false, reason: 'rmdir-parents' };
+      }
       continue;
     }
     targets.push(word);
   }
-  if (targets.length === 0) return false;
+  if (targets.length === 0) return { allowed: false, reason: 'no-targets' };
 
   const projectRoot = path.resolve(process.env.CLAUDE_PROJECT_DIR || cwd || process.cwd());
   const commandCwd = path.resolve(cwd || projectRoot);
@@ -145,13 +202,16 @@ function isOrchestratorCleanupRemoval(command, cwd) {
     path.join(projectRoot, '.claude', 'dispatch-journal'),
   ];
 
-  return targets.every(target => {
-    if (!target || target.startsWith('~') || target.includes('$') || target.includes('`')) return false;
-    const resolved = path.resolve(commandCwd, target);
-    return cleanupRoots.some(root =>
-      isStrictDescendant(resolved, root) && !hasSymlinkComponent(resolved, root)
-    );
-  });
+  for (const target of targets) {
+    if (!target) return { allowed: false, reason: 'no-targets' };
+    const expanded = expandCleanupTarget(target, projectRoot, commandCwd);
+    if (expanded === null) return { allowed: false, reason: 'unexpanded-variable' };
+    const resolved = path.resolve(commandCwd, expanded);
+    const inRoot = cleanupRoots.find(root => isStrictDescendant(resolved, root));
+    if (!inRoot) return { allowed: false, reason: 'outside-cleanup-roots' };
+    if (hasSymlinkComponent(resolved, inRoot)) return { allowed: false, reason: 'symlink-or-glob' };
+  }
+  return { allowed: true };
 }
 
 // ─── Sub-agent context detection ───
@@ -307,10 +367,38 @@ async function main() {
   // Narrow lifecycle carve-out: the Orchestrator may delete only its own
   // transient dispatch artifacts. This check runs before the general rm/rmdir
   // block and requires every target to remain inside an exact cleanup root.
-  if (isOrchestratorCleanupRemoval(cmd, cwd)) process.exit(0);
+  const cleanup = classifyCleanupRemoval(cmd, cwd);
+  if (cleanup && cleanup.allowed) process.exit(0);
 
   const reason = findMutatingMatch(cmd);
   if (!reason) process.exit(0);
+
+  // An apparent cleanup removal that the carve-out refused gets a message naming the
+  // ACTUAL disqualifier. Falling through to the generic text below would tell the author
+  // "sub-agent territory" when the real cause was, say, an unexpanded variable — sending
+  // them to re-scope work that was already correct.
+  if (cleanup && !cleanup.allowed) {
+    const displayCleanupCmd = cmd.length > 200 ? cmd.slice(0, 200) + ' …' : cmd;
+    process.stderr.write(
+      `orchestrator-bash-guard: BLOCKED — this looks like Orchestrator transient cleanup, ` +
+      `but it does not qualify for the cleanup carve-out.\n` +
+      `  Command: ${displayCleanupCmd}\n` +
+      `  Disqualifier (${cleanup.reason}): ${CLEANUP_REFUSALS[cleanup.reason] || 'unclassified.'}\n` +
+      `  cwd: ${cwd || '(not provided)'}\n\n` +
+      `  The carve-out permits a single plain rm/rmdir whose every operand resolves strictly below\n` +
+      `    <project>/.worktrees/            (a dispatch directory, not the root itself)\n` +
+      `    <project>/.claude/dispatch-journal/   (an entry, not the root itself)\n` +
+      `  Accepted spellings for an operand: a relative path, an absolute path,\n` +
+      `  $CLAUDE_PROJECT_DIR/… , \${CLAUDE_PROJECT_DIR}/… , $PWD/… , \${PWD}/… , or ~/… .\n\n` +
+      `  §9 Step 7f canonical form (run from the project root, uncomposed):\n` +
+      `    rm .claude/dispatch-journal/<role>-<task-id>.json\n\n` +
+      `  Do NOT reach for CLAUDE_ALLOW_ORCHESTRATOR_BASH here. It is read from the harness\n` +
+      `  environment at hook-process start, so an inline VAR=1 prefix on the command cannot\n` +
+      `  reach it; and manufacturing a bypass for a check that is working as designed is the\n` +
+      `  failure mode the kit forbids. Re-shape the command instead.\n`
+    );
+    process.exit(2);
+  }
 
   // Truncate command for display
   const displayCmd = cmd.length > 200 ? cmd.slice(0, 200) + ' …' : cmd;

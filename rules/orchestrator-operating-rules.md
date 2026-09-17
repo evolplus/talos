@@ -302,8 +302,8 @@ When the classified path is A, before doing anything else, the Orchestrator must
    to main. The marker makes cleanup recoverable: if deletion is skipped after the worktree is gone,
    `dispatch-journal-gc.cjs` proves the commit is in current `HEAD` history and removes the residue at the next
    SessionStart. `orchestrator-bash-guard.cjs` explicitly permits `rm`/`rmdir` only when every target is strictly below
-   `.worktrees/` or `.claude/dispatch-journal/`; no escape hatch is needed. Deleting the journal last preserves §14's
-   re-entrancy invariant.
+   `.worktrees/` or `.claude/dispatch-journal/`; no escape hatch is needed. Issue it as a SINGLE uncomposed command: `&&`, `;`, pipes and redirects disqualify it, because composition defeats the word-splitter that proves every operand stays in scope. Each target may be written relative, absolute, `$CLAUDE_PROJECT_DIR/…`, `${CLAUDE_PROJECT_DIR}/…`, `$PWD/…` or `~/…`; any other variable or command substitution cannot be resolved before the shell runs and is refused. A refusal names its own disqualifier — read it and re-shape the command. `CLAUDE_ALLOW_ORCHESTRATOR_BASH` is NOT the remedy: the hook process reads it from the harness environment at start-up, so an inline `VAR=1` prefix on the command can never reach it, and manufacturing a bypass for a check that is working as designed is forbidden. Deleting the journal
+   last preserves §14's re-entrancy invariant.
 
 7.5. **Post-Implementation Verification dispatch (UI tasks only).** Before committing a FE Dev `→ ready-for-deploy` transition to the master plan, check the task file. If the task is UI-bearing (`track: fe` / `be+fe`, OR `Design sub-status:` set, OR `Linked Surface:` non-null), dispatch BA in `post-implementation` mode (subagent_type: `ba`, dispatch parameter `mode: post-implementation`, with `task_id` + FE Dev worktree path). BA produces `docs/uiux/post-implementation-reports/<task-id>.md` with verdict `qualified` or `unqualified`. Verdict-handling matrix:
 

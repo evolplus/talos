@@ -113,6 +113,25 @@ assert_path_state() {
   fi
 }
 
+run_stderr_lacks() {
+  # name, hook, payload, forbidden_substring, [extra-env]
+  local name="$1" hook="$2" payload="$3" needle="$4" extraenv="${5:-}"
+  unset CLAUDE_PRIVACY_OK CLAUDE_ORCHESTRATOR CLAUDE_PROJECT_DIR
+  if [ -n "$extraenv" ]; then
+    printf '%s' "$payload" | env $extraenv node "$hook" >"$STDOUT_TMP" 2>"$STDERR_TMP"
+  else
+    printf '%s' "$payload" | node "$hook" >"$STDOUT_TMP" 2>"$STDERR_TMP"
+  fi
+  if grep -qF "$needle" "$STDERR_TMP"; then
+    printf "  FAIL  %s (stderr must NOT contain: %s)\n" "$name" "$needle"
+    sed 's/^/        stderr: /' "$STDERR_TMP"
+    FAIL=$((FAIL+1))
+  else
+    printf "  PASS  %s\n" "$name"
+    PASS=$((PASS+1))
+  fi
+}
+
 run_stderr_contains() {
   # name, hook, payload, expected_substring, [extra-env]
   local name="$1" hook="$2" payload="$3" needle="$4" extraenv="${5:-}"
@@ -2338,6 +2357,59 @@ run_exit "orch-bash: blocks journal-root removal" 2 "$ORCH_BASH_GUARD" "$(bc 'rm
 run_exit "orch-bash: blocks mixed cleanup and project targets" 2 "$ORCH_BASH_GUARD" "$(bc 'rm -rf .worktrees/ba-T-001 docs/old')"
 run_exit "orch-bash: blocks cleanup traversal escape" 2 "$ORCH_BASH_GUARD" "$(bc 'rm -rf .worktrees/../docs')"
 run_exit "orch-bash: blocks composed cleanup command" 2 "$ORCH_BASH_GUARD" "$(bc 'rm -rf .worktrees/ba-T-001 && rm -rf docs')"
+
+# === ISSUE-213/214/219/224: the carve-out must accept the spellings the
+# === Orchestrator rules themselves write, and must name its real disqualifier.
+# The §9 Step 7f cleanup was blocked in a live run because the command used a
+# $CLAUDE_PROJECT_DIR-rooted path; the guard refused every operand containing '$'
+# and then reported "rm without protective flags — sub-agent territory", which
+# describes neither the cause nor a usable remedy. Guards must not hard-code a
+# path spelling upstream owns, and must name the real cause (ISSUE-179 rule).
+run_exit "orch-bash: allows \$CLAUDE_PROJECT_DIR-rooted journal removal" 0 "$ORCH_BASH_GUARD" \
+  "$(bc 'rm -f $CLAUDE_PROJECT_DIR/.claude/dispatch-journal/fe-dev-T-246.json')" "CLAUDE_PROJECT_DIR=/repo"
+run_exit "orch-bash: allows \${CLAUDE_PROJECT_DIR}-rooted journal removal" 0 "$ORCH_BASH_GUARD" \
+  "$(bc 'rm -f ${CLAUDE_PROJECT_DIR}/.claude/dispatch-journal/fe-dev-T-246.json')" "CLAUDE_PROJECT_DIR=/repo"
+run_exit "orch-bash: allows \$CLAUDE_PROJECT_DIR-rooted worktree removal" 0 "$ORCH_BASH_GUARD" \
+  "$(bc 'rm -rf $CLAUDE_PROJECT_DIR/.worktrees/fe-dev-T-246')" "CLAUDE_PROJECT_DIR=/repo"
+run_exit "orch-bash: allows \$PWD-rooted journal removal" 0 "$ORCH_BASH_GUARD" \
+  "$(bc 'rm -f $PWD/.claude/dispatch-journal/fe-dev-T-246.json')"
+run_exit "orch-bash: allows bare rm of a journal entry" 0 "$ORCH_BASH_GUARD" \
+  "$(bc 'rm .claude/dispatch-journal/fe-dev-T-246.json')"
+
+# Expansion is an allowlist, not a general substitution: anything it cannot
+# resolve stays refused, so the descendant proof is never bypassed.
+run_exit "orch-bash: blocks \$HOME-rooted removal" 2 "$ORCH_BASH_GUARD" "$(bc 'rm -f $HOME/.ssh/id_rsa')"
+run_exit "orch-bash: blocks unknown variable in cleanup target" 2 "$ORCH_BASH_GUARD" \
+  "$(bc 'rm -rf $SOME_DIR/.worktrees/ba-T-001')"
+run_exit "orch-bash: blocks command substitution in cleanup target" 2 "$ORCH_BASH_GUARD" \
+  "$(bc 'rm -f $(cat /tmp/target)')"
+run_exit "orch-bash: blocks \$CLAUDE_PROJECT_DIR escape above cleanup roots" 2 "$ORCH_BASH_GUARD" \
+  "$(bc 'rm -rf $CLAUDE_PROJECT_DIR/src')" "CLAUDE_PROJECT_DIR=/repo"
+run_exit "orch-bash: blocks rmdir -p above a cleanup root" 2 "$ORCH_BASH_GUARD" \
+  "$(bc 'rmdir -p .worktrees/fe-dev-T-246')"
+
+# The refusal message must name the actual disqualifier, and must NOT reuse the
+# generic "sub-agent territory" text that sent an author re-scoping correct work.
+run_stderr_contains "orch-bash: refusal names unexpanded-variable" "$ORCH_BASH_GUARD" \
+  "$(bc 'rm -rf $SOME_DIR/.worktrees/ba-T-001')" "Disqualifier (unexpanded-variable)"
+run_stderr_contains "orch-bash: refusal names composition" "$ORCH_BASH_GUARD" \
+  "$(bc 'rm -rf .worktrees/ba-T-001 && rm -rf docs')" "Disqualifier (composition)"
+run_stderr_contains "orch-bash: refusal names outside-cleanup-roots" "$ORCH_BASH_GUARD" \
+  "$(bc 'rm -rf .worktrees')" "Disqualifier (outside-cleanup-roots)"
+run_stderr_contains "orch-bash: refusal names rmdir-parents" "$ORCH_BASH_GUARD" \
+  "$(bc 'rmdir -p .worktrees/fe-dev-T-246')" "Disqualifier (rmdir-parents)"
+run_stderr_contains "orch-bash: refusal quotes the canonical Step 7f form" "$ORCH_BASH_GUARD" \
+  "$(bc 'rm -rf .worktrees')" "rm .claude/dispatch-journal/<role>-<task-id>.json"
+run_stderr_lacks "orch-bash: cleanup refusal avoids the generic sub-agent text" "$ORCH_BASH_GUARD" \
+  "$(bc 'rm -rf .worktrees')" "sub-agent territory"
+run_stderr_lacks "orch-bash: cleanup refusal does not advertise the env escape hatch as a remedy" "$ORCH_BASH_GUARD" \
+  "$(bc 'rm -rf .worktrees')" "Escape hatch (rare"
+# A removal that names no cleanup surface is not an attempted carve-out use and keeps
+# the original generic guidance, so ordinary mis-scoped work is still explained correctly.
+run_stderr_contains "orch-bash: non-cleanup rm keeps generic guidance" "$ORCH_BASH_GUARD" \
+  "$(bc 'rm -rf docs/old/')" "sub-agent territory"
+run_stderr_contains "orch-bash: \$HOME removal keeps generic guidance" "$ORCH_BASH_GUARD" \
+  "$(bc 'rm -f $HOME/.ssh/id_rsa')" "sub-agent territory"
 run_exit "orch-bash: blocks variable cleanup target" 2 "$ORCH_BASH_GUARD" "$(bc 'rm -rf $TARGET')"
 run_exit "orch-bash: blocks cleanup command substitution" 2 "$ORCH_BASH_GUARD" "$(bc 'rm -rf \".worktrees/`printf bad`\"')"
 run_exit "orch-bash: blocks rmdir parents mode" 2 "$ORCH_BASH_GUARD" "$(bc 'rmdir -p .worktrees/ba-T-001/nested')"
