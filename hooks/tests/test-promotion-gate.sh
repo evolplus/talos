@@ -91,8 +91,18 @@ JSON
       bigblob)
         # Fully and correctly promoted, but one artifact is larger than Node's
         # 1 MiB execFileSync default. `git show HEAD:<path>` must still be read.
+        #
+        # Generated with awk, not `head -c /dev/zero | tr`: tr's NUL handling is
+        # not portable, and the earlier form silently emitted a 3 MB run of NUL
+        # bytes -- a BINARY blob. The test still passed, but for the wrong reason
+        # (it proved the buffer limit against something no dispatch promotes).
+        # A promoted artifact is text, so the fixture is text.
         mkdir -p "$WT/docs/api-contracts"
-        head -c 3000000 /dev/zero | tr '\\0' 'y' > "$WT/docs/api-contracts/big-v1.yaml"
+        awk 'BEGIN {
+          printf "openapi: 3.1.0\n";
+          line = "  # padding so this artifact exceeds the 1 MiB execFileSync default read buffer\n";
+          for (i = 0; i < 40000; i++) printf "%s", line;
+        }' > "$WT/docs/api-contracts/big-v1.yaml"
         cat > "$WT/plan-update.json" <<JSON
 {"task_id":"T-042","track":"be","from_status":"in-progress","to_status":"ready-for-deploy","agent":"be-dev","artifacts":["backend/src/handler.js","docs/api-contracts/big-v1.yaml"],"timestamp":"2026-09-09T10:30:00Z"}
 JSON
@@ -183,6 +193,18 @@ run_exit "allows teardown after verified promotion" 0 "$GUARD" "$(bash_event "$R
 # returned null, and null means "not on HEAD" — so the gate refused teardown of a
 # dispatch that HAD promoted everything, and said the file was missing while it
 # sat in HEAD. Fail-closed, so nothing was lost; but the stated cause was wrong.
+# The two cases below only mean anything if the fixture really exceeds 1 MiB.
+# Assert that as its own counted case: a shrunken fixture must fail loudly rather
+# than turn them green for nothing. (make_repo cannot do this itself -- its body
+# runs in a subshell whose stdout and stderr are discarded.)
+BIGBLOB_BYTES="$(wc -c < "$R_BIGBLOB/.worktrees/be-dev-T-042/docs/api-contracts/big-v1.yaml" | tr -d ' ')"
+if [ "$BIGBLOB_BYTES" -gt 1048576 ]; then
+  printf "  PASS  %s\n" "bigblob fixture exceeds the 1 MiB default ($BIGBLOB_BYTES bytes)"
+  PASS=$((PASS+1))
+else
+  printf "  FAIL  %s\n" "bigblob fixture is only $BIGBLOB_BYTES bytes - the two cases below would pass vacuously"
+  FAIL=$((FAIL+1))
+fi
 run_exit "allows teardown with a >1MiB promoted artifact"  0 "$GUARD" "$(bash_event "$RM_WT")" "$R_BIGBLOB"
 run_contains_not "large artifact is not reported missing" "$GUARD" "$(bash_event "$RM_WT")" "$R_BIGBLOB" "MISSING on HEAD"
 
