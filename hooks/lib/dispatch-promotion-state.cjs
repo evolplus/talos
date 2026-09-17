@@ -52,14 +52,45 @@ function projectDir() {
   return path.resolve(process.env.CLAUDE_PROJECT_DIR || process.cwd());
 }
 
+// Node's execFileSync default maxBuffer is 1 MiB. `git show HEAD:<path>` streams
+// a whole artifact through it, and a promoted artifact routinely exceeds that —
+// a generated OpenAPI contract, a lockfile, a fixture. On overflow execFileSync
+// throws, the catch below returned null, and null on line ~132 means "not on
+// HEAD", so an artifact that WAS promoted read as missing and the promotion gate
+// refused a legitimate teardown. 64 MiB is sized to the artifacts a dispatch
+// actually promotes, not to a guess about git.
+const GIT_MAX_BUFFER = 64 * 1024 * 1024;
+
+function isMaxBufferError(err) {
+  return Boolean(err) && (
+    err.code === 'ENOBUFS' ||
+    err.code === 'ERR_CHILD_PROCESS_STDIO_MAXBUFFER' ||
+    /maxBuffer/i.test(err.message || '')
+  );
+}
+
 function git(args, cwd) {
   try {
     return execFileSync('git', args, {
       cwd: cwd || projectDir(),
       stdio: ['ignore', 'pipe', 'ignore'],
       encoding: 'utf8',
+      maxBuffer: GIT_MAX_BUFFER,
     }).trim();
-  } catch {
+  } catch (err) {
+    // A git non-zero exit and a buffer overflow both land here and both return
+    // null, but they mean different things: the first is a fact about the repo,
+    // the second is a limit of this process. Callers read null as "absent", so an
+    // overflow that stays silent makes the gate report the wrong cause — the
+    // failure mode ISSUE-179 named. null is still returned (fail-closed is the
+    // right direction for a promotion gate); the reason is no longer invisible.
+    if (isMaxBufferError(err)) {
+      process.stderr.write(
+        `dispatch-promotion-state: 'git ${args.join(' ')}' exceeded the ${GIT_MAX_BUFFER} byte read buffer.\n` +
+        `  This is NOT evidence the path is absent from HEAD — it is a limit of this hook process.\n` +
+        `  Treating it as unpromoted (fail-closed). Raise GIT_MAX_BUFFER in hooks/lib/dispatch-promotion-state.cjs.\n`
+      );
+    }
     return null;
   }
 }

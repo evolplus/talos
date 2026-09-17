@@ -88,6 +88,16 @@ JSON
       orphaned)
         rm -rf "$WT"
         write_journal ready-to-finalize "" ;;
+      bigblob)
+        # Fully and correctly promoted, but one artifact is larger than Node's
+        # 1 MiB execFileSync default. `git show HEAD:<path>` must still be read.
+        mkdir -p "$WT/docs/api-contracts"
+        head -c 3000000 /dev/zero | tr '\\0' 'y' > "$WT/docs/api-contracts/big-v1.yaml"
+        cat > "$WT/plan-update.json" <<JSON
+{"task_id":"T-042","track":"be","from_status":"in-progress","to_status":"ready-for-deploy","agent":"be-dev","artifacts":["backend/src/handler.js","docs/api-contracts/big-v1.yaml"],"timestamp":"2026-09-09T10:30:00Z"}
+JSON
+        SHA="$(promote backend/src/handler.js docs/api-contracts/big-v1.yaml)"
+        write_journal finalized "$SHA" ;;
     esac
   ) >/dev/null 2>&1
   echo "$repo"
@@ -115,6 +125,20 @@ run_exit() {  # name, expected, hook, payload, pdir, [env]
   fi
 }
 
+run_contains_not() {  # name, hook, payload, pdir, needle, [stream]
+  local name="$1" hook="$2" payload="$3" pdir="$4" needle="$5" stream="${6:-stderr}"
+  printf '%s' "$payload" | (cd "$pdir" && CLAUDE_PROJECT_DIR="$pdir" node "$hook") >"$OUT" 2>"$ERR"
+  local f="$ERR"; [ "$stream" = stdout ] && f="$OUT"
+  if grep -qF "$needle" "$f"; then
+    printf "  FAIL  %s (must NOT contain %q in %s)\n" "$name" "$needle" "$stream"
+    sed 's/^/        /' "$f"
+    FAIL=$((FAIL+1))
+  else
+    printf "  PASS  %s\n" "$name"
+    PASS=$((PASS+1))
+  fi
+}
+
 run_contains() {  # name, hook, payload, pdir, needle, [stream]
   local name="$1" hook="$2" payload="$3" pdir="$4" needle="$5" stream="${6:-err}"
   printf '%s' "$payload" | env "CLAUDE_PROJECT_DIR=$pdir" node "$hook" >"$OUT" 2>"$ERR"
@@ -133,6 +157,7 @@ R_PARTIAL="$(make_repo partial partial)"
 R_UNVERIF="$(make_repo unverif unverifiable)"
 R_INFLIGHT="$(make_repo inflight inflight)"
 R_ORPHAN="$(make_repo orphan orphaned)"
+R_BIGBLOB="$(make_repo bigblob bigblob)"
 
 RM_WT='git worktree remove --force .worktrees/be-dev-T-042'
 RM_DIR='rm -rf -- .worktrees/be-dev-T-042/'
@@ -152,6 +177,15 @@ run_contains "block does NOT suggest git merge"    "$GUARD" "$(bash_event "$RM_W
 
 echo "worktree-promotion-guard.cjs — states that must NOT be blocked"
 run_exit "allows teardown after verified promotion" 0 "$GUARD" "$(bash_event "$RM_WT")" "$R_PROMOTED"
+
+# A promoted artifact larger than Node's 1 MiB execFileSync default must not read
+# as missing. Before GIT_MAX_BUFFER, `git show HEAD:<path>` overflowed, the catch
+# returned null, and null means "not on HEAD" — so the gate refused teardown of a
+# dispatch that HAD promoted everything, and said the file was missing while it
+# sat in HEAD. Fail-closed, so nothing was lost; but the stated cause was wrong.
+run_exit "allows teardown with a >1MiB promoted artifact"  0 "$GUARD" "$(bash_event "$RM_WT")" "$R_BIGBLOB"
+run_contains_not "large artifact is not reported missing" "$GUARD" "$(bash_event "$RM_WT")" "$R_BIGBLOB" "MISSING on HEAD"
+
 run_exit "allows crash-recovery discard (in-flight)" 0 "$GUARD" "$(bash_event "$RM_WT")" "$R_INFLIGHT"
 run_exit "allows discard with the discard flag"     0 "$GUARD" "$(bash_event "$RM_WT")" "$R_READY" "CLAUDE_DISCARD_INTERRUPTED_DISPATCH=1"
 run_exit "unrelated bash passes"                    0 "$GUARD" "$(bash_event 'npm run build')" "$R_READY"
