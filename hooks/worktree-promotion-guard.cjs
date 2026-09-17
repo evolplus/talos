@@ -126,8 +126,8 @@ function blockMessage(findings) {
       L.push(`    finalization.main_commit: (unset)`);
     }
     if (f.unpromoted) {
-      for (const p of f.unpromoted.missing.slice(0, 10)) L.push(`      MISSING on HEAD:   ${p}`);
-      for (const p of f.unpromoted.differing.slice(0, 10)) L.push(`      DIFFERS from HEAD: ${p}`);
+      for (const p of f.unpromoted.missing.slice(0, 10)) L.push(`      ABSENT at the promotion commit AND at HEAD: ${p}`);
+      for (const p of f.unpromoted.differing.slice(0, 10)) L.push(`      MATCHES NEITHER the promotion commit nor HEAD: ${p}`);
     }
     if (f.state === 'unverifiable') {
       L.push(`      add "artifacts": ["<path>", …] to ${f.paths.planUpdatePath}`);
@@ -198,6 +198,20 @@ async function main() {
   const findings = [];
   for (const t of targets) {
     const c = S.classifyDispatch(t.role, t.taskId);
+    // A shared-doc verified by promotion-commit modification rather than by
+    // content equality is still a pass, but it is a WEAKER pass and the operator
+    // is told which paths took it. A check that quietly relaxes itself is how a
+    // gate stops meaning anything.
+    const advanced = (c.unpromoted && c.unpromoted.sharedAdvanced) || [];
+    if (advanced.length) {
+      process.stderr.write(
+        `worktree-promotion-guard: ${t.role}/${t.taskId} — ${advanced.length} shared-doc path(s) verified by ` +
+        `promotion-commit modification, not content equality:\n` +
+        advanced.slice(0, 10).map(x => `    ${x}\n`).join('') +
+        `  These are append-only for all roles (CLAUDE.md §6), so the Orchestrator's own closure edits\n` +
+        `  mean the worktree copy never matches main byte-for-byte. Commit ${c.mainCommit} does modify them.\n`
+      );
+    }
     if (c.state === 'promoted' || c.state === 'unknown' || c.state === 'orphaned') continue;
     if (c.state === 'in-flight' || process.env.CLAUDE_DISCARD_INTERRUPTED_DISPATCH === '1') {
       process.stderr.write(

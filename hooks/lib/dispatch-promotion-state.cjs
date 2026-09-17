@@ -40,6 +40,7 @@
 const fs = require('fs');
 const path = require('path');
 const { execFileSync } = require('child_process');
+const { ownerOf } = require('./role-ownership.cjs');
 
 // <role>-<task-id>  e.g. be-dev-T-042
 const DISPATCH_DIR_RE = /^([a-z0-9][a-z0-9-]*?)-([A-Za-z]+-\d+)$/;
@@ -175,6 +176,7 @@ function unpromotedPaths(paths, manifest, mainCommit) {
   if (!manifest || manifest.length === 0) return { missing: [], differing: [], checked: 0 };
   const missing = [];
   const differing = [];
+  const sharedAdvanced = [];
   // Ordered, de-duplicated: the claimed promotion commit first, then HEAD.
   const refs = [];
   if (typeof mainCommit === 'string' && mainCommit.trim()) refs.push(mainCommit.trim());
@@ -197,9 +199,46 @@ function unpromotedPaths(paths, manifest, mainCommit) {
     try { wtContent = fs.readFileSync(wtFile, 'utf8').trim(); } catch { wtContent = null; }
     if (wtContent === null) continue;
     // Promoted if it matched main at any checked point.
-    if (!onRef.some(c => c !== null && c === wtContent)) differing.push(rel);
+    if (onRef.some(c => c !== null && c === wtContent)) continue;
+
+    // Content equality is a SUFFICIENT proof of promotion, not a necessary one —
+    // and for a shared-doc it can never hold. `docs/open-issues.md` is written by
+    // every role (CLAUDE.md §6, append-only) and the Orchestrator MUST edit it at
+    // closure, triaging the very issues the dispatch filed. Its promotion commit
+    // therefore carries the agent's entry AND the triage, so the worktree copy is
+    // byte-identical to main at no commit, ever. Requiring equality there made a
+    // complete promotion unprovable and its teardown permanently blocked.
+    //
+    // For those paths only, the proof is that the promotion commit MODIFIED the
+    // path. This is deliberately weaker, so it is deliberately narrow: it applies
+    // to `shared-doc` paths alone, and every role-owned artifact — the ones the
+    // gate exists to protect — keeps strict content equality. A `finalized` marker
+    // over a contract or a source file that was never copied still fails.
+    if (isSharedDoc(rel) && mainCommit && commitTouchedPath(paths.root, mainCommit, rel)) {
+      sharedAdvanced.push(rel);
+      continue;
+    }
+    differing.push(rel);
   }
-  return { missing, differing, checked: manifest.length, refsChecked: refs };
+  return { missing, differing, sharedAdvanced, checked: manifest.length, refsChecked: refs };
+}
+
+// A path every role may append to, per CLAUDE.md §6. The ownership map is the
+// single source of truth; this never hard-codes a filename.
+function isSharedDoc(rel) {
+  try {
+    const o = ownerOf(rel);
+    return Boolean(o) && o.kind === 'shared-doc';
+  } catch {
+    return false; // map unavailable — fall through to the strict check
+  }
+}
+
+// Did this commit actually write this path? `<commit>^!` diffs a commit against
+// its first parent, and handles a root commit (diffed against the empty tree).
+function commitTouchedPath(root, commit, rel) {
+  const out = git(['diff', '--name-only', `${commit}^!`, '--', rel], root);
+  return typeof out === 'string' && out.split('\n').some(l => l.trim() === rel);
 }
 
 // Lifecycle classification.

@@ -88,6 +88,49 @@ JSON
       orphaned)
         rm -rf "$WT"
         write_journal ready-to-finalize "" ;;
+      partialcontent)
+        # THE DANGEROUS CASE the gate exists for, and the one that pins the
+        # shared-doc fallback as NARROW: the promotion commit DOES write the
+        # role-owned artifact, but with content that is not the worktree's -- a
+        # truncated or wrong ingestion. "The commit touched the path" is true
+        # here, so a fallback applied to every path would pass this. It must not.
+        write_pu
+        mkdir -p backend/src docs/api-contracts
+        cp "$WT/backend/src/handler.js" backend/src/handler.js
+        printf 'openapi: 3.1.0\n# WRONG CONTENT - not what the worktree produced\n' > docs/api-contracts/join-v1.yaml
+        git add -A && git commit -qm "feat(be): promote T-042 (contract ingested wrongly)"
+        SHA="$(git rev-parse HEAD)"
+        write_journal finalized "$SHA" ;;
+      shareddoc)
+        # docs/open-issues.md is append-only for ALL roles (CLAUDE.md §6). The
+        # Orchestrator triages it at closure, IN the promotion commit, so the
+        # worktree copy is byte-identical to main at no commit ever. The promotion
+        # is real and the commit does modify the path.
+        mkdir -p "$WT/docs"
+        printf '# Open Issues\n\n### ISSUE-900 filed by the agent\n- State: open\n' > "$WT/docs/open-issues.md"
+        cat > "$WT/plan-update.json" <<JSON
+{"task_id":"T-042","track":"be","from_status":"in-progress","to_status":"ready-for-deploy","agent":"be-dev","artifacts":["backend/src/handler.js","docs/open-issues.md"],"timestamp":"2026-09-09T10:30:00Z"}
+JSON
+        mkdir -p backend/src docs
+        cp "$WT/backend/src/handler.js" backend/src/handler.js
+        # ingested AND triaged in the same commit, as the Orchestrator does
+        printf '# Open Issues\n\n### ISSUE-900 filed by the agent\n- State: deferred\n- Owner: QA-Author\n' > docs/open-issues.md
+        git add -A && git commit -qm "feat(be): promote T-042 + triage the filed issue"
+        SHA="$(git rev-parse HEAD)"
+        write_journal finalized "$SHA" ;;
+      shareddocuntouched)
+        # The shared-doc fallback must not become a blanket pass: here the
+        # promotion commit does NOT modify docs/open-issues.md, so the claim that
+        # it was promoted is unsupported and must still block.
+        mkdir -p "$WT/docs"
+        printf '# Open Issues\n\n### ISSUE-901 filed by the agent\n- State: open\n' > "$WT/docs/open-issues.md"
+        printf '# Open Issues\n\n(untouched by the promotion)\n' > docs/open-issues.md
+        git add -A && git commit -qm "chore: pre-existing open-issues"
+        cat > "$WT/plan-update.json" <<JSON
+{"task_id":"T-042","track":"be","from_status":"in-progress","to_status":"ready-for-deploy","agent":"be-dev","artifacts":["backend/src/handler.js","docs/open-issues.md"],"timestamp":"2026-09-09T10:30:00Z"}
+JSON
+        SHA="$(promote backend/src/handler.js)"
+        write_journal finalized "$SHA" ;;
       postpromotion)
         # Correctly and completely promoted -- then main advanced past the
         # promotion commit, exactly as it does when the Orchestrator triages
@@ -179,6 +222,9 @@ R_INFLIGHT="$(make_repo inflight inflight)"
 R_ORPHAN="$(make_repo orphan orphaned)"
 R_BIGBLOB="$(make_repo bigblob bigblob)"
 R_POSTPROMO="$(make_repo postpromo postpromotion)"
+R_PARTIALCONTENT="$(make_repo partialcontent partialcontent)"
+R_SHARED="$(make_repo shareddoc shareddoc)"
+R_SHARED_UNTOUCHED="$(make_repo shareduntouched shareddocuntouched)"
 
 RM_WT='git worktree remove --force .worktrees/be-dev-T-042'
 RM_DIR='rm -rf -- .worktrees/be-dev-T-042/'
@@ -190,7 +236,7 @@ run_exit "blocks PARTIAL promotion"                       2 "$GUARD" "$(bash_eve
 run_exit "blocks when no artifacts manifest"              2 "$GUARD" "$(bash_event "$RM_WT")" "$R_UNVERIF"
 run_exit "blocks chained teardown"                        2 "$GUARD" "$(bash_event "cd /tmp && $RM_WT && echo ok")" "$R_READY"
 run_exit "escape hatch allows"                            0 "$GUARD" "$(bash_event "$RM_WT")" "$R_READY" "CLAUDE_ALLOW_UNPROMOTED_CLEANUP=1"
-run_contains "partial names the dropped path"      "$GUARD" "$(bash_event "$RM_WT")" "$R_PARTIAL"  "MISSING on HEAD:   docs/api-contracts/join-v1.yaml"
+run_contains "partial names the dropped path"      "$GUARD" "$(bash_event "$RM_WT")" "$R_PARTIAL"  "ABSENT at the promotion commit AND at HEAD: docs/api-contracts/join-v1.yaml"
 run_contains "partial explains the green signals"  "$GUARD" "$(bash_event "$RM_WT")" "$R_PARTIAL"  "PARTIAL promotion"
 run_contains "unverifiable asks for the manifest"  "$GUARD" "$(bash_event "$RM_WT")" "$R_UNVERIF"  'add "artifacts"'
 run_contains "block warns detached = no recovery"  "$GUARD" "$(bash_event "$RM_WT")" "$R_READY"    "leaves no branch and no ref"
@@ -206,10 +252,28 @@ run_exit "allows teardown after verified promotion" 0 "$GUARD" "$(bash_event "$R
 # entry survives into every later session (ISSUE-224). The content is checked at
 # finalization.main_commit as well as HEAD; matching either is promoted.
 run_exit "allows teardown when main advanced past the promotion" 0 "$GUARD" "$(bash_event "$RM_WT")" "$R_POSTPROMO"
-run_contains_not "post-promotion edit is not reported as differing" "$GUARD" "$(bash_event "$RM_WT")" "$R_POSTPROMO" "DIFFERS from HEAD"
+run_contains_not "post-promotion edit is not reported as differing" "$GUARD" "$(bash_event "$RM_WT")" "$R_POSTPROMO" "MATCHES NEITHER"
 # The gate is not weakened: content that was never on main matches NEITHER the
 # promotion commit nor HEAD, and is still blocked and still named.
 run_exit "still blocks a genuinely unpromoted path"             2 "$GUARD" "$(bash_event "$RM_WT")" "$R_PARTIAL"
+
+# A shared-doc (CLAUDE.md §6, append-only for all roles) can never match the
+# worktree byte-for-byte: the Orchestrator triages it at closure, inside the
+# promotion commit. For those paths only, the proof is that the promotion commit
+# MODIFIED the path. Narrow by construction -- role-owned artifacts keep strict
+# content equality, which is what the case above still proves.
+run_exit "allows teardown when a shared-doc was triaged at promotion" 0 "$GUARD" "$(bash_event "$RM_WT")" "$R_SHARED"
+run_contains "the weaker shared-doc check is stated, never silent" "$GUARD" "$(bash_event "$RM_WT")" "$R_SHARED" "verified by promotion-commit modification, not content equality"
+# The fallback is not a blanket pass: if the promotion commit never touched the
+# shared-doc, the claim is unsupported and the block stands.
+run_exit "blocks a shared-doc the promotion commit never touched"     2 "$GUARD" "$(bash_event "$RM_WT")" "$R_SHARED_UNTOUCHED"
+# And the fallback must not reach role-owned artifacts at all. Here the promotion
+# commit DID write the contract -- with the wrong content. "The commit touched the
+# path" is true, so a fallback not restricted to shared-doc paths would pass this
+# silently; that is the partially-promoted state the gate calls the dangerous one.
+run_exit "blocks a role-owned artifact ingested with wrong content"   2 "$GUARD" "$(bash_event "$RM_WT")" "$R_PARTIALCONTENT"
+run_contains "wrong-content ingestion names the contract" "$GUARD" "$(bash_event "$RM_WT")" "$R_PARTIALCONTENT" "MATCHES NEITHER the promotion commit nor HEAD: docs/api-contracts/join-v1.yaml"
+
 
 
 # A promoted artifact larger than Node's 1 MiB execFileSync default must not read
