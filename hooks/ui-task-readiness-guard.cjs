@@ -106,10 +106,12 @@ function readTaskMeta(taskFile) {
   const track = (head.match(/^\s*-?\s*\**Track\**\s*:\s*([^\r\n]+)/im) || [])[1] || '';
   const designSubStatus = (head.match(/^\s*-?\s*\**Design[\s-]*sub[\s-]*status\**\s*:\s*([^\r\n]+)/im) || [])[1] || '';
   const linkedSurface = (head.match(/^\s*-?\s*\**Linked[\s-]*Surface\**\s*:\s*([^\r\n]+)/im) || [])[1] || '';
+  const designLineage = (head.match(/^\s*-?\s*\**Design[\s-]*lineage\**\s*:\s*([^\r\n]+)/im) || [])[1] || '';
   return {
     track: track.trim().toLowerCase(),
     designSubStatus: designSubStatus.trim().toLowerCase(),
     linkedSurface: linkedSurface.trim(),
+    designLineage: designLineage.trim(),
   };
 }
 
@@ -134,6 +136,45 @@ function normalizeSurface(v) {
 
 function isNonUISentinel(v) {
   return NON_UI_SENTINELS.has(normalizeSurface(v));
+}
+
+// Which task's design record satisfies this task's artifact set.
+//
+// A corrective or remediation task lands on a surface whose design record already
+// exists under the ORIGINATING task. T-269 corrects a payload mapping on the
+// admin-web Legal Documents surface: `Track: fe`, `Design sub-status:
+// design-confirmed` and a real Figma node are all TRUE, so it is correctly
+// classified UI-bearing — but the four artifacts live under T-248, and requiring
+// `<T-269>`-named copies means fabricating a second record of the same design.
+// That duplicate is the thing the operator declined to invent (ISSUE-260), and
+// the only remaining exit was an escape hatch, so a truthful task could not pass.
+//
+// `Design lineage: T-NNN` in the task header names the task whose design record
+// applies. The artifact set is then resolved from THAT id, and every existing
+// check — frozen status, section rules, required rows — runs against it unchanged.
+// Nothing is relaxed except which task id names the files.
+//
+// Declared as ONE id rather than four paths because the `## Linked artifacts`
+// section writes them decorated (`docs/test-cases/by-task/T-248/{structural,
+// functional}.md`) and parsing that is guesswork. One token is unambiguous.
+//
+// Not chained, on purpose: a lineage pointing at a task that itself declares one
+// is NOT followed. One hop keeps the record traceable to a single origin.
+//
+// Self-authorization is not possible: `docs/plan/**` is `orchestrator-only` in
+// the ownership map, so the dispatched role cannot edit its own task file to
+// point this anywhere. The TL or Orchestrator declares it — the same authority
+// that created the task.
+const LINEAGE_ID_RE = /\b(T-\d+)\b/;
+
+function resolveArtifactTaskId(meta, taskId) {
+  if (!meta || !meta.designLineage) return { artifactId: taskId, lineage: null };
+  const m = meta.designLineage.match(LINEAGE_ID_RE);
+  if (!m) return { artifactId: taskId, lineage: null };
+  const lineage = m[1];
+  // A self-reference is not a lineage; treat it as absent rather than as an error.
+  if (lineage === taskId) return { artifactId: taskId, lineage: null };
+  return { artifactId: lineage, lineage };
 }
 
 function isUITask(meta) {
@@ -407,8 +448,11 @@ async function main() {
   const meta = readTaskMeta(taskFile);
   if (!isUITask(meta)) process.exit(0);
 
-  // UI task — verify the three artifacts.
-  const { missing, incomplete } = checkArtifacts(projectRoot, worktreeRoot, taskId);
+  // UI task — verify the artifact set, resolved from the declared design lineage
+  // when the task inherits one. Fails closed: if the lineage's artifacts are
+  // missing or incomplete, this blocks exactly as an own-task set would.
+  const { artifactId, lineage } = resolveArtifactTaskId(meta, taskId);
+  const { missing, incomplete } = checkArtifacts(projectRoot, worktreeRoot, artifactId);
   if (missing.length === 0 && incomplete.length === 0) process.exit(0);
 
   const role = (proposed.agent || '').toString().trim();
@@ -417,6 +461,14 @@ async function main() {
   process.stderr.write(
     'ui-task-readiness-guard: BLOCKED — plan-update.json proposing ' +
     '`to_status: ready-for-deploy` for UI task ' + taskId + ' but mandatory closure artifacts are missing or incomplete.\n\n' +
+    // Without this the paths below read as belonging to another task, and an author
+    // cannot tell whether the lineage was honoured, ignored, or misread.
+    (lineage
+      ? '  Design lineage: `' + lineage + '` (declared in the task header) — the artifact set below is\n' +
+        '  resolved from ' + lineage + ', NOT from ' + taskId + '. The record is incomplete AT ITS ORIGIN;\n' +
+        '  do not create ' + taskId + '-named copies to satisfy this, which is the duplicate record the\n' +
+        '  lineage field exists to avoid. Complete the ' + lineage + ' artifacts, or correct the lineage.\n\n'
+      : '') +
     '  Missing artifacts (' + missing.length + '/4):\n' +
     missing.map(c =>
       '    - ' + c.label + '\n' +
@@ -447,7 +499,13 @@ async function main() {
     '         UI/UX handoff → re-dispatch ui-ux-designer import/revise/incorporate as appropriate\n' +
     '         Visual spec / by-task TC pack → dispatch qa-author in `by-task` mode\n' +
     '    4. Once the artifact set is complete, re-emit plan-update.json.\n\n' +
-    '  Escape hatch (operator-explicit only): export CLAUDE_SKIP_UI_READINESS_CHECK=1\n' +
+    '  If this task INHERITS an already-confirmed design — a corrective or remediation task on a\n' +
+    '  surface another task designed — the artifacts are NOT missing; they are named for that task.\n' +
+    '  Declare `Design lineage: T-NNN` in the task header and the set above resolves from that id.\n' +
+    '  The header is Orchestrator/TL-owned, so ask for it rather than editing it from this role.\n' +
+    '  Do NOT create ' + taskId + '-named duplicates of a record that already exists.\n\n' +
+    '  Escape hatch (operator-explicit only, and read from the LAUNCH environment — an inline\n' +
+    '  VAR=1 prefix on a tool call cannot reach this hook): CLAUDE_SKIP_UI_READINESS_CHECK=1\n' +
     '  Document the rationale in the task file Notes section.\n'
   );
   process.exit(2);

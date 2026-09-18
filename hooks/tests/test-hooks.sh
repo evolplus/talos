@@ -2790,6 +2790,16 @@ cat > "$UI_FIX/docs/uiux/visual-specs/T-180.md" <<'EOF'
 EOF
 echo "# api" > "$UI_FIX/docs/test-cases/by-task/T-180/api.md"
 
+# --- Design lineage (inherited design record) fixtures ---
+# A corrective/remediation task lands on a surface another task designed. Its
+# artifacts are not missing -- they are named for the originating task. T-181
+# inherits T-180's COMPLETE set; T-182 inherits T-168's EMPTY one.
+printf '%s\n' '# T-181 — Group UI payload fix' '- Phase: phase-22' '- Track: fe' '- Status: in-progress' '- Design sub-status: design-confirmed' '- Design lineage: T-180' > "$UI_FIX/docs/plan/phase-22/tasks/T-181.md"
+printf '%s\n' '# T-182 — inherits an incomplete record' '- Phase: phase-22' '- Track: fe' '- Status: in-progress' '- Design sub-status: design-confirmed' '- Design lineage: T-168' > "$UI_FIX/docs/plan/phase-22/tasks/T-182.md"
+printf '%s\n' '# T-183 — self-referencing lineage' '- Phase: phase-22' '- Track: fe' '- Status: in-progress' '- Design sub-status: design-confirmed' '- Design lineage: T-183' > "$UI_FIX/docs/plan/phase-22/tasks/T-183.md"
+printf '%s\n' '# T-184 — unparseable lineage' '- Phase: phase-22' '- Track: fe' '- Status: in-progress' '- Design sub-status: design-confirmed' '- Design lineage: see the T-248 remediation thread' > "$UI_FIX/docs/plan/phase-22/tasks/T-184.md"
+printf '%s\n' '# T-185 — lineage with prose' '- Phase: phase-22' '- Track: fe' '- Status: in-progress' '- Design sub-status: design-confirmed' '- Design lineage: `T-180` (payload correction; adds and removes no visible element)' > "$UI_FIX/docs/plan/phase-22/tasks/T-185.md"
+
 # Helper: build plan-update.json Write event
 ui_pu() {
   # $1 task_id, $2 to_status, $3 cwd, $4 track (optional, default fe)
@@ -2809,6 +2819,32 @@ run_exit "ui-ready: T-168 no artifacts blocks ready-for-deploy" 2 "$UI_READY" "$
 
 # === Allow: UI task with all 4 artifacts ===
 run_exit "ui-ready: T-180 with all artifacts allows" 0 "$UI_READY" "$(ui_pu T-180 ready-for-deploy "$UI_FIX/.worktrees/fe-dev-T-180")"
+
+# === Design lineage — a task may inherit an already-confirmed design record ===
+# T-269 (2026-09-18) was correctly classified UI-bearing -- Track: fe, a real
+# Figma node, design-confirmed, all true -- but its four artifacts live under
+# T-248, the task it remediates. Requiring <task-id>-named copies meant
+# fabricating a second record of the same design, which the operator declined
+# (ISSUE-260), leaving an escape hatch as the only exit for a truthful task.
+run_exit "ui-ready: T-181 inherits T-180's complete record — allows" 0 "$UI_READY" "$(ui_pu T-181 ready-for-deploy "$UI_FIX/.worktrees/fe-dev-T-181")"
+run_stderr_contains "ui-ready: no-lineage block advertises the field" "$UI_READY" \
+  "$(ui_pu T-168 ready-for-deploy "$UI_FIX/.worktrees/fe-dev-T-168")" "Design lineage: T-NNN"
+
+# Fails closed in every direction. The lineage relocates WHICH id names the
+# artifacts; it never lowers the bar, so an incomplete record at the origin
+# blocks exactly as an incomplete own record would.
+run_exit "ui-ready: T-182 inherits an EMPTY record — still blocks" 2 "$UI_READY" "$(ui_pu T-182 ready-for-deploy "$UI_FIX/.worktrees/fe-dev-T-182")"
+run_stderr_contains "ui-ready: the block names the lineage, not the task" "$UI_READY" \
+  "$(ui_pu T-182 ready-for-deploy "$UI_FIX/.worktrees/fe-dev-T-182")" "Design lineage: \`T-168\`"
+run_stderr_contains "ui-ready: the block forbids duplicating the record" "$UI_READY" \
+  "$(ui_pu T-182 ready-for-deploy "$UI_FIX/.worktrees/fe-dev-T-182")" "do not create T-182-named copies"
+# A self-reference is not a lineage; a value with no T-NNN is not one either.
+# Both fall back to the task's own set rather than passing vacuously.
+run_exit "ui-ready: self-referencing lineage falls back and blocks"  2 "$UI_READY" "$(ui_pu T-183 ready-for-deploy "$UI_FIX/.worktrees/fe-dev-T-183")"
+run_exit "ui-ready: unparseable lineage falls back and blocks"       2 "$UI_READY" "$(ui_pu T-184 ready-for-deploy "$UI_FIX/.worktrees/fe-dev-T-184")"
+# The id is extracted from prose + backticks, because that is how task headers
+# are actually written.
+run_exit "ui-ready: lineage id read through backticks and prose"     0 "$UI_READY" "$(ui_pu T-185 ready-for-deploy "$UI_FIX/.worktrees/fe-dev-T-185")"
 
 # === Allow: BE-only task even without artifacts ===
 run_exit "ui-ready: T-200 (be track) allows without artifacts" 0 "$UI_READY" "$(ui_pu T-200 ready-for-deploy "$UI_FIX/.worktrees/be-dev-T-200" be)"
