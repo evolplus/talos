@@ -261,6 +261,34 @@ run_exit "authority: be-dev proposes in-progress → ready-for-deploy (allowed)"
 AUTH_FEDEV_RFD='{"tool_name":"Write","tool_input":{"file_path":"plan-update.json","content":"{\"task_id\":\"T-1\",\"track\":\"fe\",\"from_status\":\"in-progress\",\"to_status\":\"ready-for-deploy\",\"artifacts\":[\"backend/src/handler.js\"],\"agent\":\"fe-dev\",\"timestamp\":\"2026-05-10T08:00:00Z\"}"}}'
 run_exit "authority: fe-dev proposes in-progress → ready-for-deploy (allowed)" 0 "$VALIDATOR" "$AUTH_FEDEV_RFD"
 
+# Every WORKING role owns an in-progress stage on its own tasks and must be able
+# to exit it. This edge was restricted to be-dev/fe-dev, which left 7 of the 9
+# roles with no legal forward transition out of the one stage they own -- a
+# dispatch could finish correctly and have no honest way to say so. The project's
+# own history contradicted the rule: 44 qa, 25 infra, 3 design and 1 ba task had
+# reached `done`, and every one of them traversed this edge.
+AUTH_RFD_DEVOPS='{"tool_name":"Write","tool_input":{"file_path":"plan-update.json","content":"{\"task_id\":\"T-1\",\"track\":\"infra\",\"from_status\":\"in-progress\",\"to_status\":\"ready-for-deploy\",\"artifacts\":[\"docs/x.md\"],\"agent\":\"devops\",\"timestamp\":\"2026-05-10T08:00:00Z\"}"}}'
+run_exit "authority: devops proposes in-progress → ready-for-deploy (allowed)" 0 "$VALIDATOR" "$AUTH_RFD_DEVOPS"
+AUTH_RFD_QA_AUTHOR='{"tool_name":"Write","tool_input":{"file_path":"plan-update.json","content":"{\"task_id\":\"T-1\",\"track\":\"qa\",\"from_status\":\"in-progress\",\"to_status\":\"ready-for-deploy\",\"artifacts\":[\"docs/x.md\"],\"agent\":\"qa-author\",\"timestamp\":\"2026-05-10T08:00:00Z\"}"}}'
+run_exit "authority: qa-author proposes in-progress → ready-for-deploy (allowed)" 0 "$VALIDATOR" "$AUTH_RFD_QA_AUTHOR"
+AUTH_RFD_QA_EXEC='{"tool_name":"Write","tool_input":{"file_path":"plan-update.json","content":"{\"task_id\":\"T-1\",\"track\":\"qa\",\"from_status\":\"in-progress\",\"to_status\":\"ready-for-deploy\",\"artifacts\":[\"docs/x.md\"],\"agent\":\"qa-exec\",\"timestamp\":\"2026-05-10T08:00:00Z\"}"}}'
+run_exit "authority: qa-exec proposes in-progress → ready-for-deploy (allowed)" 0 "$VALIDATOR" "$AUTH_RFD_QA_EXEC"
+AUTH_RFD_BA='{"tool_name":"Write","tool_input":{"file_path":"plan-update.json","content":"{\"task_id\":\"T-1\",\"track\":\"ba\",\"from_status\":\"in-progress\",\"to_status\":\"ready-for-deploy\",\"artifacts\":[\"docs/x.md\"],\"agent\":\"ba\",\"timestamp\":\"2026-05-10T08:00:00Z\"}"}}'
+run_exit "authority: ba proposes in-progress → ready-for-deploy (allowed)" 0 "$VALIDATOR" "$AUTH_RFD_BA"
+AUTH_RFD_SA='{"tool_name":"Write","tool_input":{"file_path":"plan-update.json","content":"{\"task_id\":\"T-1\",\"track\":\"sa\",\"from_status\":\"in-progress\",\"to_status\":\"ready-for-deploy\",\"artifacts\":[\"docs/x.md\"],\"agent\":\"sa\",\"timestamp\":\"2026-05-10T08:00:00Z\"}"}}'
+run_exit "authority: sa proposes in-progress → ready-for-deploy (allowed)" 0 "$VALIDATOR" "$AUTH_RFD_SA"
+AUTH_RFD_TL='{"tool_name":"Write","tool_input":{"file_path":"plan-update.json","content":"{\"task_id\":\"T-1\",\"track\":\"tl\",\"from_status\":\"in-progress\",\"to_status\":\"ready-for-deploy\",\"artifacts\":[\"docs/x.md\"],\"agent\":\"tl\",\"timestamp\":\"2026-05-10T08:00:00Z\"}"}}'
+run_exit "authority: tl proposes in-progress → ready-for-deploy (allowed)" 0 "$VALIDATOR" "$AUTH_RFD_TL"
+AUTH_RFD_UI_UX_DESIGNER='{"tool_name":"Write","tool_input":{"file_path":"plan-update.json","content":"{\"task_id\":\"T-1\",\"track\":\"fe\",\"from_status\":\"in-progress\",\"to_status\":\"ready-for-deploy\",\"artifacts\":[\"docs/x.md\"],\"agent\":\"ui-ux-designer\",\"timestamp\":\"2026-05-10T08:00:00Z\"}"}}'
+run_exit "authority: ui-ux-designer proposes in-progress → ready-for-deploy (allowed)" 0 "$VALIDATOR" "$AUTH_RFD_UI_UX_DESIGNER"
+AUTH_RFD_ORCHESTRATOR='{"tool_name":"Write","tool_input":{"file_path":"plan-update.json","content":"{\"task_id\":\"T-1\",\"track\":\"qa\",\"from_status\":\"in-progress\",\"to_status\":\"ready-for-deploy\",\"artifacts\":[\"docs/x.md\"],\"agent\":\"orchestrator\",\"timestamp\":\"2026-05-10T08:00:00Z\"}"}}'
+run_exit "authority: orchestrator proposes in-progress → ready-for-deploy (allowed)" 0 "$VALIDATOR" "$AUTH_RFD_ORCHESTRATOR"
+
+# The edges that still protect the FR-022 class are untouched: a build must have
+# been deployed, and QA must have run. Those are where a DIFFERENT gate executed.
+AUTH_RFD_IT_WRONG='{"tool_name":"Write","tool_input":{"file_path":"plan-update.json","content":"{\"task_id\":\"T-1\",\"track\":\"be\",\"from_status\":\"ready-for-deploy\",\"to_status\":\"in-test\",\"artifacts\":[\"backend/src/handler.js\"],\"agent\":\"qa-author\",\"timestamp\":\"2026-05-10T08:00:00Z\"}"}}'
+run_exit "authority: still blocks non-devops proposing ready-for-deploy → in-test" 2 "$VALIDATOR" "$AUTH_RFD_IT_WRONG"
+
 # devops can propose ready-for-deploy → in-test (deployment)
 AUTH_DEVOPS_IT='{"tool_name":"Write","tool_input":{"file_path":"plan-update.json","content":"{\"task_id\":\"T-1\",\"track\":\"be\",\"from_status\":\"ready-for-deploy\",\"to_status\":\"in-test\",\"artifacts\":[\"backend/src/handler.js\"],\"agent\":\"devops\",\"timestamp\":\"2026-05-10T08:00:00Z\"}"}}'
 run_exit "authority: devops proposes ready-for-deploy → in-test (allowed)" 0 "$VALIDATOR" "$AUTH_DEVOPS_IT"

@@ -116,8 +116,37 @@ const ISO_8601 = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:?\d{2
 // Key format: "from_status→to_status". Value: Set of authorized agents.
 
 const STRICT_AUTHORITY = new Map([
-  // Dev completes self-verification — only the working dev
-  ['in-progress→ready-for-deploy', new Set(['be-dev', 'fe-dev'])],
+  // `in-progress → ready-for-deploy` is DELIBERATELY ABSENT — it was restricted
+  // to be-dev/fe-dev, and that restriction was wrong.
+  //
+  // WHAT IT MEANT VS WHAT IT ENCODED. The edge means "the dispatched role has
+  // finished its OWN work". Every working role has an in-progress stage on its
+  // own tasks, so restricting it to the two dev roles encoded an assumption that
+  // only devs hold tasks. Seven of the nine working roles — ba, sa, tl,
+  // qa-author, ui-ux-designer, devops, qa-exec — were left with NO legal forward
+  // transition out of the one stage they own. A dispatch could finish correctly
+  // and have no honest way to say so; the only exits were `blocked`, `failed`
+  // (both false) or an Orchestrator applying the transition by hand.
+  //
+  // The rule was contradicted by its own project's history: 44 `qa`, 25 `infra`,
+  // 3 `design` and 1 `ba` task had reached `done`, and every one of them had to
+  // traverse this edge to get there.
+  //
+  // WHY REMOVING IT COSTS NOTHING. `plan-update.json` is written per dispatch,
+  // from that dispatch's own worktree, for its own task — so no role can assert
+  // this edge on another role's behalf regardless of what this table says. The
+  // restriction never prevented the thing its comment described.
+  //
+  // WHAT STILL PROTECTS THE FR-022 CLASS — unchanged below: a build must actually
+  // have been deployed (`ready-for-deploy → in-test`, devops) and QA must
+  // actually have run (`in-test → done|failed`, qa-exec). Those are the edges
+  // where a DIFFERENT gate must have executed, and they are the ones that stop a
+  // role certifying work it did not do.
+  //
+  // Role-vs-task-type mismatch — a devops dispatch on a be task — is a ROUTING
+  // error and belongs to kit-role-dispatch-guard, not to this table. Encoding it
+  // here only produced a false negative for every non-dev role.
+  //
   // DevOps deploys the build — only devops
   ['ready-for-deploy→in-test', new Set(['devops'])],
   // QA-Exec passes QA — only qa-exec
