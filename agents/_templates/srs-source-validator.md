@@ -47,7 +47,7 @@ The Orchestrator passes:
      "track": "qa",
      "from_status": "in-progress",
      "to_status": "ready-for-deploy",
-     "agent": "srs-validator",
+     "agent": "srs-source-validator",
      "verdict": "qualified | unqualified",
      "report_path": "docs/srs-validation-reports/v<version>.md",
      "next_action": "downstream-SDLC-unblocked | re-dispatch-BA-mode-D-with-OQ-list",

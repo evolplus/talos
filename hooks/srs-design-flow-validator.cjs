@@ -242,6 +242,42 @@ function loadWaivers(root) {
 
 // Collapse any figma-mappings version token (v1.6.md, v1.md, ...) so a waiver
 // survives SRS version bumps that do not change the underlying condition.
+// Which design flows a `Design-Flow:` header declares.
+//
+// THE DEFECT THIS REPLACES (ISSUE-192). The gate was `normalize(value) !== 'a'` — exit 0.
+// parseHeaderField captures the FIRST whitespace token and strips trailing punctuation, so:
+//     `A, B`          -> `A`       checked  (by accident: the B was simply dropped)
+//     `A + C`         -> `A`       checked  (by accident)
+//     `A+B`           -> `A+B`     SKIPPED  every Flow-A check
+//     `A/C`           -> `A/C`     SKIPPED
+//     `Mixed (A + C)` -> `Mixed`   SKIPPED
+// A mixed project — Flow A for pinned surfaces, Flow C per-gap for new ones — is real
+// practice, and every compact spelling of it waived the whole Flow-A evidence suite.
+//
+// THE RULE. The first token is the PRIMARY flow value; prose after it is description. The
+// primary value is split on flow combinators (`+ / & ,`) and Flow-A checks run iff `a` is
+// among the flows. This deliberately does NOT search the whole line for an `A`: a header
+// like `C (base), then B per-gap; A retained as historical-map-only` declares a RETIRED
+// Flow A, and treating that mention as active would block a sign-off over a flow the
+// project explicitly switched away from.
+//
+// Absent / N/A / none / `-` means no design flow applies (a no-UI SRS) and skips, as before.
+// Anything else unrecognized is returned as such, so the caller fails closed rather than
+// silently waiving the suite.
+const FLOW_LETTERS = new Set(['a', 'b', 'c']);
+const NO_FLOW = new Set(['', 'n/a', 'na', 'none', '-', '—', '–', 'null']);
+
+function classifyDesignFlow(rawValue) {
+  const raw = (rawValue || '').toString().trim();
+  const v = raw.toLowerCase().replace(/[`*_]/g, '');
+  if (NO_FLOW.has(v)) return { kind: 'none', flows: new Set(), raw };
+  const parts = v.split(/[+\/&,]/).map(x => x.trim()).filter(Boolean);
+  if (parts.length === 0 || !parts.every(x => FLOW_LETTERS.has(x))) {
+    return { kind: 'unrecognized', flows: new Set(), raw };
+  }
+  return { kind: 'flows', flows: new Set(parts), raw };
+}
+
 function normalizeViolation(s) {
   return (s || '').toString().replace(/v\d+(?:\.\d+)*\.md/gi, 'v<VER>.md').toLowerCase();
 }
@@ -286,8 +322,21 @@ async function main() {
   const status = normalize(parseSrsHeader(finalContent, 'Status'));
   if (!SIGNOFF_STATUSES.has(status)) process.exit(0);
 
-  const designFlow = normalize(parseSrsHeader(finalContent, 'Design-Flow'));
-  if (designFlow !== 'a') process.exit(0);
+  const flow = classifyDesignFlow(parseSrsHeader(finalContent, 'Design-Flow'));
+  if (flow.kind === 'unrecognized') {
+    // Fail CLOSED on a value this guard cannot interpret. Skipping here would silently waive
+    // every Flow-A check for any spelling it happens not to know — a reject rule that passes
+    // quietly, which is the dangerous half of a narrow matcher (ISSUE-179).
+    process.stderr.write(
+      'srs-design-flow-validator: BLOCKED — `Design-Flow: ' + flow.raw + '` is not a recognized value, so this\n' +
+      '  guard cannot tell whether Design-Flow A applies to this sign-off.\n' +
+      '  Write the PRIMARY value as a flow letter or a combination of them — `A`, `B`, `C`, `A+C`,\n' +
+      '  `A/B`, `A&C` — optionally followed by prose (`C (base), then B per-gap`). Only the first\n' +
+      '  token is the flow; the rest is description. Use `N/A` when the SRS has no UI surface.\n'
+    );
+    process.exit(2);
+  }
+  if (!flow.flows.has('a')) process.exit(0);
 
   const violations = [];
   const version = parseSrsHeader(finalContent, 'Version');

@@ -113,7 +113,7 @@ async function main() {
       `      { "task_id": "T-NNN", "from_status": "...", "to_status": "...", "agent": "<role>", ... }\n` +
       `    The Orchestrator ingests it on dispatch return and commits the actual docs/plan/ update.\n\n` +
       `  Protected tree: docs/plan/master-plan.md, docs/plan/phase-NN-name/phase.md, docs/plan/phase-NN-name/tasks/T-NNN.md.\n` +
-      `  Escape hatch (rare — kit dogfooding only): export CLAUDE_ALLOW_PLAN_WRITE=1\n`
+      `  Escape hatch (rare — kit dogfooding only): CLAUDE_ALLOW_PLAN_WRITE=1 (set in the env Claude Code is LAUNCHED with; an inline prefix or a Bash-call export never reaches hooks)\n`
     );
     process.exit(2);
   }

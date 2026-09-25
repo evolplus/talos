@@ -128,15 +128,50 @@ function hasDesignSystemSource(content) {
     /(token|color|typograph|spacing|radius|elevation|from-figma|figma-backed|extraction artifact)/i.test(stripped);
 }
 
-function hasQualifiedVerdict(content) {
-  const stripped = stripFencedCodeBlocks(content);
-  const lines = stripped.split(/\r?\n/);
-  for (const line of lines) {
-    if (!/\b(verdict|summary|status)\b/i.test(line)) continue;
-    if (/\bunqualified\b/i.test(line)) continue;
-    if (/\bqualified\b/i.test(line)) return true;
+// Read the VALUE of the report's Verdict field — never the words on the page.
+//
+// THE DEFECT THIS REPLACES (ISSUE-213). The old predicate returned true on the first
+// line that mentioned `verdict`, `summary` or `status` AND the word `qualified` but not
+// `unqualified`. It keyed on vocabulary, not on the verdict, so it failed in BOTH
+// directions:
+//   - It PASSED a failing report. docs/uiux/completeness-reports/T-245.md carries
+//     `- **Verdict:** \`unqualified\`` on line 3; the gate found the unrelated line
+//     `| v1.35.md is at Mapping-Status: qualified |` — "status" + "qualified" — and
+//     returned true. A completeness gate that passes an `unqualified` verdict is the most
+//     dangerous failure a gate can have, because every downstream signal then reads green.
+//   - It would BLOCK a passing report whose verdict line narrates history, e.g.
+//     `**\`qualified\`** — **\`unqualified\` on the first pass…**`: the `unqualified`
+//     skip-rule discarded the very line carrying the verdict.
+//
+// THE RULE. Only a line whose LABEL is `Verdict` (or the skill's `Summary verdict`,
+// ba-design-completeness/SKILL.md) is consulted. The first verdict token after the label
+// is that line's verdict; narrative after it is history. Decoration is ignored
+// (`**Verdict:** **qualified**`, `**Verdict: \`qualified\`**` are both real forms).
+//
+// LATEST WINS. BA re-runs APPEND to the same report — T-247 carries three runs
+// (`unqualified` → `qualified` → `qualified`), flow-c-grace-window-v1 two. The current
+// verdict is the last one recorded. Taking the FIRST instead was measured against the 41
+// real reports in the consuming project and would have newly blocked two genuinely
+// qualified reports; taking the LAST changes the outcome for exactly one report — T-245,
+// the one the old predicate wrongly passed — and preserves the other 40.
+//
+// A report with no Verdict field is NOT qualified. Absence of the verdict is a closure
+// blocker, not a vacuous pass.
+const VERDICT_LABEL = /^\s*(?:[-*+]\s+|#{1,6}\s+|\|\s*)?[*_`\s]*(?:summary\s+)?verdict[*_`\s]*:\s*(.*)$/i;
+
+function readVerdict(content) {
+  let latest = null;
+  for (const line of stripFencedCodeBlocks(content).split(/\r?\n/)) {
+    const m = line.match(VERDICT_LABEL);
+    if (!m) continue;
+    const tok = m[1].replace(/[*_`]/g, ' ').match(/\b(unqualified|qualified)\b/i);
+    if (tok) latest = tok[1].toLowerCase();
   }
-  return false;
+  return latest;
+}
+
+function hasQualifiedVerdict(content) {
+  return readVerdict(content) === 'qualified';
 }
 
 function checkHandoff(root, taskId) {
@@ -177,7 +212,11 @@ function checkCompletenessReport(root, taskId) {
   if (!fs.existsSync(p)) return ['Missing BA design completeness report: ' + rel + '.'];
   const content = readFileSafe(p);
   if (content === null) return ['Cannot read BA design completeness report: ' + rel + '.'];
-  if (!hasQualifiedVerdict(content)) return [rel + ' does not contain a qualified verdict.'];
+  const verdict = readVerdict(content);
+  // Name what was actually found. "does not contain a qualified verdict" read the same for a
+  // report that says `unqualified` and one with no Verdict field at all — two different fixes.
+  if (verdict === 'unqualified') return [rel + ' records the verdict `unqualified` (the latest Verdict field in the report). The design is not complete; re-run BA Phase 3 after the revision.'];
+  if (verdict !== 'qualified') return [rel + ' has no Verdict field (`- **Verdict:** qualified|unqualified`). A completeness report must state its verdict.'];
   return [];
 }
 

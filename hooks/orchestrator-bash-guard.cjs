@@ -38,11 +38,14 @@ const os = require('os');
 const path = require('path');
 const { isOperationWorktreeScoped } = require('./lib/worktree-scope.cjs');
 
-// The Orchestrator owns two transient cleanup surfaces. Step 7 and crash
+// The Orchestrator owns three transient cleanup surfaces. Step 7 and crash
 // recovery must be able to remove them without opening a general-purpose rm
 // escape hatch:
 //   - .worktrees/<dispatch>/ (including logical-role handoff-only dirs)
 //   - .claude/dispatch-journal/<entry>.json
+//   - <root>/plan-proposal/ — the TL's worktree-free proposal tree, discarded
+//     after ingestion (ISSUE-237). The tree ITSELF is removable here (it is the
+//     transient artifact); the other two roots are not.
 //
 // Accept only a single plain rm/rmdir command whose every non-option operand
 // resolves strictly below one of those roots. Reject shell composition,
@@ -131,8 +134,9 @@ const CLEANUP_REFUSALS = {
     '$CLAUDE_PROJECT_DIR, ${CLAUDE_PROJECT_DIR}, $PWD, ${PWD} and a leading ~/ are expanded; ' +
     'anything else cannot be resolved before the shell runs, so the target cannot be proven in-scope.',
   'outside-cleanup-roots':
-    'a target does not resolve STRICTLY below .worktrees/ or .claude/dispatch-journal/. ' +
-    'The roots themselves are not removable, and a single command may not mix cleanup targets with other paths.',
+    'a target does not resolve STRICTLY below .worktrees/ or .claude/dispatch-journal/, and is not ' +
+    'the project-root plan-proposal/ tree (or inside it). The first two roots themselves are not removable, ' +
+    'and a single command may not mix cleanup targets with other paths.',
   'symlink-or-glob':
     'a target traverses a symlink, uses a brace expansion, or globs above its final path segment — ' +
     'none of which can be proven to stay inside the cleanup root.',
@@ -168,7 +172,7 @@ function classifyCleanupRemoval(command, cwd) {
   // Only a removal that actually names a cleanup surface is an *attempted* carve-out
   // use. Without this, every ordinary `rm docs/old/` would be re-explained as a
   // malformed cleanup, burying the correct "sub-agent territory" guidance.
-  if (!/\.worktrees(\/|\b)|dispatch-journal/.test(trimmed)) return null;
+  if (!/\.worktrees(\/|\b)|dispatch-journal|plan-proposal/.test(trimmed)) return null;
   if (!words) return { allowed: false, reason: 'composition' };
   if (words.length < 2) return null;
 
@@ -201,13 +205,19 @@ function classifyCleanupRemoval(command, cwd) {
     path.join(projectRoot, '.worktrees'),
     path.join(projectRoot, '.claude', 'dispatch-journal'),
   ];
+  // Removable as a whole: the tree is the transient artifact itself.
+  const removableTrees = [path.join(projectRoot, 'plan-proposal')];
 
   for (const target of targets) {
     if (!target) return { allowed: false, reason: 'no-targets' };
     const expanded = expandCleanupTarget(target, projectRoot, commandCwd);
     if (expanded === null) return { allowed: false, reason: 'unexpanded-variable' };
-    const resolved = path.resolve(commandCwd, expanded);
-    const inRoot = cleanupRoots.find(root => isStrictDescendant(resolved, root));
+    const resolved = path.resolve(commandCwd, expanded).replace(/\/+$/, '');
+    // For a removable tree the symlink walk starts AT the tree, so the tree
+    // itself and everything below it are checked.
+    const inRoot =
+      cleanupRoots.find(root => isStrictDescendant(resolved, root)) ||
+      removableTrees.find(tree => resolved === tree || isStrictDescendant(resolved, tree));
     if (!inRoot) return { allowed: false, reason: 'outside-cleanup-roots' };
     if (hasSymlinkComponent(resolved, inRoot)) return { allowed: false, reason: 'symlink-or-glob' };
   }
@@ -419,7 +429,7 @@ async function main() {
     `    1. Classify the request per .claude/rules/task-type-routing.md §11.\n` +
     `    2. Dispatch the relevant sub-agent (BE Dev / FE Dev / DevOps / QA-Exec / debugger).\n` +
     `    3. The sub-agent runs the command from its worktree cwd; this hook allows it.\n\n` +
-    `  Escape hatch (rare — operator-explicit one-off): export CLAUDE_ALLOW_ORCHESTRATOR_BASH=1\n` +
+    `  Escape hatch (rare — operator-explicit one-off): CLAUDE_ALLOW_ORCHESTRATOR_BASH=1 (set in the env Claude Code is LAUNCHED with; an inline prefix or a Bash-call export never reaches hooks)\n` +
     `  Document rationale in SRS §10 Changelog.\n`
   );
   process.exit(2);

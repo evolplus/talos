@@ -304,7 +304,7 @@ async function main() {
           `    - Need a non-FE/BE root (shared lib, codegen)? Declare it in SRS §3.4.5\n` +
           `      (a \`shared root: <path>\` line) or pass CLAUDE_SOURCE_CODE_DIRS=<prefix>.\n` +
           `  Override (operator-explicit; document rationale in SRS §10 Changelog):\n` +
-          `    export CLAUDE_SKIP_SOURCE_LAYOUT_CHECK=1\n`
+          `    CLAUDE_SKIP_SOURCE_LAYOUT_CHECK=1 (set in the env Claude Code is LAUNCHED with; an inline prefix or a Bash-call export never reaches hooks)\n`
         );
         process.exit(2);
       }
@@ -326,11 +326,11 @@ async function main() {
         `    2. Dispatch the appropriate sub-agent (BE Dev / FE Dev / debugger / etc.).\n` +
         `       The sub-agent writes inside its own worktree; the guard allows it.\n` +
         `    3. For trivial Path D fixes (one-liner typos, kit dogfooding):\n` +
-        `       export CLAUDE_ALLOW_ORCHESTRATOR_CODE=1\n` +
+        `       CLAUDE_ALLOW_ORCHESTRATOR_CODE=1 (set in the env Claude Code is LAUNCHED with; an inline prefix or a Bash-call export never reaches hooks)\n` +
         `       and document rationale in SRS §10 Changelog.\n\n` +
         `  Protected: any */src/ path with source-code extensions, e2e specs,\n` +
         `  and CLAUDE_SOURCE_CODE_DIRS custom directories — when outside .worktrees/.\n` +
-        `  Override (trivial Path D fixes only): export CLAUDE_ALLOW_ORCHESTRATOR_CODE=1\n`
+        `  Override (trivial Path D fixes only): CLAUDE_ALLOW_ORCHESTRATOR_CODE=1 (set in the env Claude Code is LAUNCHED with; an inline prefix or a Bash-call export never reaches hooks)\n`
       );
       process.exit(2);
     }

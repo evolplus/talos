@@ -41,8 +41,12 @@ const fs = require('fs');
 const path = require('path');
 const { execFileSync } = require('child_process');
 const { ownerOf } = require('./role-ownership.cjs');
+const { splitDispatchStem, canonicalRole } = require('./kit-roles.cjs');
 
-// <role>-<task-id>  e.g. be-dev-T-042
+// Historical `<role>-<LETTERS>-<DIGITS>` shape (e.g. be-dev-T-042). Kept only as
+// an export for callers that imported it; stems are now split by
+// splitDispatchStem, which anchors on the kit's role names so a suffixed or
+// batch stem (`devops-T-048-redeploy`) is no longer invisible (ISSUE-200).
 const DISPATCH_DIR_RE = /^([a-z0-9][a-z0-9-]*?)-([A-Za-z]+-\d+)$/;
 
 // Roles the kit dispatches into a physical detached worktree. Their artifacts
@@ -121,14 +125,22 @@ function existsSafe(p) {
   try { return fs.existsSync(p); } catch { return false; }
 }
 
+// The journal's own `role` field, when a journal exists for this stem.
+function journalRole(stem, root) {
+  const j = readJsonSafe(path.join(root || projectDir(), '.claude', 'dispatch-journal', `${stem}.json`));
+  return j && typeof j.role === 'string' ? j.role : undefined;
+}
+
 // Accepts `.worktrees/<role>-<task-id>[/...]` or a bare `<role>-<task-id>`.
-function parseDispatchRef(spec) {
+// The task-id part is whatever follows the role: `T-048-redeploy`,
+// `T-049-T-051-T-052`, `account-deletion-login-prompt` are all valid.
+function parseDispatchRef(spec, root) {
   if (typeof spec !== 'string' || !spec.trim()) return null;
   const s = spec.trim().replace(/^['"]|['"]$/g, '');
   const wt = /(?:^|\/)\.worktrees\/([^/]+)/.exec(s);
-  const candidate = wt ? wt[1] : s;
-  const m = DISPATCH_DIR_RE.exec(candidate);
-  return m ? { role: m[1], taskId: m[2] } : null;
+  const candidate = (wt ? wt[1] : s).replace(/\/+$/, '');
+  if (!candidate || candidate.includes('/')) return null;
+  return splitDispatchStem(candidate, journalRole(candidate, root));
 }
 
 function dispatchPaths(role, taskId, root) {
@@ -300,7 +312,7 @@ function classifyDispatch(role, taskId, root) {
   if (manifest === null) {
     // No manifest to check. If the role isn't one that produces promotable
     // worktree artifacts, there is nothing to verify.
-    if (!PHYSICAL_ROLES.has(role) && claimsFinalized && commitInHead) {
+    if (!PHYSICAL_ROLES.has(canonicalRole(role)) && claimsFinalized && commitInHead) {
       return { ...base, state: 'promoted', manifest: [], unpromoted: null };
     }
     return { ...base, state: 'unverifiable', manifest: null, unpromoted: null };
@@ -337,10 +349,11 @@ function listDispatches(root) {
     try { names = fs.readdirSync(dir); } catch { continue; }
     for (const n of names) {
       const stem = n.replace(/\.json$/, '');
-      const m = DISPATCH_DIR_RE.exec(stem);
-      if (!m || seen.has(stem)) continue;
+      if (seen.has(stem)) continue;
+      const d = splitDispatchStem(stem, journalRole(stem, base));
+      if (!d) continue;
       seen.add(stem);
-      out.push({ role: m[1], taskId: m[2] });
+      out.push(d);
     }
   }
   return out;

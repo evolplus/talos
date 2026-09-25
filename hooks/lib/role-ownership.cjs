@@ -43,9 +43,19 @@
 // ─── Path normalization ───
 // Hooks receive absolute paths from the harness most of the time; we strip
 // any project-root prefix by walking the path and matching the tail patterns.
+// Project-relative form. An absolute path under CLAUDE_PROJECT_DIR is made
+// relative so a ROOT-anchored row (`^plan-proposal/`) means "at the project
+// root" whichever spelling the harness sends; tail-style `(^|\/)` rows match
+// either way, so nothing else changes.
 function normalize(p) {
   if (typeof p !== 'string') return '';
-  return p.replace(/^\.\//, '');
+  let s = p.replace(/^\.\//, '');
+  const root = process.env.CLAUDE_PROJECT_DIR;
+  if (root && s.startsWith('/')) {
+    const r = root.replace(/\/+$/, '') + '/';
+    if (s.startsWith(r)) s = s.slice(r.length);
+  }
+  return s;
 }
 
 // ─── Ownership map ───
@@ -79,6 +89,14 @@ const OWNERSHIP_MAP = [
   // ─── Transient handoff artifacts (worktree-local only — never main repo) ───
   { re: /(^|\/)\.worktrees\/[^\/]+\/plan-update.*\.json$/, kind: 'transient',        role: 'sub-agent',    mode: 'worktree-local; Orchestrator ingests + cleans up' },
   { re: /(^|\/)\.worktrees\/[^\/]+\/plan-proposal\//,     kind: 'transient',         role: 'TL',           mode: 'TL plan-proposal tree; Orchestrator ingests at §9 Step 7' },
+  // The same tree at the PROJECT ROOT (ISSUE-237). §9 Step 4.6 keeps doc-writing
+  // roles — TL included — in the main cwd with no worktree, so the documented
+  // default location of the proposal is `<root>/plan-proposal/`, and the row
+  // above (worktree-only) left it unowned: every TL write needed an escape hatch.
+  // Root-anchored on the project-relative path, so a nested copy
+  // (`docs/x/plan-proposal/`) is NOT claimed. The Orchestrator discards the tree
+  // after ingestion (orchestrator-bash-guard's cleanup carve-out).
+  { re: /^plan-proposal\//,                                kind: 'transient',         role: 'TL',           mode: 'TL plan-proposal tree at the project root (worktree-free mode); Orchestrator ingests at §9 Step 7, then removes it' },
 
   // ─── BA-owned docs ───
   { re: /(^|\/)docs\/SRS\.md$/,                           kind: 'role-owned-doc',    role: 'BA',           mode: 'Ingestion Modes A–F per .claude/agents/_templates/ba.md' },

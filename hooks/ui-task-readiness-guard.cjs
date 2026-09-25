@@ -132,9 +132,21 @@ const NON_UI_SENTINELS = new Set(['', 'n/a', 'na', 'none', 'no', '—', '-', '�
 // schema-only / boot-time / middleware infra tasks as UI-bearing (ISSUE-024).
 // We strip everything from the first '(' onward, then trim + lowercase, so the
 // parenthetical clarifier no longer defeats the sentinel match.
+//
+// Also stripped, before the '(' split (ISSUE-286): an HTML comment carrying the
+// rationale (`Design sub-status: — <!-- behavioural fix, no new surface -->`),
+// markdown emphasis/backticks (`**N/A**`, `` `null` ``), and prose after a dash or
+// semicolon (`n/a — the surface is T-217`). The comment form is how TLs record
+// WHY a task is non-UI; it survived the old split and defeated the sentinel.
 function normalizeSurface(v) {
   if (typeof v !== 'string') return '';
-  return v.split('(')[0].trim().toLowerCase();
+  return v
+    .replace(/<!--[\s\S]*?(?:-->|$)/g, ' ')
+    .replace(/[*_`]/g, '')
+    .split('(')[0]
+    .split(/\s+[—–-]\s+|\s*[;,]\s*/)[0]
+    .trim()
+    .toLowerCase();
 }
 
 function isNonUISentinel(v) {
@@ -187,7 +199,24 @@ function isUITask(meta) {
   // sentinel value (e.g. `N/A (schema-only)`) are NOT a UI signal.
   if (meta.designSubStatus && !isNonUISentinel(meta.designSubStatus)) return true;
   if (meta.linkedSurface && !isNonUISentinel(meta.linkedSurface)) return true;
-  // Track-based fallback: fe / be+fe / fe+be / fe&be etc.
+  // An EXPLICIT non-UI declaration is evidence, and it outranks the track.
+  //
+  // The track fallback used to run unconditionally, so for any `Track: fe` task
+  // the two sentinel checks above could never exempt it: a non-visual FE task
+  // declaring `Design sub-status: n/a` and `Linked Surface: null` was still
+  // demanded four design artifacts owned by OTHER roles (ISSUE-049, ISSUE-181
+  // T-218, ISSUE-286 T-306/T-303). The only exits were fabricating a design
+  // record or the operator escape hatch — a guard satisfiable only by a false
+  // assertion.
+  //
+  // Reaching here means every PRESENT field is a sentinel. If at least one was
+  // declared, the task is non-UI by declaration. This is not self-exemption: the
+  // task header lives in docs/plan/**, which is orchestrator-only in the
+  // ownership map, so the dispatched FE role cannot write it.
+  if (meta.designSubStatus || meta.linkedSurface) return false;
+  // Track-based fallback — ONLY when neither field was declared (the fallback's
+  // purpose: catch an FE task whose header omits the design fields entirely).
+  // fe / be+fe / fe+be / fe&be etc.
   const t = meta.track;
   if (/(^|[^a-z])fe([^a-z]|$)/i.test(t)) return true;
   return false;

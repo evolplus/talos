@@ -28,10 +28,12 @@ trap 'rm -rf "$OUT" "$ERR" "$SANDBOX"' EXIT
 
 json_str() { node -e 'process.stdout.write(JSON.stringify(process.argv[1]))' "$1"; }
 
-# make_repo <name> <mode>
+# make_repo <name> <mode> [stem] [role]
 #   mode: promoted | ready | partial | unverifiable | inflight | orphaned
+#   stem: the dispatch's worktree / journal stem (default be-dev-T-042)
 make_repo() {
   local name="$1" mode="$2"
+  local stem="${3:-be-dev-T-042}" role="${4:-be-dev}"
   local repo="$SANDBOX/$name"
   mkdir -p "$repo"
   (
@@ -44,8 +46,8 @@ make_repo() {
     echo seed > docs/seed.md
     git add -A && git commit -qm "chore: seed"
 
-    WT=".worktrees/be-dev-T-042"
-    J=".claude/dispatch-journal/be-dev-T-042.json"
+    WT=".worktrees/$stem"
+    J=".claude/dispatch-journal/$stem.json"
     mkdir -p "$WT/backend/src" "$WT/docs/api-contracts"
     printf 'export const handler = () => 1;\n' > "$WT/backend/src/handler.js"
     printf 'openapi: 3.1.0\n' > "$WT/docs/api-contracts/join-v1.yaml"
@@ -56,8 +58,8 @@ make_repo() {
 JSON
     }
     write_journal() {  # $1 = state, $2 = sha
-      printf '{"role":"be-dev","task_id":"T-042","finalization":{"state":"%s","main_commit":%s}}\n' \
-        "$1" "$([ -n "${2:-}" ] && printf '"%s"' "$2" || printf 'null')" > "$J"
+      printf '{"role":"%s","task_id":"T-042","finalization":{"state":"%s","main_commit":%s}}\n' \
+        "$role" "$1" "$([ -n "${2:-}" ] && printf '"%s"' "$2" || printf 'null')" > "$J"
     }
     promote() {  # $@ = paths to actually ingest
       mkdir -p backend/src docs/api-contracts
@@ -295,6 +297,28 @@ else
 fi
 run_exit "allows teardown with a >1MiB promoted artifact"  0 "$GUARD" "$(bash_event "$RM_WT")" "$R_BIGBLOB"
 run_contains_not "large artifact is not reported missing" "$GUARD" "$(bash_event "$RM_WT")" "$R_BIGBLOB" "MISSING on HEAD"
+
+# ISSUE-200: the guard found its teardown target by parsing the worktree stem
+# with /^(role)-(LETTERS-DIGITS)$/. Real stems carry suffixes and batches
+# (`devops-T-048-redeploy`, `qa-exec-T-049-T-051-T-052`) or no T-number at all
+# (`ba-account-deletion-login-prompt`) -- 87 of 254 real 4Run stems. Every one
+# parsed to null, the guard saw NO target, and `git worktree remove` of an
+# unpromoted dispatch exited 0. The stem is now split on the kit role names.
+echo "worktree-promotion-guard.cjs — non-canonical dispatch stems (ISSUE-200)"
+for spec in "devops-T-048-redeploy:devops" "qa-exec-T-049-T-051-T-052:qa-exec" \
+            "be-dev-t-026-admin-academy:be-dev" "ba-account-deletion-login-prompt:ba"; do
+  st="${spec%%:*}"; rl="${spec##*:}"
+  R_S_READY="$(make_repo "ready-$st" ready "$st" "$rl")"
+  R_S_PROMO="$(make_repo "promo-$st" promoted "$st" "$rl")"
+  run_exit "blocks unpromoted teardown of $st (git worktree remove)" 2 "$GUARD" \
+    "$(bash_event "git worktree remove --force .worktrees/$st")" "$R_S_READY"
+  run_exit "blocks unpromoted teardown of $st (rm -rf)" 2 "$GUARD" \
+    "$(bash_event "rm -rf -- .worktrees/$st/")" "$R_S_READY"
+  run_exit "allows teardown of $st after verified promotion" 0 "$GUARD" \
+    "$(bash_event "git worktree remove --force .worktrees/$st")" "$R_S_PROMO"
+done
+R_S_AUDIT="$(make_repo "audit-suffixed" ready "devops-T-048-redeploy" devops)"
+run_contains "Stop audit reports an unpromoted suffixed dispatch" "$AUDIT" '{"hook_event_name":"Stop"}' "$R_S_AUDIT" "T-048-redeploy"
 
 run_exit "allows crash-recovery discard (in-flight)" 0 "$GUARD" "$(bash_event "$RM_WT")" "$R_INFLIGHT"
 run_exit "allows discard with the discard flag"     0 "$GUARD" "$(bash_event "$RM_WT")" "$R_READY" "CLAUDE_DISCARD_INTERRUPTED_DISPATCH=1"

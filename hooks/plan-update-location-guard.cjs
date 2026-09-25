@@ -96,7 +96,7 @@ async function main() {
       `       OR an absolute path inside .worktrees/.\n` +
       `    2. If you are the Orchestrator: do NOT write plan-update.json yourself. Ingest\n` +
       `       what the sub-agent emitted, then clean up the worktree per §5 rule 7.\n\n` +
-      `  Escape hatch (rare -- one-off operator ops): export CLAUDE_ALLOW_PLAN_UPDATE_ROOT=1\n` +
+      `  Escape hatch (rare -- one-off operator ops): CLAUDE_ALLOW_PLAN_UPDATE_ROOT=1 (set in the env Claude Code is LAUNCHED with; an inline prefix or a Bash-call export never reaches hooks)\n` +
       `  Document rationale in SRS §10 Changelog.\n`
     );
     process.exit(2);

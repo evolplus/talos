@@ -184,7 +184,7 @@ async function main() {
     `  invariant, conflict-detection discipline, and tool scope.\n\n` +
     `  If .claude/agents/${suggested}.md is missing, dispatch the Agent Generator first\n` +
     `  (subagent_type: agent-generator) per orchestrator-operating-rules.md §9 Step 4.5.\n\n` +
-    `  Override (one-off cross-cutting work only): export CLAUDE_ALLOW_GENERAL_PURPOSE=1\n` +
+    `  Override (one-off cross-cutting work only): CLAUDE_ALLOW_GENERAL_PURPOSE=1 (set in the env Claude Code is LAUNCHED with; an inline prefix or a Bash-call export never reaches hooks)\n` +
     `  and document the rationale in SRS §10 Changelog.\n`
   );
   process.exit(2);

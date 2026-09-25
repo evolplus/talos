@@ -121,7 +121,7 @@ async function main() {
     `    - Subject: ≤72 chars, imperative mood\n` +
     `    - Task traceability: 'Refs: T-NNN' trailer OR '(T-NNN)' in subject\n\n` +
     `  Escape hatch (use sparingly, document rationale):\n` +
-    `    export CLAUDE_SKIP_COMMIT_CHECK=1\n`
+    `    CLAUDE_SKIP_COMMIT_CHECK=1 (set in the env Claude Code is LAUNCHED with; an inline prefix or a Bash-call export never reaches hooks)\n`
   );
   process.exit(2);
 }

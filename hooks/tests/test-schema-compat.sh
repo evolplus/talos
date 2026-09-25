@@ -88,6 +88,61 @@ if printf '%s' "$TEARDOWN" | env -u CLAUDE_KIT_LINEAGE "CLAUDE_PROJECT_DIR=$S/bl
 else printf "  PASS  unlabelled project keeps the guard active\n"; PASS=$((PASS+1)); fi
 check_err "env override forces stand-down" "$PROMO_GUARD" "$TEARDOWN" "$S/ingest" "standing down" "CLAUDE_KIT_LINEAGE=branch-merge"
 
+# ISSUE-209 — a role the kit ships must be able to write the signal its own
+# template tells it to write. The validator roles were refused twice over:
+# `invalid agent` AND `unknown field: verdict/report_path/next_action`. Checked
+# as a CLASS, not per role: every plan-update.json example in every agent
+# template is fed to the validator, and every dispatchable subagent_type in the
+# registry must be an accepted agent. A new role added without updating the
+# hook fails here instead of in a live dispatch.
+echo "every agent template's own plan-update.json example validates (ISSUE-209)"
+KIT_ROOT="$(cd "$HOOKS_DIR/.." && pwd)"
+TPL_DIR=""
+for d in "$KIT_ROOT/agents/_templates" "$KIT_ROOT/agents"; do [ -d "$d" ] && { TPL_DIR="$d"; break; }; done
+mkdir -p "$S/tpl"
+N_TPL=0
+if [ -n "$TPL_DIR" ]; then
+  while IFS= read -r f; do
+    node -e '
+      const fs = require("fs");
+      const src = fs.readFileSync(process.argv[1], "utf8");
+      const re = /```json\s*\n([\s\S]*?)```/g; let m, out = null;
+      while ((m = re.exec(src))) if (/"agent"\s*:/.test(m[1]) && /"to_status"\s*:/.test(m[1])) { out = m[1]; break; }
+      if (!out) process.exit(3);
+      const fill = out
+        .replace(/"<ISO-8601>"/g, "\"2026-09-14T10:00:00Z\"")
+        .replace(/"([^"\n]*?)\s\|\s[^"\n]*"/g, (_, first) => JSON.stringify(first.trim()))
+        .replace(/"[^"\n]*<[^>"\n]+>[^"\n]*"/g, "\"T-900\"")
+        .replace(/"\.\.\."/g, "\"n\"");
+      process.stdout.write(fill);
+    ' "$f" > "$S/tpl/pu.json" 2>/dev/null || continue
+    N_TPL=$((N_TPL+1))
+    check "template example validates: $(basename "$f" .md)" 0 "$VALIDATOR" "$(pu_event "$(cat "$S/tpl/pu.json")")" "$S/blank"
+  done < <(grep -l 'plan-update.json' "$TPL_DIR"/*.md 2>/dev/null)
+fi
+if [ "$N_TPL" -ge 4 ]; then printf "  PASS  %s\n" "found $N_TPL template examples (validator roles included)"; PASS=$((PASS+1))
+else printf "  FAIL  %s\n" "only $N_TPL template examples found - the checks above ran vacuously"; FAIL=$((FAIL+1)); fi
+
+REG="$KIT_ROOT/rules/sub-agent-registry.md"
+if [ -f "$REG" ]; then
+  # Roles whose registry tool-scope says they write plan-update.json.
+  WRITERS="$(node -e '
+    const reg = require("fs").readFileSync(process.argv[1], "utf8");
+    const rows = [...reg.matchAll(/^\|[^|\n]*\|[^|\n]*\|\s*`([a-z0-9-]+)`\s*\|([^\n]*)$/gm)];
+    console.log(rows.filter(m => /plan-update\.json/.test(m[2])).map(m => m[1]).join(" "));
+  ' "$REG")"
+  MISSING=""; NW=0
+  for r in $WRITERS; do
+    NW=$((NW+1))
+    PL="{\"task_id\":\"T-900\",\"track\":\"qa\",\"from_status\":\"in-progress\",\"to_status\":\"blocked\",\"agent\":\"$r\",\"timestamp\":\"2026-09-14T10:00:00Z\"}"
+    printf '%s' "$(pu_event "$PL")" | env -u CLAUDE_KIT_LINEAGE "CLAUDE_PROJECT_DIR=$S/blank" node "$VALIDATOR" >/dev/null 2>"$ERR"
+    grep -q "invalid agent" "$ERR" && MISSING="$MISSING $r"
+  done
+  if [ "$NW" -lt 8 ]; then printf "  FAIL  %s\n" "registry parse found only $NW plan-update writers"; FAIL=$((FAIL+1))
+  elif [ -z "$MISSING" ]; then printf "  PASS  %s\n" "all $NW plan-update-writing registry roles are accepted agents"; PASS=$((PASS+1))
+  else printf "  FAIL  %s\n" "registry roles refused as invalid agent:$MISSING"; FAIL=$((FAIL+1)); fi
+fi
+
 echo "this kit declares its own lineage"
 if node -e "
 const L=require('$HOOKS_DIR/lib/kit-lineage.cjs');

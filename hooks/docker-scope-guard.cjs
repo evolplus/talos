@@ -37,7 +37,20 @@ function sanitizeSlug(name) {
     .replace(/(^-|-$)/g, '');
 }
 
-function determineSlug() {
+// The project root a path belongs to. An agent worktree is
+// `<root>/.worktrees/<role>-<task-id>/…`, and inside one CLAUDE_PROJECT_DIR is
+// often unset — so the basename used to be the WORKTREE name (`qa-exec-t-222b`),
+// not the project (`4run`), and every teardown of the dispatch's own
+// `4run-…` containers was refused (ISSUE-185). Everything before `/.worktrees/`
+// is the root, the same rule orchestrator-write-guard and
+// ui-task-readiness-guard already apply.
+function projectRootOf(dir) {
+  if (typeof dir !== 'string' || !dir) return dir;
+  const m = /^(.*?)\/\.worktrees(?:\/|$)/.exec(dir.replace(/\\/g, '/'));
+  return m && m[1] ? m[1] : dir;
+}
+
+function determineSlug(eventCwd) {
   // 1. Operator-explicit
   if (process.env.CLAUDE_PROJECT_SLUG) {
     return sanitizeSlug(process.env.CLAUDE_PROJECT_SLUG);
@@ -46,8 +59,8 @@ function determineSlug() {
   if (process.env.COMPOSE_PROJECT_NAME) {
     return sanitizeSlug(process.env.COMPOSE_PROJECT_NAME);
   }
-  // 3. cwd basename
-  const root = process.env.CLAUDE_PROJECT_DIR || process.cwd();
+  // 3. project-root basename (never a worktree's own name)
+  const root = projectRootOf(process.env.CLAUDE_PROJECT_DIR || eventCwd || process.cwd());
   return sanitizeSlug(path.basename(root));
 }
 
@@ -159,16 +172,84 @@ const COMPOSE_MUTATION_VERBS = new Set([
   'build', 'pull', 'push', 'start', 'create', 'cp', 'exec',
 ]);
 
+// Split a command line into its simple commands at UNQUOTED shell separators
+// (`&&`, `||`, `;`, `|`, `&`, newline). A `$( … )` / backtick substitution stays
+// inside the segment that contains it, so `docker rm $(docker ps -aq)` is still
+// one segment and still matches the substitution pattern.
+//
+// Why (ISSUE-206(2)): the catastrophic patterns were run over the WHOLE string,
+// and `.*` spans separators — `docker rm p-web-1 && docker ps -a` read the later
+// listing's `-a` as a flag of the earlier removal and refused a scoped removal.
+// The inverse was a real gap: only the FIRST `docker` token was analysed, so
+// `docker ps && docker rm other-project-db` was never checked at all.
+function splitSegments(cmd) {
+  const out = [];
+  let cur = '';
+  let quote = null;
+  let depth = 0;       // $( … ) nesting
+  let tick = false;    // inside ` … `
+  for (let i = 0; i < cmd.length; i++) {
+    const c = cmd[i];
+    const n = cmd[i + 1];
+    if (quote) {
+      cur += c;
+      if (c === '\\' && quote === '"' && n !== undefined) { cur += n; i++; continue; }
+      if (c === quote) quote = null;
+      continue;
+    }
+    if (c === '\\' && n !== undefined) { cur += c + n; i++; continue; }
+    if (c === "'" || c === '"') { quote = c; cur += c; continue; }
+    if (c === '`') { tick = !tick; cur += c; continue; }
+    if (c === '$' && n === '(') { depth++; cur += '$('; i++; continue; }
+    if (c === ')' && depth > 0) { depth--; cur += c; continue; }
+    if (depth === 0 && !tick) {
+      if ((c === '&' && n === '&') || (c === '|' && n === '|')) { out.push(cur); cur = ''; i++; continue; }
+      // `2>&1`, `&>file`, `>&2` are redirections, not the background operator.
+      const redirect = c === '&' && (/[<>]$/.test(cur) || n === '>');
+      if (!redirect && (c === ';' || c === '|' || c === '&' || c === '\n')) { out.push(cur); cur = ''; continue; }
+    }
+    cur += c;
+  }
+  out.push(cur);
+  return out.map(x => x.trim()).filter(Boolean);
+}
+
+function dropRedirections(tokens) {
+  const out = [];
+  for (let i = 0; i < tokens.length; i++) {
+    const t = tokens[i];
+    const m = /^(\d*|&)(>>?|<)(&\d+|&-)?(.*)$/.exec(t);
+    if (m && (m[1] !== '' || t.startsWith('>') || t.startsWith('<'))) {
+      if (!m[3] && !m[4]) i++;   // bare `>` / `2>`: the next token is its target
+      continue;
+    }
+    out.push(t);
+  }
+  return out;
+}
+
 function checkDockerCommand(cmd, slug) {
-  // Quick path: catastrophic regexes
+  const segments = splitSegments(cmd);
+  for (const seg of segments.length ? segments : [cmd]) {
+    if (!/\bdocker\b/.test(seg)) continue;
+    const r = checkDockerSegment(seg, slug);
+    if (!r.allow) return r;
+  }
+  return { allow: true };
+}
+
+function checkDockerSegment(cmd, slug) {
+  // Quick path: catastrophic regexes — per simple command, never across one.
   for (const rx of CATASTROPHIC) {
     if (rx.test(cmd)) {
       return { allow: false, reason: `catastrophic-pattern`, detail: `Matches ${rx.source}` };
     }
   }
 
-  // Tokenize for finer analysis
-  const tokens = tokenize(cmd);
+  // Tokenize for finer analysis. Redirections (`2>&1`, `>out.log`, `2> err`)
+  // are shell plumbing, not docker operands — left in, `docker rm p-web-1 2>&1`
+  // read `2>&1` as a second container name outside the slug and was refused.
+  const tokens = dropRedirections(tokenize(cmd));
   // Find the position of `docker` (commands may be prefixed by env var assignments like FOO=bar docker ...)
   let dockerIdx = -1;
   for (let i = 0; i < tokens.length; i++) {
@@ -418,7 +499,7 @@ async function main() {
   const cmd = (event.tool_input && event.tool_input.command) || '';
   if (!/\bdocker\b/.test(cmd)) process.exit(0);
 
-  const slug = determineSlug();
+  const slug = determineSlug(event.cwd);
   if (!slug) {
     process.stderr.write(
       'docker-scope-guard: could not determine project slug ' +
@@ -444,8 +525,12 @@ async function main() {
     `  \`docker logs <name>\`, \`docker port <name>\`, \`docker network ls\`, etc.\n\n` +
     `  If a port conflict is the issue: pick a different port via the local-deployment\n` +
     `  skill's probe procedure — never stop the other project's container.\n\n` +
-    `  Escape hatch (operator override; document rationale):\n` +
-    `    export CLAUDE_SKIP_DOCKER_SCOPE_CHECK=1\n`
+    `  If the slug above is wrong (not this project's name), set it explicitly for the\n` +
+    `  command: \`COMPOSE_PROJECT_NAME=<project> docker ...\` — a scoping fix, not a bypass.\n\n` +
+    `  Escape hatch (OPERATOR override; document rationale): CLAUDE_SKIP_DOCKER_SCOPE_CHECK=1\n` +
+    `  must be set in the environment Claude Code was LAUNCHED with. Hooks read the\n` +
+    `  harness environment at start, so an inline \`CLAUDE_SKIP_DOCKER_SCOPE_CHECK=1 docker ...\`\n` +
+    `  prefix or an \`export\` inside a Bash call never reaches this hook (ISSUE-206(1)).\n`
   );
   process.exit(2);
 }

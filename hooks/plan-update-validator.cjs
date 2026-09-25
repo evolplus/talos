@@ -34,6 +34,11 @@ const OPTIONAL_FIELDS = [
   'design_sub_status', 'notes',
   'artifacts',            // consumed by this lineage (promotion manifest)
   'branch', 'head_sha',   // written by the branch-merge lineage; accepted, unused here
+  // The four validator roles' mandated routing signal (agents/_templates/
+  // {srs-source,srs-feasibility,architecture,extraction}-validator.md). Their
+  // template REQUIRED these keys while this list rejected them as unknown, so a
+  // validator could not write its own sanctioned signal at all (ISSUE-209).
+  'verdict', 'report_path', 'next_action',
 ];
 
 // Roles the kit dispatches into a physical DETACHED worktree
@@ -77,11 +82,24 @@ const VALID_DESIGN_SUB_STATUSES = new Set([
   'design-confirmed',
 ]);
 
-const VALID_AGENTS = new Set([
-  'ba', 'ui-ux-designer', 'sa', 'tl', 'qa-author',
-  'be-dev', 'fe-dev', 'devops', 'qa-exec',
-  'orchestrator', // Orchestrator-initiated transitions (cancel, iterate, etc.)
-]);
+// Derived from the kit's single role list (lib/kit-roles.cjs). The hand-kept
+// copy here predated the validator roles: `architecture-validator`,
+// `extraction-validator` and both SRS validators were refused as "invalid
+// agent" although the kit ships and dispatches them, and their templates tell
+// them to write plan-update.json (ISSUE-209). `orchestrator` is in the list for
+// Orchestrator-initiated transitions (cancel, iterate, etc.).
+// `srs-validator` is the name an older srs-source-validator template wrote;
+// accepted so a payload from that template still validates (additive only).
+let KIT_ROLES;
+try {
+  ({ KIT_ROLES } = require(require('path').join(__dirname, 'lib', 'kit-roles.cjs')));
+} catch {
+  KIT_ROLES = ['ba', 'ui-ux-designer', 'sa', 'tl', 'qa-author', 'be-dev', 'fe-dev',
+    'devops', 'qa-exec', 'architecture-validator', 'extraction-validator',
+    'srs-source-validator', 'srs-feasibility-validator', 'orchestrator'];
+}
+const VALID_AGENTS = new Set([...KIT_ROLES, 'srs-validator']);
+const VALID_VERDICTS = new Set(['qualified', 'unqualified']);
 
 // Legal state-machine transitions per master-plan-discipline.md §8.
 // Key: from_status. Value: Set of legal to_status values.
@@ -190,28 +208,84 @@ function findTaskFile(taskId) {
   return null;
 }
 
-// Parse the "## Linked artifacts" section of a task file, returning an array of
-// paths extracted from lines like:
-//   - Deploy report: docs/deploy-reports/T-017.md
-//   - QA report: docs/qa-reports/T-017.md
+// Parse the "## Linked artifacts" section of a task file.
+//
+// The line is written by humans and by five different roles, so it is parsed
+// for what it MEANS, not for one spelling of it. Every shape below occurs in a
+// real project's task files (4Run, 306 task files):
+//   - Deploy report: docs/deploy-reports/T-017.md (when ready)
+//   - QA report: `docs/qa-reports/T-017.md` (when ready).        ISSUE-136
+//   - **Deploy report:** `docs/deploy-reports/T-124.md` with ...  bold label
+//   - QA reports: `docs/qa-reports/T-1.md` + `docs/qa-reports/T-2.md`
+//   - Deploy report: N/A (FE ships with the mobile app build)      ISSUE-251
+//
+// The old parser took the first whitespace token verbatim. A backticked path
+// kept its backticks and never resolved; `N/A` was checked as a file named
+// "N/A"; a bold label never matched, so the gate silently checked nothing.
+// Worst of all, the HONEST form (`N/A`) failed while omitting the line passed —
+// the gate trained authors away from declaring absence.
+//
+// Result per kind: { paths: [...], declaredAbsent: bool, unparsed: string|null }
+//   paths          every path-like token (contains `/`), cleaned of quoting
+//   declaredAbsent the author wrote N/A / none / - : no report is expected.
+//                  Same effect as omitting the line (which the gate already
+//                  accepts), but now the honest spelling is not the one punished.
+//   unparsed       a value that is neither a path nor an absence sentinel
+//                  (e.g. `_pending_`). Reported, never silently treated as a pass.
+const ARTIFACT_LABEL = /^[-*+]\s+[*_]{0,2}\s*(deploy|qa)\s+reports?\b[^:\n]*?[*_]{0,2}\s*:\s*[*_]{0,2}\s*(.*)$/i;
+const ABSENT_SENTINEL = /^(?:n\/?a|none|nil|null|-|—|–|not\s+applicable)$/i;
+
+function cleanToken(t) {
+  return t.replace(/^[`"'*_(\[]+/, '').replace(/[`"'*_)\].,;:!?]+$/, '');
+}
+
+function parseArtifactValue(raw) {
+  const out = { paths: [], declaredAbsent: false, unparsed: null };
+  const value = (raw || '').trim();
+  if (!value) return out;
+  const first = cleanToken(value.split(/\s+/)[0] || '');
+  if (ABSENT_SENTINEL.test(first) || /^not\s+applicable\b/i.test(value.replace(/[`*_]/g, ''))) {
+    out.declaredAbsent = true;
+    return out;
+  }
+  // Only the declaration itself, not trailing prose in parentheses or after a dash.
+  const decl = value.split(/\s+\(|\s+[—–]\s+|\s+-\s+|\s+with\s+/)[0];
+  for (const tok of decl.split(/\s+/)) {
+    const c = cleanToken(tok);
+    // A path has a `/` and a name; `/` alone is a separator ("a / b"), and a
+    // `<placeholder>` is an unfilled template, not a declaration.
+    if (c.includes('/') && /[A-Za-z0-9]/.test(c) && !/[<>]/.test(c) && !/^https?:/i.test(c)) {
+      out.paths.push(c);
+    }
+  }
+  if (out.paths.length === 0) out.unparsed = cleanToken(value.split(/\s+/)[0]) || value;
+  return out;
+}
+
 function parseLinkedArtifacts(taskContent) {
-  const artifacts = { deployReport: null, qaReport: null };
+  const empty = () => ({ paths: [], declaredAbsent: false, unparsed: null });
+  const artifacts = { deploy: empty(), qa: empty(), deployReport: null, qaReport: null };
   const lines = taskContent.split('\n');
   let inArtifacts = false;
   for (const line of lines) {
-    if (/^## Linked artifacts/i.test(line)) {
+    if (/^##\s+Linked artifacts/i.test(line)) {
       inArtifacts = true;
       continue;
     }
     if (inArtifacts && /^## /i.test(line)) break; // next section
     if (!inArtifacts) continue;
-    const trimmed = line.trim();
-    // Match: - Deploy report: <path>  or  - QA report: <path>
-    const deployMatch = trimmed.match(/^-\s+Deploy\s+report:\s*(\S+)/i);
-    if (deployMatch) artifacts.deployReport = deployMatch[1];
-    const qaMatch = trimmed.match(/^-\s+QA\s+report:\s*(\S+)/i);
-    if (qaMatch) artifacts.qaReport = qaMatch[1];
+    const m = line.trim().match(ARTIFACT_LABEL);
+    if (!m) continue;
+    const kind = m[1].toLowerCase() === 'qa' ? 'qa' : 'deploy';
+    const v = parseArtifactValue(m[2]);
+    const slot = artifacts[kind];
+    slot.paths.push(...v.paths);
+    slot.declaredAbsent = slot.declaredAbsent || v.declaredAbsent;
+    if (v.unparsed && !slot.unparsed) slot.unparsed = v.unparsed;
   }
+  // Back-compat single-path fields (first declared path).
+  artifacts.deployReport = artifacts.deploy.paths[0] || null;
+  artifacts.qaReport = artifacts.qa.paths[0] || null;
   return artifacts;
 }
 
@@ -386,16 +460,16 @@ function validate(content) {
         const content = fs.readFileSync(taskFile, 'utf8');
         const artifacts = parseLinkedArtifacts(content);
         const missing = [];
-        if (artifacts.deployReport) {
-          const resolved = path.resolve(ROOT, artifacts.deployReport);
-          if (!fs.existsSync(resolved)) {
-            missing.push(`deploy report: ${artifacts.deployReport}`);
+        for (const [kind, label] of [['deploy', 'deploy report'], ['qa', 'QA report']]) {
+          const a = artifacts[kind];
+          for (const p of a.paths) {
+            if (!fs.existsSync(path.resolve(ROOT, p))) missing.push(`${label}: ${p}`);
           }
-        }
-        if (artifacts.qaReport) {
-          const resolved = path.resolve(ROOT, artifacts.qaReport);
-          if (!fs.existsSync(resolved)) {
-            missing.push(`QA report: ${artifacts.qaReport}`);
+          if (a.paths.length === 0 && !a.declaredAbsent && a.unparsed) {
+            missing.push(
+              `${label}: the task file declares "${a.unparsed}", which is neither a path ` +
+              `nor N/A — write the report path, or \`N/A (<reason>)\` if no ${label} applies`
+            );
           }
         }
         if (missing.length > 0) {
@@ -411,6 +485,15 @@ function validate(content) {
     }
   }
 
+  if ('verdict' in obj && obj.verdict !== undefined && obj.verdict !== null &&
+      (typeof obj.verdict !== 'string' || !VALID_VERDICTS.has(obj.verdict))) {
+    errors.push(`invalid verdict: ${JSON.stringify(obj.verdict)} — allowed: ${[...VALID_VERDICTS].join(', ')}`);
+  }
+  for (const f of ['report_path', 'next_action']) {
+    if (f in obj && obj[f] !== undefined && obj[f] !== null && typeof obj[f] !== 'string') {
+      errors.push(`field ${f} must be a string`);
+    }
+  }
   if ('agent' in obj && typeof obj.agent === 'string' && !VALID_AGENTS.has(obj.agent)) {
     errors.push(`invalid agent: "${obj.agent}" — allowed: ${[...VALID_AGENTS].join(', ')}`);
   }

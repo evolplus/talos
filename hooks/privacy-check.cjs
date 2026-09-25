@@ -9,7 +9,7 @@
 //   - exit 2: block (stderr message is shown to the agent)
 //   - any other non-zero: non-blocking warning
 //
-// Override for current session: export CLAUDE_PRIVACY_OK=1
+// Override for current session: CLAUDE_PRIVACY_OK=1 (set in the env Claude Code is LAUNCHED with; an inline prefix or a Bash-call export never reaches hooks)
 // Allowlist: .env.example, .env.template, .env.sample.
 // Bash may reference project-root .ssh/.k8s config files as command inputs
 // (ssh -F .ssh/config, kubectl --kubeconfig .k8s/config) without reading them.
@@ -157,7 +157,7 @@ async function main() {
         `  Sensitive patterns: .env*, secrets/, *.pem/.key, .ssh/, .k8s kubeconfig/secret files, ~/.aws/credentials, ~/.kube/config, .docker/config.json, .netrc\n` +
         `  Allowlisted: .env.example, .env.template, .env.sample\n` +
         `  Operational references allowed: ssh -F .ssh/config, kubectl/helm --kubeconfig .k8s/<config>\n` +
-        `  To override for this session: export CLAUDE_PRIVACY_OK=1\n`
+        `  To override for this session: CLAUDE_PRIVACY_OK=1 (set in the env Claude Code is LAUNCHED with; an inline prefix or a Bash-call export never reaches hooks)\n`
       );
       process.exit(2);
     }

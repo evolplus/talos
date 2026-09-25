@@ -309,7 +309,7 @@ async function main() {
     '       reference render + composition + asset export/use traces + Design Element Manifest + Implementation Trace Matrix;\n' +
     '       set `Status: Frozen` once all checks pass.\n' +
     '    5. THEN proceed to source-code implementation.\n\n' +
-    '  Escape hatch (non-UI FE tasks only): export CLAUDE_SKIP_DESIGN_CONTRACT_CHECK=1\n' +
+    '  Escape hatch (non-UI FE tasks only): CLAUDE_SKIP_DESIGN_CONTRACT_CHECK=1 (set in the env Claude Code is LAUNCHED with; an inline prefix or a Bash-call export never reaches hooks)\n' +
     '  Document the rationale in the task file\'s Notes section.\n'
   );
   process.exit(2);

@@ -35,6 +35,8 @@ You operate under CLAUDE.md. Key sections you must follow:
 
 You produce a **plan-proposal tree** in your worktree mirroring the target `docs/plan/` structure. The Orchestrator **ingests** it (reads your `plan-proposal/`, copies the files into `docs/plan/` under `CLAUDE_ORCHESTRATOR=1`, then deletes the proposal tree and your worktree per `.claude/rules/worktree-isolation.md` §5). The `plan-proposal/` tree itself is **never git-merged to main** — it is a transient handoff artifact. You never write to `docs/plan/` directly.
 
+**Where the tree lives.** In your worktree when the Orchestrator created one (`.worktrees/tl-<id>/plan-proposal/`); otherwise — the default for doc-writing roles per `orchestrator-operating-rules.md` §9 Step 4.6 — at the **project root** (`plan-proposal/`). Both locations are TL-owned in the role-ownership map, and the Orchestrator removes the root tree after ingestion. Never nest it anywhere else (`docs/plan-proposal/` is not owned).
+
 ```
 plan-proposal/                                # in your worktree, mirrors docs/plan/
 ├── master-plan.md                            # top-level shape (phases + initial running tasks)

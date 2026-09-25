@@ -277,7 +277,7 @@ async function main() {
       `    - Source code (**/src/) requires physical .worktrees/<role>-<task-id>/ isolation\n` +
       `      (source-code-write-guard handles separately).\n\n` +
       `  Escape hatch (rare — one-off operator-explicit edit to an unrecognized path):\n` +
-      `    export CLAUDE_ALLOW_ORCHESTRATOR_WRITE=1  and document rationale in SRS §10 Changelog.\n`
+      `    CLAUDE_ALLOW_ORCHESTRATOR_WRITE=1 (set in the env Claude Code is LAUNCHED with; an inline prefix or a Bash-call export never reaches hooks)  and document rationale in SRS §10 Changelog.\n`
     );
     process.exit(2);
   }

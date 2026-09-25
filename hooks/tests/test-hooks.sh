@@ -484,6 +484,47 @@ DONE_UNKNOWN='{"tool_name":"Write","tool_input":{"file_path":"plan-update.json",
 run_exit "artifact gate: fail-open when task file not found" \
     0 "$VALIDATOR" "$DONE_UNKNOWN" "CLAUDE_PROJECT_DIR=$FIX_ROOT/artifact-missing-both"
 
+# ISSUE-136 / ISSUE-251 — the Linked-artifacts line is parsed for what it MEANS.
+# The old parser took the first whitespace token verbatim: a backticked path kept
+# its backticks and never resolved (blocked a clean PASS); `N/A` was checked as a
+# file named "N/A" (the HONEST declaration failed while omitting the line passed);
+# a bold label or a plural "QA reports:" never matched, so the gate silently
+# checked NOTHING. Each case below states what the line says and what must happen.
+# la_case <name> <expected-exit> <files-to-create (space-separated)> <linked-artifacts lines...>
+la_case() {
+  local name="$1" exp="$2" files="$3"; shift 3
+  local d="$FIX_ROOT/la-$(printf '%s' "$name" | tr -c 'a-zA-Z0-9' '-')"
+  mkdir -p "$d/docs/plan/phase-01-test/tasks"
+  { printf '# T-900\n\n- Phase: phase-01-test/\n- Track: be\n- Status: in-test\n\n## Linked artifacts\n\n'
+    for l in "$@"; do printf '%s\n' "$l"; done
+    printf '\n## Notes\n\n- none\n'; } > "$d/docs/plan/phase-01-test/tasks/T-900.md"
+  for f in $files; do mkdir -p "$d/$(dirname "$f")"; echo "# report" > "$d/$f"; done
+  run_exit "linked-artifacts: $name" "$exp" "$VALIDATOR" "$DONE_BOTH_PRESENT" "CLAUDE_PROJECT_DIR=$d"
+}
+R_D=docs/deploy-reports/T-900.md; R_Q=docs/qa-reports/T-900.md
+la_case "backticked paths that exist pass (ISSUE-136)" 0 "$R_D $R_Q" \
+  '- Deploy report: `docs/deploy-reports/T-900.md` (when ready).' '- QA report: `docs/qa-reports/T-900.md` (when ready).'
+la_case "N/A deploy report is a declared absence (ISSUE-251)" 0 "$R_Q" \
+  '- Deploy report: N/A (FE ships with the mobile app build; no deployment).' '- QA report: `docs/qa-reports/T-900.md`'
+la_case "backticked bold N/A is a declared absence" 0 "$R_Q" \
+  '- **Deploy report:** `N/A` — client-only task' '- QA report: docs/qa-reports/T-900.md'
+la_case "N/A does not excuse a missing QA report" 2 "" \
+  '- Deploy report: N/A (client only)' '- QA report: `docs/qa-reports/T-900.md`'
+la_case "bold label is checked, not skipped (missing report blocks)" 2 "$R_D" \
+  '- **Deploy report:** `docs/deploy-reports/T-900.md`' '- **QA report:** `docs/qa-reports/T-900.md`'
+la_case "bold label with both reports present passes" 0 "$R_D $R_Q" \
+  '- **Deploy report:** `docs/deploy-reports/T-900.md` with the rollout status' '- **QA report:** `docs/qa-reports/T-900.md`'
+la_case "plural QA reports: every listed path is checked" 2 "$R_D docs/qa-reports/T-901.md" \
+  '- Deploy report: docs/deploy-reports/T-900.md' '- QA reports: `docs/qa-reports/T-901.md` + `docs/qa-reports/T-902.md` (execution verdicts)'
+la_case "plural QA reports all present passes" 0 "$R_D docs/qa-reports/T-901.md docs/qa-reports/T-902.md" \
+  '- Deploy report: docs/deploy-reports/T-900.md' '- QA reports: `docs/qa-reports/T-901.md` + `docs/qa-reports/T-902.md` (execution verdicts)'
+la_case "a non-path non-N/A value (_pending_) blocks, never passes silently" 2 "$R_Q" \
+  '- Deploy report: _pending_' '- QA report: docs/qa-reports/T-900.md'
+la_case "an unfilled <placeholder> path blocks" 2 "$R_Q" \
+  '- Deploy report (written by this task): `docs/deploy-reports/<task-id-or-date>.md`.' '- QA report: docs/qa-reports/T-900.md'
+LA_BLOCK="$(ls -d "$FIX_ROOT"/la-a-non-path-non-N-A-value* | head -1)"
+run_stderr_contains "linked-artifacts: _pending_ block says how to declare absence" "$VALIDATOR" "$DONE_BOTH_PRESENT" "N/A (<reason>)" "CLAUDE_PROJECT_DIR=$LA_BLOCK"
+
 # ---------------- srs-status-guard.cjs ----------------
 echo
 echo "srs-status-guard.cjs:"
@@ -743,7 +784,9 @@ MP_INCONSISTENT_COUNT='{"tool_name":"Write","tool_input":{"file_path":"docs/plan
 # --- Fixtures for phase.md ↔ T-NNN.md consistency ---
 
 # Consistent phase write: phase.md says T-001 done, T-001.md says done
-PHASE_CONSISTENT='{"tool_name":"Write","tool_input":{"file_path":"docs/plan/phase-01-foundation/phase.md","content":"# Phase 01 — Foundation\n\n- Status: done\n\n## Tasks\n\n| Task | Track | Status | DoD link |\n|---|---|---|---|\n| T-001 | be | done | tasks/T-001.md |\n"}}'
+# Lists BOTH task files on disk. It used to list only T-001 while T-002.md
+# existed — an orphan the validator could not see before ISSUE-282.
+PHASE_CONSISTENT='{"tool_name":"Write","tool_input":{"file_path":"docs/plan/phase-01-foundation/phase.md","content":"# Phase 01 — Foundation\n\n- Status: done\n\n## Tasks\n\n| Task | Track | Status | DoD link |\n|---|---|---|---|\n| T-001 | be | done | tasks/T-001.md |\n| T-002 | be | done | tasks/T-002.md |\n"}}'
 
 # Inconsistent phase write: phase.md says T-001 done, but T-001.md says in-progress
 mkdir -p "$FIX_ROOT/pc-phase-task-mismatch/docs/plan/phase-01-foundation/tasks"
@@ -812,6 +855,62 @@ run_exit "consistency: allows Edit on consistent phase" \
 MP_MISSING_PHASE='{"tool_name":"Write","tool_input":{"file_path":"docs/plan/master-plan.md","content":"# Master Plan\n\n## Phases\n\n| Phase | Folder | Status | Tasks | Notes |\n|---|---|---|---|---|\n| 01 — New | phase-01-new/ | not-started | 0/0 done | — |\n"}}'
 run_exit "consistency: fail-open when phase folder missing" \
     0 "$PLAN_CONSISTENCY" "$MP_MISSING_PHASE" "CLAUDE_PROJECT_DIR=$FIX_ROOT/pc-consistent"
+
+# --- ISSUE-236 / ISSUE-282 ---
+# pc_task <root> <phase> <id> <status>   /   pc_json <file_path> <content-file>
+pc_task() { mkdir -p "$1/docs/plan/$2/tasks"; printf '# %s\n\n- Status: %s\n' "$3" "$4" > "$1/docs/plan/$2/tasks/$3.md"; }
+pc_json() { node -e 'const fs=require("fs");process.stdout.write(JSON.stringify({tool_name:"Write",tool_input:{file_path:process.argv[1],content:fs.readFileSync(process.argv[2],"utf8")}}))' "$1" "$2"; }
+PC=$FIX_ROOT/pc-236
+pc_task "$PC" phase-53-a T-213 not-started; pc_task "$PC" phase-53-a T-214 not-started
+pc_task "$PC" phase-54-b T-240 done
+printf '%s\n' '# 53' '' '## Tasks' '' '| Task | Track | Status |' '|---|---|---|' '| T-213 | be | not-started |' '| T-214 | be | not-started |' > "$PC/docs/plan/phase-53-a/phase.md"
+printf '%s\n' '# 54' '' '## Tasks' '' '| Task | Track | Status |' '|---|---|---|' '| T-240 | be | done |' > "$PC/docs/plan/phase-54-b/phase.md"
+mp() {  # $1 = phase-53 count, $2 = phase-54 notes
+  printf '%s\n' '# Master Plan' '' '## Phases' '' '| Phase | Folder | Status | Tasks | Notes |' '|---|---|---|---|---|' \
+    "| 53 | phase-53-a/ | not-started | $1 | — |" "| 54 | phase-54-b/ | done | 1/1 | $2 |"; }
+mp 0/1 'old' > "$PC/docs/plan/master-plan.md"          # phase-53 row is STALE on disk (1 declared, 2 real)
+mp 0/1 'note edited' > "$FIX_ROOT/pc-236-sibling.md"
+mp 0/3 'old' > "$FIX_ROOT/pc-236-still-wrong.md"
+mp 0/2 'old' > "$FIX_ROOT/pc-236-fixed.md"
+run_exit "consistency: a stale UNTOUCHED sibling row no longer blocks the write (ISSUE-236)" \
+    0 "$PLAN_CONSISTENCY" "$(pc_json docs/plan/master-plan.md "$FIX_ROOT/pc-236-sibling.md")" "CLAUDE_PROJECT_DIR=$PC"
+run_stderr_contains "consistency: the untouched drift is still reported, as a warning" \
+    "$PLAN_CONSISTENCY" "$(pc_json docs/plan/master-plan.md "$FIX_ROOT/pc-236-sibling.md")" "pre-existing drift NOT introduced by this write" "CLAUDE_PROJECT_DIR=$PC"
+run_exit "consistency: the row being written still blocks when wrong" \
+    2 "$PLAN_CONSISTENCY" "$(pc_json docs/plan/master-plan.md "$FIX_ROOT/pc-236-still-wrong.md")" "CLAUDE_PROJECT_DIR=$PC"
+run_exit "consistency: fixing the stale row is allowed" \
+    0 "$PLAN_CONSISTENCY" "$(pc_json docs/plan/master-plan.md "$FIX_ROOT/pc-236-fixed.md")" "CLAUDE_PROJECT_DIR=$PC"
+
+# A `## Tasks` table interrupted by a note: every fragment is counted; a
+# differently-shaped table in the same section (coverage keyed by task id) is not.
+PF=$FIX_ROOT/pc-fragments
+for t in T-250 T-251 T-252; do pc_task "$PF" phase-54-frag "$t" not-started; done
+printf '%s\n' '# 54' '' '## Tasks' '' '| Task | Track | Status |' '|---|---|---|' '| T-250 | be | not-started |' '' \
+  'T-251 and T-252 — filed 2026-09-16 as remediation:' '' '| T-251 | be | not-started |' '| T-252 | be | not-started |' '' \
+  'Coverage:' '' '| Task | Surfaces | Count |' '|---|---|---|' '| T-250 | a, b | 2 |' '| **Total** | | **2** |' > "$PF/docs/plan/phase-54-frag/phase.md"
+printf '%s\n' '## Phases' '' '| Phase | Folder | Status | Tasks | Notes |' '|---|---|---|---|---|' '| 54 | phase-54-frag/ | not-started | 0/3 | — |' > "$FIX_ROOT/pc-frag-3.md"
+printf '%s\n' '## Phases' '' '| Phase | Folder | Status | Tasks | Notes |' '|---|---|---|---|---|' '| 54 | phase-54-frag/ | not-started | 0/1 | — |' > "$FIX_ROOT/pc-frag-1.md"
+run_exit "consistency: all table fragments counted (3/3 allowed)" \
+    0 "$PLAN_CONSISTENCY" "$(pc_json docs/plan/master-plan.md "$FIX_ROOT/pc-frag-3.md")" "CLAUDE_PROJECT_DIR=$PF"
+run_exit "consistency: first-fragment count (0/1) is refused" \
+    2 "$PLAN_CONSISTENCY" "$(pc_json docs/plan/master-plan.md "$FIX_ROOT/pc-frag-1.md")" "CLAUDE_PROJECT_DIR=$PF"
+run_stderr_contains "consistency: a fragmented table is named on a phase.md write" \
+    "$PLAN_CONSISTENCY" "$(pc_json docs/plan/phase-54-frag/phase.md "$PF/docs/plan/phase-54-frag/phase.md")" "separate table fragments" "CLAUDE_PROJECT_DIR=$PF"
+
+# ISSUE-282: the id sets of `## Tasks` and tasks/*.md must agree.
+PO=$FIX_ROOT/pc-282
+for t in T-231 T-232 T-233; do pc_task "$PO" phase-53-ids "$t" not-started; done
+printf '%s\n' '# 53' '' '## Tasks' '' '| Task | Track | Status |' '|---|---|---|' '| T-231 | be | not-started |' '| T-232 | be | not-started |' > "$FIX_ROOT/pc-282-orphan.md"
+printf '%s\n' '# 53' '' '## Tasks' '' '| Task | Track | Status |' '|---|---|---|' '| T-231 | be | not-started |' '| T-232 | be | not-started |' '| T-233 | be | not-started |' '| T-234 | be | not-started |' > "$FIX_ROOT/pc-282-phantom.md"
+printf '%s\n' '# 53' '' '## Tasks' '' '| Task | Track | Status |' '|---|---|---|' '| T-231 | be | not-started |' '| T-232 | be | not-started |' '| T-233 | be | not-started |' > "$FIX_ROOT/pc-282-ok.md"
+run_exit "consistency: a task file with no table row blocks (orphan, ISSUE-282)" \
+    2 "$PLAN_CONSISTENCY" "$(pc_json docs/plan/phase-53-ids/phase.md "$FIX_ROOT/pc-282-orphan.md")" "CLAUDE_PROJECT_DIR=$PO"
+run_stderr_contains "consistency: the orphan is named" \
+    "$PLAN_CONSISTENCY" "$(pc_json docs/plan/phase-53-ids/phase.md "$FIX_ROOT/pc-282-orphan.md")" "NO row in phase.md \`## Tasks\`: T-233" "CLAUDE_PROJECT_DIR=$PO"
+run_exit "consistency: a table row with no task file blocks (phantom)" \
+    2 "$PLAN_CONSISTENCY" "$(pc_json docs/plan/phase-53-ids/phase.md "$FIX_ROOT/pc-282-phantom.md")" "CLAUDE_PROJECT_DIR=$PO"
+run_exit "consistency: matching id sets pass" \
+    0 "$PLAN_CONSISTENCY" "$(pc_json docs/plan/phase-53-ids/phase.md "$FIX_ROOT/pc-282-ok.md")" "CLAUDE_PROJECT_DIR=$PO"
 
 # ---------------- session-init-summary.cjs ----------------
 echo
@@ -1779,6 +1878,30 @@ run_exit "srs-flow: skips non-Flow-A signoff" 0 \
 run_exit "srs-flow: skips Flow A while still In-Review" 0 \
     "$SRS_DESIGN_FLOW" "$(srs_payload_from_file "$FIX_ROOT/srs-flow-ok/payload-draft-flow-a.md")" "CLAUDE_PROJECT_DIR=$FIX_ROOT/srs-flow-missing-map"
 
+# === ISSUE-192: a combined Design-Flow must not waive the Flow-A suite ===
+# The gate was `value !== 'a' -> exit 0`, and parseHeaderField keeps only the first token,
+# so `A+B` / `A/C` skipped every Flow-A check while `A, B` checked only by accident. A mixed
+# project (Flow A for pinned surfaces, Flow C per-gap for new ones) is real practice.
+mkdir -p "$FIX_ROOT/srs-flow-combo/docs"
+srs_flow_case() {  # design-flow value -> payload with a sign-off status and NO Figma evidence
+  local f="$FIX_ROOT/srs-flow-combo/p-$(printf '%s' "$1" | tr -c 'A-Za-z0-9' '_').md"
+  printf '# SRS\n- Version: 9.9\n- Status: Signed-off\n- Design-Flow: %s\n\nno figma here\n' "$1" > "$f"
+  srs_payload_from_file "$f"
+}
+run_exit "srs-flow: A+B runs the Flow-A checks"  2 "$SRS_DESIGN_FLOW" "$(srs_flow_case 'A+B')" "CLAUDE_PROJECT_DIR=$FIX_ROOT/srs-flow-combo"
+run_exit "srs-flow: A/C runs the Flow-A checks"  2 "$SRS_DESIGN_FLOW" "$(srs_flow_case 'A/C')" "CLAUDE_PROJECT_DIR=$FIX_ROOT/srs-flow-combo"
+run_exit "srs-flow: A&C runs the Flow-A checks"  2 "$SRS_DESIGN_FLOW" "$(srs_flow_case 'A&C')" "CLAUDE_PROJECT_DIR=$FIX_ROOT/srs-flow-combo"
+# Only the PRIMARY value is the flow. A RETIRED Flow A mentioned in prose must not be read
+# as active -- the consuming project's real header is exactly this shape.
+run_exit "srs-flow: a retired Flow A in prose does not activate the checks" 0 "$SRS_DESIGN_FLOW" \
+  "$(srs_flow_case 'C (base), then B per-gap; A retained as historical-map-only.')" "CLAUDE_PROJECT_DIR=$FIX_ROOT/srs-flow-combo"
+run_exit "srs-flow: B+C (no A) still skips"      0 "$SRS_DESIGN_FLOW" "$(srs_flow_case 'B+C')" "CLAUDE_PROJECT_DIR=$FIX_ROOT/srs-flow-combo"
+run_exit "srs-flow: N/A (no UI surface) still skips" 0 "$SRS_DESIGN_FLOW" "$(srs_flow_case 'N/A')" "CLAUDE_PROJECT_DIR=$FIX_ROOT/srs-flow-combo"
+# An unrecognized value fails CLOSED and names itself; skipping would waive the suite silently.
+run_exit "srs-flow: an unrecognized value fails closed" 2 "$SRS_DESIGN_FLOW" "$(srs_flow_case 'Mixed (A + C)')" "CLAUDE_PROJECT_DIR=$FIX_ROOT/srs-flow-combo"
+run_stderr_contains "srs-flow: the unrecognized block names the value" "$SRS_DESIGN_FLOW" \
+  "$(srs_flow_case 'TBD')" "\`Design-Flow: TBD\` is not a recognized value" "CLAUDE_PROJECT_DIR=$FIX_ROOT/srs-flow-combo"
+
 # ---------------- design-substatus-validator.cjs ----------------
 echo
 echo "design-substatus-validator.cjs:"
@@ -1933,6 +2056,50 @@ run_exit "design-substatus: blocks unexportable required asset" 2 \
     "$DESIGN_SUBSTATUS" "$(task_payload_from_file "$FIX_ROOT/design-substatus-task-blocked-asset.md" T-012)" "CLAUDE_PROJECT_DIR=$FIX_ROOT/design-substatus-ok"
 run_exit "design-substatus: blocks design-confirmed when handoff/report missing" 2 \
     "$DESIGN_SUBSTATUS" "$(task_payload_from_file "$FIX_ROOT/design-substatus-task-confirmed.md")" "CLAUDE_PROJECT_DIR=$FIX_ROOT/design-substatus-missing"
+
+# === ISSUE-213: read the VERDICT FIELD, and take the LATEST one ===
+# hasQualifiedVerdict() returned true on the first line mentioning verdict|summary|status
+# plus the word "qualified". T-245's report says `Verdict: unqualified` on line 3 and was
+# PASSED through an unrelated `Mapping-Status: qualified` table row. Each variant below
+# reuses T-010's valid handoff, so only the completeness report differs.
+mk_verdict_fix() {  # name, report-body
+  local d="$FIX_ROOT/design-verdict-$1"
+  mkdir -p "$d/docs/uiux/handoffs" "$d/docs/uiux/completeness-reports"
+  cp "$FIX_ROOT/design-substatus-ok/docs/uiux/handoffs/T-010.md" "$d/docs/uiux/handoffs/T-010.md"
+  printf '%s\n' "$2" > "$d/docs/uiux/completeness-reports/T-010.md"
+}
+mk_verdict_fix t245 '# Completeness - T-010
+- **Verdict:** `unqualified`
+- **Reason:** F-1 and F-2 fail.
+
+| Claim | Evidence | Holds |
+|---|---|---|
+| `v1.35.md` is at `Mapping-Status: qualified` | L24 | Yes |'
+mk_verdict_fix multirun '# Completeness - T-010
+- **Verdict:** `unqualified`
+
+# Run 2 — re-verification after the revise
+- **Verdict:** `qualified`'
+mk_verdict_fix history '# Completeness - T-010
+- **Verdict:** **`qualified`** — **`unqualified` on the first pass; discharged on re-verification.**'
+mk_verdict_fix noverdict '# Completeness - T-010
+All checks reviewed. Mapping-Status: qualified. Status: qualified.'
+DS_CONFIRMED="$(task_payload_from_file "$FIX_ROOT/design-substatus-task-confirmed.md")"
+run_exit "design-substatus: blocks an unqualified verdict despite 'Mapping-Status: qualified' (T-245)" 2 \
+    "$DESIGN_SUBSTATUS" "$DS_CONFIRMED" "CLAUDE_PROJECT_DIR=$FIX_ROOT/design-verdict-t245"
+run_stderr_contains "design-substatus: the block names the verdict actually recorded" "$DESIGN_SUBSTATUS" \
+    "$DS_CONFIRMED" "records the verdict \`unqualified\`" "CLAUDE_PROJECT_DIR=$FIX_ROOT/design-verdict-t245"
+# BA re-runs APPEND to the same report; the current verdict is the latest one.
+run_exit "design-substatus: allows a multi-run report whose latest verdict is qualified" 0 \
+    "$DESIGN_SUBSTATUS" "$DS_CONFIRMED" "CLAUDE_PROJECT_DIR=$FIX_ROOT/design-verdict-multirun"
+# The old unqualified-skip rule discarded the very line carrying the verdict.
+run_exit "design-substatus: allows a qualified verdict whose line narrates an earlier unqualified pass" 0 \
+    "$DESIGN_SUBSTATUS" "$DS_CONFIRMED" "CLAUDE_PROJECT_DIR=$FIX_ROOT/design-verdict-history"
+# Only the Verdict LABEL counts — 'Status: qualified' in prose is not a verdict.
+run_exit "design-substatus: blocks a report with no Verdict field" 2 \
+    "$DESIGN_SUBSTATUS" "$DS_CONFIRMED" "CLAUDE_PROJECT_DIR=$FIX_ROOT/design-verdict-noverdict"
+run_stderr_contains "design-substatus: the no-verdict block says so" "$DESIGN_SUBSTATUS" \
+    "$DS_CONFIRMED" "has no Verdict field" "CLAUDE_PROJECT_DIR=$FIX_ROOT/design-verdict-noverdict"
 run_exit "design-substatus: skips non-confirmed design sub-status" 0 \
     "$DESIGN_SUBSTATUS" "$(task_payload_from_file "$FIX_ROOT/design-substatus-task-review.md")" "CLAUDE_PROJECT_DIR=$FIX_ROOT/design-substatus-missing"
 
@@ -2078,6 +2245,27 @@ run_exit "allows when CLAUDE_SKIP_DOCKER_SCOPE_CHECK=1" 0 "$DOCKER_GUARD" "$(db 
 run_exit "ignores non-Bash tool (docker-guard)" 0 "$DOCKER_GUARD" '{"tool_name":"Write","tool_input":{"file_path":"x","content":""}}' "$PSLUG"
 run_exit "ignores empty stdin (docker-guard)" 0 "$DOCKER_GUARD" ''
 run_exit "ignores malformed JSON (docker-guard)" 0 "$DOCKER_GUARD" 'not json'
+
+# ISSUE-206(2): patterns are checked per simple command, never across one. The
+# `-a` of a LATER `docker ps -a` is not a flag of an earlier scoped `docker rm`;
+# and every docker invocation in a compound line is checked, not just the first.
+dbj() { printf '{"tool_name":"Bash","tool_input":{"command":%s}%s}' "$(node -e 'process.stdout.write(JSON.stringify(process.argv[1]))' "$1")" "${2:+,\"cwd\":\"$2\"}"; }
+run_exit "docker: scoped rm then 'docker ps -a' is allowed (ISSUE-206)"   0 "$DOCKER_GUARD" "$(dbj 'docker rm stats-overflow-web-1 && docker ps -a')" "$PSLUG"
+run_exit "docker: a SECOND out-of-scope docker call is checked"          2 "$DOCKER_GUARD" "$(dbj 'docker ps && docker rm other-project-db')" "$PSLUG"
+run_exit "docker: rm \$(docker ps -aq) still refused (substitution kept)" 2 "$DOCKER_GUARD" "$(dbj 'docker rm $(docker ps -aq)')" "$PSLUG"
+run_exit "docker: rm --all in the SAME command still refused"             2 "$DOCKER_GUARD" "$(dbj 'docker rm --all')" "$PSLUG"
+run_exit "docker: a quoted && does not split"                             2 "$DOCKER_GUARD" "$(dbj 'docker rm "other && x"')" "$PSLUG"
+run_exit "docker: 2>&1 is a redirection, not a container name"            0 "$DOCKER_GUARD" "$(dbj 'docker rm stats-overflow-web-1 2>&1')" "$PSLUG"
+run_exit "docker: redirection does not hide an out-of-scope target"       2 "$DOCKER_GUARD" "$(dbj 'docker rm other-db 2>&1')" "$PSLUG"
+# ISSUE-185: inside an agent worktree the slug is the PROJECT, not the worktree.
+run_exit "docker: slug from the project root, not the worktree name (ISSUE-185)" 0 "$DOCKER_GUARD" \
+  "$(dbj 'docker rm 4run-db-1' '/Users/v/4Run/.worktrees/qa-exec-t-222b')" "CLAUDE_PROJECT_DIR=/Users/v/4Run/.worktrees/qa-exec-t-222b"
+run_exit "docker: worktree-cwd event with no project dir resolves the root too" 0 "$DOCKER_GUARD" \
+  "$(dbj 'docker rm 4run-db-1' '/Users/v/4Run/.worktrees/qa-exec-t-222b')"
+run_exit "docker: worktree scoping does not widen to other projects"      2 "$DOCKER_GUARD" \
+  "$(dbj 'docker rm other-db-1' '/Users/v/4Run/.worktrees/qa-exec-t-222b')"
+run_stderr_contains "docker: the hatch message states launch-env, not export (ISSUE-206(1))" "$DOCKER_GUARD" \
+  "$(dbj 'docker rm other-db-1')" "LAUNCHED with" "$PSLUG"
 
 # ---------------- source-code-write-guard.cjs ----------------
 echo
@@ -2262,6 +2450,14 @@ run_exit "orch-write: relative .env still blocked with root set"                
 # Edit tool takes the same path as Write.
 run_exit "orch-write: Edit outside root allowed"                               0 "$ORCH_WRITE_GUARD" "$(e '/Users/viet/.config/claude/projects/repo/memory/MEMORY.md')" "$PROJ"
 
+# ISSUE-237: §9 Step 4.6 keeps the TL in the main cwd, so its proposal tree's
+# documented default home is <root>/plan-proposal/ — which no row owned, so every
+# TL write needed an escape hatch. Root-anchored: a nested copy is NOT claimed.
+run_exit "orch-write: allows root plan-proposal/ (relative, ISSUE-237)"          0 "$ORCH_WRITE_GUARD" "$(w 'plan-proposal/phase-54-x/phase.md')"
+run_exit "orch-write: allows root plan-proposal/ (absolute under root)"          0 "$ORCH_WRITE_GUARD" "$(w '/Users/viet/repo/plan-proposal/master-plan.md')" "$PROJ"
+run_exit "orch-write: does NOT claim a nested docs/x/plan-proposal/"            2 "$ORCH_WRITE_GUARD" "$(w 'notes/x/plan-proposal/master-plan.md')"
+run_exit "orch-write: worktree plan-proposal/ still allowed"                    0 "$ORCH_WRITE_GUARD" "$(w '.worktrees/tl-T-001/plan-proposal/master-plan.md')"
+
 # === Sub-agent context (path inside .worktrees/) — always allow ===
 run_exit "orch-write: allows .worktrees/ba-T-001/docs/SRS.md"      0 "$ORCH_WRITE_GUARD" "$(w '.worktrees/ba-T-001/docs/SRS.md')"
 run_exit "orch-write: allows .worktrees/sa-T-002/docs/architecture.md" 0 "$ORCH_WRITE_GUARD" "$(w '.worktrees/sa-T-002/docs/architecture.md')"
@@ -2422,6 +2618,14 @@ run_exit "orch-bash: blocks journal-root removal" 2 "$ORCH_BASH_GUARD" "$(bc 'rm
 run_exit "orch-bash: blocks mixed cleanup and project targets" 2 "$ORCH_BASH_GUARD" "$(bc 'rm -rf .worktrees/ba-T-001 docs/old')"
 run_exit "orch-bash: blocks cleanup traversal escape" 2 "$ORCH_BASH_GUARD" "$(bc 'rm -rf .worktrees/../docs')"
 run_exit "orch-bash: blocks composed cleanup command" 2 "$ORCH_BASH_GUARD" "$(bc 'rm -rf .worktrees/ba-T-001 && rm -rf docs')"
+# ISSUE-237(2): the ingested root proposal tree must be discardable at Step 7.
+# The tree itself is removable (it is the transient artifact); nothing beside it.
+run_exit "orch-bash: allows rm -rf of the root plan-proposal tree" 0 "$ORCH_BASH_GUARD" "$(bc 'rm -rf plan-proposal')"
+run_exit "orch-bash: allows rm -rf plan-proposal/ (trailing slash)" 0 "$ORCH_BASH_GUARD" "$(bc 'rm -rf plan-proposal/')"
+run_exit "orch-bash: allows rm inside the plan-proposal tree" 0 "$ORCH_BASH_GUARD" "$(bc 'rm plan-proposal/phase-54-x/phase.md')"
+run_exit "orch-bash: blocks a nested docs/plan-proposal"  2 "$ORCH_BASH_GUARD" "$(bc 'rm -rf docs/plan-proposal')"
+run_exit "orch-bash: blocks plan-proposal traversal escape" 2 "$ORCH_BASH_GUARD" "$(bc 'rm -rf plan-proposal/../docs')"
+run_exit "orch-bash: blocks plan-proposal mixed with docs" 2 "$ORCH_BASH_GUARD" "$(bc 'rm -rf plan-proposal docs/plan')"
 
 # === ISSUE-213/214/219/224: the carve-out must accept the spellings the
 # === Orchestrator rules themselves write, and must name its real disqualifier.
@@ -2883,6 +3087,35 @@ run_exit "ui-ready: T-066 N/A(middleware) allows"         0 "$UI_READY" "$(ui_pu
 # === Counter-case: real surface with a parenthetical is STILL UI → block ===
 run_exit "ui-ready: T-300 real surface w/ paren blocks"   2 "$UI_READY" "$(ui_pu T-300 ready-for-deploy "$UI_FIX/.worktrees/be-dev-T-300" be)"
 
+# === ISSUE-049 / ISSUE-181 / ISSUE-286: an EXPLICIT non-UI declaration outranks
+# the track. The track fallback ran unconditionally, so a `Track: fe` task that
+# declared `Design sub-status: n/a` + `Linked Surface: null` was still demanded
+# four design artifacts owned by other roles. Headers are the real 4Run shapes.
+ui_task() { local id="$1"; shift; printf '%s\n' "# $id" '- Phase: phase-22' "$@" > "$UI_FIX/docs/plan/phase-22/tasks/$id.md"; }
+ui_task T-401 '- Track: fe' '- Status: in-progress' '- Design sub-status: n/a (non-visual Flutter controller/action wiring — the surface is T-217)' '- Linked Surface: null'
+ui_task T-402 '- Track: fe (Flutter mobile)' '- Status: in-progress' '- Design sub-status: — <!-- behavioural fix on an existing surface; authors no design artifact -->' '- Design lineage: **T-499** (the save-dialog surface)' '- Linked Surface: null <!-- no composition, geometry, token or testID change -->'
+ui_task T-403 '- Track: infra' '- Status: in-progress' '- Design sub-status: — <!-- infra; authors no design artifact -->' '- Linked Surface: null'
+ui_task T-404 '- Track: fe' '- Status: in-progress' '- Design sub-status: n/a — pure total-time computation-correctness fix'
+ui_task T-405 '- **Track:** fe' '- **Status:** in-progress' '- **Design sub-status:** **N/A**' '- **Linked Surface:** `null`'
+# Counter-cases the fix must NOT exempt:
+ui_task T-406 '- Track: fe' '- Status: in-progress'                                     # fields absent: fallback still fires
+ui_task T-407 '- Track: fe' '- Status: in-progress' '- Design sub-status: n/a' '- Linked Surface: Recorder Save Dialog'  # one real surface wins
+ui_task T-408 '- Track: be' '- Status: in-progress' '- Design sub-status: design-confirmed <!-- confirmed 2026-09-01 -->'  # comment does not hide a real status
+ui_task T-409 '- **Track:** be' '- **Status:** in-progress' '- **Design sub-status:** **design-confirmed**'  # bold metadata (3c82969) still parsed
+# 3c82969: `**Key:** value` left the closing `**` in the capture (`** n/a`), which
+# defeated the sentinel and turned a bold-header BE task into a UI task.
+ui_task T-410 '- **Track:** be' '- **Status:** in-progress' '- **Linked Surface:** N/A (schema-only)'
+run_exit "ui-ready: fe + n/a + null (T-218 shape) allows"                  0 "$UI_READY" "$(ui_pu T-401 ready-for-deploy "$UI_FIX/.worktrees/fe-dev-T-401")"
+run_exit "ui-ready: fe + sentinel<!--comment--> + lineage (T-306) allows"  0 "$UI_READY" "$(ui_pu T-402 ready-for-deploy "$UI_FIX/.worktrees/fe-dev-T-402")"
+run_exit "ui-ready: infra + sentinel<!--comment--> allows"                0 "$UI_READY" "$(ui_pu T-403 ready-for-deploy "$UI_FIX/.worktrees/devops-T-403" infra)"
+run_exit "ui-ready: fe + 'n/a — prose' allows"                            0 "$UI_READY" "$(ui_pu T-404 ready-for-deploy "$UI_FIX/.worktrees/fe-dev-T-404")"
+run_exit "ui-ready: bold **N/A** / \`null\` sentinels allow"               0 "$UI_READY" "$(ui_pu T-405 ready-for-deploy "$UI_FIX/.worktrees/fe-dev-T-405")"
+run_exit "ui-ready: fe with NO design fields still blocks (fallback)"     2 "$UI_READY" "$(ui_pu T-406 ready-for-deploy "$UI_FIX/.worktrees/fe-dev-T-406")"
+run_exit "ui-ready: one real Linked Surface outranks a sentinel"         2 "$UI_READY" "$(ui_pu T-407 ready-for-deploy "$UI_FIX/.worktrees/fe-dev-T-407")"
+run_exit "ui-ready: a comment does not hide a real design status"         2 "$UI_READY" "$(ui_pu T-408 ready-for-deploy "$UI_FIX/.worktrees/be-dev-T-408" be)"
+run_exit "ui-ready: bold-metadata design status is still read (3c82969)"  2 "$UI_READY" "$(ui_pu T-409 ready-for-deploy "$UI_FIX/.worktrees/be-dev-T-409" be)"
+run_exit "ui-ready: bold-metadata BE task with N/A surface allows (3c82969)" 0 "$UI_READY" "$(ui_pu T-410 ready-for-deploy "$UI_FIX/.worktrees/be-dev-T-410" be)"
+
 # === Allow: to_status != ready-for-deploy ===
 run_exit "ui-ready: to_status=in-progress always allows"  0 "$UI_READY" "$(ui_pu T-168 in-progress "$UI_FIX/.worktrees/fe-dev-T-168")"
 run_exit "ui-ready: to_status=done always allows"         0 "$UI_READY" "$(ui_pu T-168 done "$UI_FIX/.worktrees/fe-dev-T-168")"
@@ -2900,6 +3133,17 @@ run_exit "ui-ready: malformed JSON"     0 "$UI_READY" 'not json'
 run_exit "ui-ready: escape hatch allows missing artifacts" 0 "$UI_READY" "$(ui_pu T-168 ready-for-deploy "$UI_FIX/.worktrees/fe-dev-T-168")" "CLAUDE_SKIP_UI_READINESS_CHECK=1"
 
 rm -rf "$UI_FIX"
+
+# ---------------- escape-hatch instructions (class check) ----------------
+# PreToolUse hooks read the harness environment at process start. A block message
+# telling the agent to `export CLAUDE_X=1` (or prefix a command with it) sends it
+# down a path that can never work: the hatch looks inert, reads as a transient
+# failure, and gets retried (ISSUE-206(1), ISSUE-214/219). Every hook, not one.
+echo
+echo "escape-hatch instructions:"
+BAD_HATCH="$(grep -ln 'export CLAUDE_[A-Z_]*=1' "$HOOKS_DIR"/*.cjs 2>/dev/null | xargs -n1 basename 2>/dev/null | tr '\n' ' ')"
+if [ -z "$BAD_HATCH" ]; then printf "  PASS  %s\n" "no hook tells the agent to 'export CLAUDE_*=1'"; PASS=$((PASS+1))
+else printf "  FAIL  %s\n" "hooks still instruct an unreachable 'export CLAUDE_*=1': $BAD_HATCH"; FAIL=$((FAIL+1)); fi
 
 # ---------------- summary ----------------
 echo
