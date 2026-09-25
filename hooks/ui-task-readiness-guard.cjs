@@ -103,9 +103,12 @@ function readTaskMeta(taskFile) {
     headLines.push(lines[i]);
   }
   const head = headLines.join('\n');
-  const track = (head.match(/^\s*-?\s*\**Track\**\s*:\s*([^\r\n]+)/im) || [])[1] || '';
-  const designSubStatus = (head.match(/^\s*-?\s*\**Design[\s-]*sub[\s-]*status\**\s*:\s*([^\r\n]+)/im) || [])[1] || '';
-  const linkedSurface = (head.match(/^\s*-?\s*\**Linked[\s-]*Surface\**\s*:\s*([^\r\n]+)/im) || [])[1] || '';
+  // Consume the optional closing `**` after the colon in the `**Key:** value` bold
+  // style (else `**Track:** be` captures `** be`, defeating the non-UI sentinel match
+  // and misclassifying backend/infra tasks as UI). Trailing `**` also stripped.
+  const track = (head.match(/^\s*-?\s*\**Track\**\s*:\s*\**\s*([^\r\n]+?)\s*\**\s*$/im) || [])[1] || '';
+  const designSubStatus = (head.match(/^\s*-?\s*\**Design[\s-]*sub[\s-]*status\**\s*:\s*\**\s*([^\r\n]+?)\s*\**\s*$/im) || [])[1] || '';
+  const linkedSurface = (head.match(/^\s*-?\s*\**Linked[\s-]*Surface\**\s*:\s*\**\s*([^\r\n]+?)\s*\**\s*$/im) || [])[1] || '';
   const designLineage = (head.match(/^\s*-?\s*\**Design[\s-]*lineage\**\s*:\s*([^\r\n]+)/im) || [])[1] || '';
   return {
     track: track.trim().toLowerCase(),
