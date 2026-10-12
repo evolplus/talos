@@ -48,14 +48,15 @@ When the classified path is A, before doing anything else, the Orchestrator must
 0.5. **Pre-flight cleanup of root-level plan-update stragglers.** After Step 0's git context check, scan the project root (cwd, non-recursive) for files matching `plan-update*.json`. These are leakage — per `.claude/rules/worktree-isolation.md` §5 and CLAUDE.md §10, every `plan-update.json` lives ONLY at `.worktrees/<role>-<task-id>/plan-update.json`. The `plan-update-location-guard.cjs` hook refuses new writes there, but existing files (from pre-hook sessions or escape-hatch overrides) need cleanup.
 
    - **Run** `ls -1 plan-update*.json 2>/dev/null` (or equivalent glob) in the project root. If empty: log nothing, proceed.
-   - **If matches exist**: remove them (`rm plan-update*.json`). They are transient artifacts; once the Orchestrator turn is over, the sub-agent's real `plan-update.json` lives in `.worktrees/<role>-<task-id>/plan-update.json` and has already been (or will be) ingested.
+   - **If matches exist**: remove them with ONE uncomposed command — `rm plan-update*.json` (or name the files). `orchestrator-bash-guard.cjs` admits exactly this: project-root files matching `plan-update*.json`, non-recursive, no composition, no other operands. They are transient artifacts; once the Orchestrator turn is over, the sub-agent's real `plan-update.json` lives in `.worktrees/<role>-<task-id>/plan-update.json` and has already been (or will be) ingested.
    - **Log** to the session-start summary: `[orchestrator] Cleaned up N stragglers: plan-update.json, plan-update-T-005.json, …`
    - **Do not halt.** Cleanup is non-interactive. If the operator wanted to preserve a specific file, they should have moved it out of root before invocation.
 
    Edge cases:
    - If `git status` shows any of these files as tracked / modified (rare — the gitignore should prevent this; pre-hook history might leak some): warn loudly in the summary and skip deletion of those specific files. The operator can decide whether to `git rm` them.
    - Files matching `plan-update*.json` inside `.worktrees/` are NOT touched — they're canonical.
-   - Files matching `plan-update*.json` inside `docs/`, `.claude/`, or other subdirs are also touched (per the hook's policy: only `.worktrees/` is the canonical location).
+   - Files matching `plan-update*.json` inside `docs/`, `.claude/`, or other subdirs are NOT removed by this step (it is a root, non-recursive sweep, and the guard refuses those paths). List them in the session-start summary as non-canonical; they are sub-agent territory to clean up inside a dispatch.
+   - If a straggler is tracked (edge case above), name the untracked files explicitly instead of using the glob, so the tracked one is not removed.
 
 0.6. **Pre-flight reconciliation of interrupted dispatches (crash recovery).** After Step 0.5's straggler sweep, scan
    `.claude/dispatch-journal/*.json` and `.worktrees/*`. Per CLAUDE.md §14, a dispatch journal entry that survives into
@@ -313,6 +314,14 @@ When the classified path is A, before doing anything else, the Orchestrator must
    This step exists because the kit's design lifecycle was asymmetric — `parallel-execution.md` §4 gated DESIGN existence rigorously but trusted FE Dev's self-attestation that the IMPLEMENTATION matched the design-confirmed handoff. The 2026-06-04 FR-022 batch-UI silent drop showed the failure mode: FE Dev shipped 3 of 4 DoD scopes, claimed all 4 in `plan-update.json` notes, and no downstream gate caught the omission. Phase 5 is the structural fix — an independent BA dispatch that reads the handoff + diff and forms a verdict the FE Dev cannot self-approve.
 
    The runtime gate `ui-task-readiness-guard.cjs` fires BEFORE Phase 5 — if the artifact set (`docs/uiux/refs/<task-id>.md`, `docs/uiux/visual-specs/<task-id>.md`, `docs/test-cases/by-task/<task-id>/`) is incomplete, the `plan-update.json` write is refused at FE Dev's worktree and Phase 5 is never dispatched. Phase 5 dispatches only when the artifact set is on disk.
+
+7.6. **Reopen discipline — diagnose before the second retry.** A task is *reopened* when a verification the code role could not run in its own sandbox (operator-run build, on-device check, live-cluster probe, production smoke) fails after the role proposed `ready-for-deploy`. Record each reopen in the task's status history as `ready-for-deploy → in-progress` with the verbatim failure output. Then:
+   - **First reopen:** re-dispatch the owning role with the verbatim failure. Normal.
+   - **Second reopen on the same symptom:** do NOT re-dispatch another fix attempt. Dispatch the Non-SDLC Debugger (Path B2, `incident-debugging`) for a root-cause report first. The report must name the failing component *from its source* — the dependency's own build file in the package cache (`~/.pub-cache`, `node_modules`, `~/.gradle/caches`, `~/go/pkg/mod`, …), the plugin's manifest, the actual error-emitting line — not from the error message alone. Only a fix that cites that evidence may be dispatched. Each speculative attempt costs an operator round-trip the agent cannot see; reading the dependency source is free.
+   - **Scope guards yield to the diagnosis.** If the root cause sits outside a task's scope guards (e.g. a "do NOT add or upgrade any dependency" guard on a build-blocker whose cause turns out to be a dependency), route the scope change to the operator as a decision with the evidence — do not keep attempting fixes inside a fence the evidence says is wrong.
+   - **Under `/sdlc-loop`**, two reopens trip the per-task failure cap (§15.6, H5).
+
+   Why: a build-blocker fixed from a static read in a sandbox with no toolchain can fail the operator's build attempt after attempt — app-level pin, root override, late-phase override, dependency pin — while the cause (a plugin hard-coding an old SDK level in its own build file) sits readable in the package cache the whole time. A scope guard written before diagnosis can even forbid the fix that finally works.
 
 8. Re-evaluate from step 2. **This re-evaluation is the loop the `/sdlc-loop` command automates:** when the operator starts `/sdlc-loop`, the Orchestrator repeats Steps 2–7 autonomously — picking each next eligible batch without an operator prompt — until a halt condition fires (human gate, NEEDS_CONTEXT, `open` issue, operator-routed OQ, circuit breaker, plan complete, or token budget). See `.claude/rules/autonomous-loop.md` §15. Outside `/sdlc-loop`, a single invocation performs one pass of Steps 2–7 and yields back to the operator.
 

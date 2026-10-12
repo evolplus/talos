@@ -32,6 +32,8 @@
 |---|---|---|---|
 | FR-007 (GitLab ts → MySQL DATETIME) | format-boundary (datetime) | no | `format-boundary-missing` — R-NNN |
 | FR-012 (worker reads `last_synced_at`) | gate-field | yes | covered |
+| FR-031 (client `terms_version` → `VARCHAR(16)`) | width-boundary | no | `width-boundary-missing` — R-NNN |
+| FR-032 (`payment.settled.order_ref` → `orders.id` WHERE key) | identity-binding | no | `identity-binding-missing` — R-NNN |
 
 ### Step 3 — ADR completeness
 

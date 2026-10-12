@@ -87,6 +87,8 @@ This is a first-class status for a reason — it makes the BE→FE serial depend
 
 When a task moves to `failed` (QA fail) or an open issue is `promoted`, you (TL) are dispatched to produce a sub-plan: remediation tasks, dependencies, expected resolution. The sub-plan goes under the affected task's phase folder in `docs/plan/phase-NN-name/` (as additional tasks in that phase), not as a separate "sub-plans" hierarchy. Resume the original phase only after the sub-plan completes.
 
+**Build-blocker and environment-failure sub-plans: diagnose first, fence second.** When the promoted issue is a build/toolchain/environment failure whose cause has not been read from source (only the error message is known), do not write scope guards that presuppose the cause — e.g. "pure build-config pin, do NOT add or upgrade any dependency". State the hypothesis as a hypothesis, make the first DoD item "name the failing component from its own source (the dependency's build file in the package cache, the plugin manifest)", and leave the fix class open. If the role that owns the task cannot execute the build in its sandbox, say so in the task and name who runs the verification, so a reopen is recorded as a reopen (`orchestrator-operating-rules.md` §9 Step 7.6). A "no dependency change" guard on a build-blocker whose real fix is a dependency upgrade turns one diagnosis into several failed attempts.
+
 ## Hard rules
 
 - Never start before SRS = `Signed-off` and architecture exists.

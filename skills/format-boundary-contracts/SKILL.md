@@ -45,6 +45,21 @@ For each field that flows across components in your architecture, ask:
 
 If any answer differs between origin and destination, **a format boundary exists** and must be documented in §6.
 
+### Two boundaries the "same type" test hides
+
+The heuristic above compares *encodings*. Two classes slip through it because both sides look like the same type, so nobody asks the question. Both reach production with every validator green. Treat them as boundaries by default.
+
+**Width boundary — a free-form string persisted into a bounded column.** "string → `VARCHAR(16)`" reads as identical types. It is not: the producer's value space is unbounded (or bounded by a convention nobody wrote down) and the column's is 16 characters. Example: a client sends `terms-accept-2026-10` (20 chars) into `terms_version VARCHAR(16)`; the frozen contract says only `minLength: 1` while its own example is the 20-char value. The write fails in production with `value too long`.
+- **Rule:** every client- or partner-supplied string that is persisted gets a §6 row stating the producer's format (with its real maximum) and the column width. If a convention generates the value (`<prefix>-YYYY-MM`), write the convention and its length.
+- **Rule:** the width lives in ONE authoritative place and the others cite it — the API contract carries `maxLength` equal to the column width (or the column is `TEXT` and the contract states the bound it enforces). A contract string field that is persisted and has no `maxLength` is a finding, not a style issue.
+- **Failure mode:** deterministic (`22001` / `Data too long`) — do-not-retry; and the API layer should reject over-length input with a 4xx before the transaction, not let the database discover it.
+
+**Identity binding — a value one service emits that another service uses as a key.** Example: `payment.settled.order_ref` (emitted by the payments service) must equal `orders.id`, which the order service uses as the key of its gate UPDATE. Both ends are UUIDs — same type, same encoding — so no row gets written. When the binding lives only in prose and code comments and the chain breaks, the UPDATE matches zero rows and the order sits in `pending` silently.
+- **Rule:** every cross-service event or API field that the consumer uses to *locate* a row (WHERE key, FK, idempotency key) gets a §6 identity-binding row: `producer.field == <authoritative id> == consumer.column`, the producer that mints the authoritative id, and what the consumer does on zero matches.
+- **Rule:** "zero rows matched" on a binding-keyed write is a named failure mode (log + metric + do-not-silently-succeed), declared in §5. A gate UPDATE that can affect 0 rows without anyone noticing is the defect class this row exists for.
+
+Identity-binding rows use the same table with the columns read as: Field = `producer.field → consumer.column`; Source format = the producer and the id it claims to carry; Destination format = the consumer key and the authoritative source of that id; Transformation = `none — must be equal` (or the mapping, if one exists); Failure mode = the zero-match handling.
+
 ## Common boundary patterns
 
 | Source format | Destination format | Transformation |
@@ -59,6 +74,8 @@ If any answer differs between origin and destination, **a format boundary exists
 | Kafka message protobuf | Postgres column JSON | `protobuf-to-json` library; flatten oneofs; map enums to strings; document version-skew handling |
 | UUIDv4 string `"01HZX7Y..."` | Postgres `UUID` column | Often auto-handled by driver but verify on bulk inserts (some ORMs send as TEXT, requiring CAST) |
 | Boolean from form `"on"`/missing | DB `BOOLEAN` | Coerce `"on"` → `true`; missing → `false` (NOT `null` — silent contract gap) |
+| Client string `"terms-accept-2026-10"` (convention `<prefix>-YYYY-MM`, 20 chars) | Postgres `VARCHAR(16)` | **Width boundary** — widen the column (or `TEXT`) and pin `maxLength` in the contract; reject over-length with 4xx at the API |
+| Event `payment.settled.order_ref` (payments service) | `orders.id` (WHERE key) | **Identity binding** — none, must equal the id the order service minted; 0-row UPDATE is a logged, alerted failure, not a silent success |
 
 These are common but not exhaustive. Apply the heuristic to YOUR project's specific flows.
 
@@ -147,6 +164,7 @@ For T-013 (MR Collection Service) implementation:
 ## Hard rules
 
 - **§6 format-boundary rows are mandatory whenever data flows between systems with different format specs.** Apply the detection heuristic to every data flow in the architecture; surviving fields go in §6.
+- **Width boundaries and identity bindings are boundaries even when the types match.** Every persisted externally-supplied string has a width row (and a `maxLength` in its contract); every cross-service field used as a lookup key has an identity-binding row with declared zero-match handling.
 - **Source format and destination format must be specified exactly.** Not "datetime" — name the exact ISO-8601 variant + the destination's exact binary format requirement.
 - **Boundary owner is a single component / task.** Two components shouldn't both perform the same conversion; that's where divergence happens.
 - **Transformation step is named function-level.** Document the conversion function so it's reused across tasks; ad-hoc inline conversions are the path to divergence.

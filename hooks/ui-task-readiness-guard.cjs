@@ -183,13 +183,26 @@ function isNonUISentinel(v) {
 const LINEAGE_ID_RE = /\b(T-\d+)\b/;
 
 function resolveArtifactTaskId(meta, taskId) {
-  if (!meta || !meta.designLineage) return { artifactId: taskId, lineage: null };
+  const own = { artifactId: taskId, lineage: null, handoffOnly: false, handoffId: taskId, restId: taskId };
+  if (!meta || !meta.designLineage) return own;
   const m = meta.designLineage.match(LINEAGE_ID_RE);
-  if (!m) return { artifactId: taskId, lineage: null };
+  if (!m) return own;
   const lineage = m[1];
   // A self-reference is not a lineage; treat it as absent rather than as an error.
-  if (lineage === taskId) return { artifactId: taskId, lineage: null };
-  return { artifactId: lineage, lineage };
+  if (lineage === taskId) return own;
+  // `handoff ONLY` lineage — the design/FE task split. A design task (the lineage
+  // id) produced the confirmed HANDOFF; this FE task consumes it but produces its
+  // OWN refs/visual-spec/by-task. So the handoff resolves from the lineage id and
+  // the other three from this task's own id. All four are still REQUIRED — only
+  // which id names the handoff file changes. A bare `Design lineage: T-NNN` with no
+  // marker keeps full inheritance: all four resolve from the lineage id (the
+  // corrective/remediation case). The marker must be
+  // literal `handoff only` / `handoff-only`; prose like "the handoff is the only…"
+  // does not match.
+  if (/handoff[\s-]*only/i.test(meta.designLineage)) {
+    return { artifactId: lineage, lineage, handoffOnly: true, handoffId: lineage, restId: taskId };
+  }
+  return { artifactId: lineage, lineage, handoffOnly: false, handoffId: lineage, restId: lineage };
 }
 
 function isUITask(meta) {
@@ -314,7 +327,11 @@ function contentIssues(check, content) {
   return issues;
 }
 
-function checkArtifacts(projectRoot, worktreeRoot, taskId) {
+function checkArtifacts(projectRoot, worktreeRoot, taskId, handoffId) {
+  // `taskId` names refs / visual-spec / by-task; `handoffId` names the handoff.
+  // They differ only for a `handoff ONLY` lineage (the design/FE split); for every
+  // other case the caller passes the same id for both.
+  handoffId = handoffId || taskId;
   // For each required artifact, check whether it exists at any of:
   //   - worktree/<artifact>
   //   - projectRoot/<artifact>
@@ -337,7 +354,7 @@ function checkArtifacts(projectRoot, worktreeRoot, taskId) {
     },
     {
       label: 'UI/UX task handoff',
-      relPaths: ['docs/uiux/handoffs/' + taskId + '.md'],
+      relPaths: ['docs/uiux/handoffs/' + handoffId + '.md'],
       kind: 'file',
       doc: 'UI/UX Designer produces this before design-confirmed. parallel-execution.md §4 Step 2/3.',
       sectionRules: [
@@ -483,8 +500,8 @@ async function main() {
   // UI task — verify the artifact set, resolved from the declared design lineage
   // when the task inherits one. Fails closed: if the lineage's artifacts are
   // missing or incomplete, this blocks exactly as an own-task set would.
-  const { artifactId, lineage } = resolveArtifactTaskId(meta, taskId);
-  const { missing, incomplete } = checkArtifacts(projectRoot, worktreeRoot, artifactId);
+  const { lineage, handoffOnly, handoffId, restId } = resolveArtifactTaskId(meta, taskId);
+  const { missing, incomplete } = checkArtifacts(projectRoot, worktreeRoot, restId, handoffId);
   if (missing.length === 0 && incomplete.length === 0) process.exit(0);
 
   const role = (proposed.agent || '').toString().trim();
@@ -496,10 +513,14 @@ async function main() {
     // Without this the paths below read as belonging to another task, and an author
     // cannot tell whether the lineage was honoured, ignored, or misread.
     (lineage
-      ? '  Design lineage: `' + lineage + '` (declared in the task header) — the artifact set below is\n' +
-        '  resolved from ' + lineage + ', NOT from ' + taskId + '. The record is incomplete AT ITS ORIGIN;\n' +
-        '  do not create ' + taskId + '-named copies to satisfy this, which is the duplicate record the\n' +
-        '  lineage field exists to avoid. Complete the ' + lineage + ' artifacts, or correct the lineage.\n\n'
+      ? (handoffOnly
+          ? '  Design lineage: `' + lineage + '` — handoff ONLY. The HANDOFF resolves from ' + lineage + '; the\n' +
+            '  refs / visual-spec / by-task resolve from ' + taskId + ' (this task\'s own). All four are still\n' +
+            '  required — complete whichever is missing under the id named for it in the set below.\n\n'
+          : '  Design lineage: `' + lineage + '` (declared in the task header) — the artifact set below is\n' +
+            '  resolved from ' + lineage + ', NOT from ' + taskId + '. The record is incomplete AT ITS ORIGIN;\n' +
+            '  do not create ' + taskId + '-named copies to satisfy this, which is the duplicate record the\n' +
+            '  lineage field exists to avoid. Complete the ' + lineage + ' artifacts, or correct the lineage.\n\n')
       : '') +
     '  Missing artifacts (' + missing.length + '/4):\n' +
     missing.map(c =>
@@ -534,6 +555,8 @@ async function main() {
     '  If this task INHERITS an already-confirmed design — a corrective or remediation task on a\n' +
     '  surface another task designed — the artifacts are NOT missing; they are named for that task.\n' +
     '  Declare `Design lineage: T-NNN` in the task header and the set above resolves from that id.\n' +
+    '  If only the HANDOFF belongs to that task (a design task feeding this FE task, which owns its\n' +
+    '  refs / visual-spec / by-task), declare `Design lineage: T-NNN (handoff only)` instead.\n' +
     '  The header is Orchestrator/TL-owned, so ask for it rather than editing it from this role.\n' +
     '  Do NOT create ' + taskId + '-named duplicates of a record that already exists.\n\n' +
     '  Escape hatch (operator-explicit only, and read from the LAUNCH environment — an inline\n' +

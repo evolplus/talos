@@ -2625,6 +2625,18 @@ run_exit "orch-bash: allows rm -rf plan-proposal/ (trailing slash)" 0 "$ORCH_BAS
 run_exit "orch-bash: allows rm inside the plan-proposal tree" 0 "$ORCH_BASH_GUARD" "$(bc 'rm plan-proposal/phase-54-x/phase.md')"
 run_exit "orch-bash: blocks a nested docs/plan-proposal"  2 "$ORCH_BASH_GUARD" "$(bc 'rm -rf docs/plan-proposal')"
 run_exit "orch-bash: blocks plan-proposal traversal escape" 2 "$ORCH_BASH_GUARD" "$(bc 'rm -rf plan-proposal/../docs')"
+# §9 Step 0.5 root plan-update stragglers: the rule prescribed an
+# rm this guard refused in every spelling, so the pre-flight step could never run.
+run_exit "orch-bash: allows Step 0.5 rm plan-update*.json (as written)" 0 "$ORCH_BASH_GUARD" "$(bc 'rm plan-update*.json')"
+run_exit "orch-bash: allows rm -f plan-update.json at root"            0 "$ORCH_BASH_GUARD" "$(bc 'rm -f plan-update.json')"
+run_exit "orch-bash: allows rm of named root stragglers"               0 "$ORCH_BASH_GUARD" "$(bc 'rm plan-update.json plan-update-T-005.json')"
+run_exit "orch-bash: allows \$CLAUDE_PROJECT_DIR straggler spelling"   0 "$ORCH_BASH_GUARD" "$(bc 'rm $CLAUDE_PROJECT_DIR/plan-update.json')"
+run_exit "orch-bash: blocks a nested docs/plan-update.json"            2 "$ORCH_BASH_GUARD" "$(bc 'rm docs/plan-update.json')"
+run_exit "orch-bash: blocks a straggler mixed with a non-cleanup path" 2 "$ORCH_BASH_GUARD" "$(bc 'rm plan-update.json docs/SRS.md')"
+run_exit "orch-bash: blocks a non-json plan-update name"               2 "$ORCH_BASH_GUARD" "$(bc 'rm plan-update.json.bak')"
+run_exit "orch-bash: blocks a composed straggler rm"                   2 "$ORCH_BASH_GUARD" "$(bc 'rm plan-update.json && rm docs/SRS.md')"
+run_exit "orch-bash: blocks rmdir on a straggler name"                 2 "$ORCH_BASH_GUARD" "$(bc 'rmdir plan-update.json')"
+run_exit "orch-bash: blocks a glob above the straggler segment"        2 "$ORCH_BASH_GUARD" "$(bc 'rm */plan-update.json')"
 run_exit "orch-bash: blocks plan-proposal mixed with docs" 2 "$ORCH_BASH_GUARD" "$(bc 'rm -rf plan-proposal docs/plan')"
 
 # === ISSUE-213/214/219/224: the carve-out must accept the spellings the
@@ -3077,6 +3089,40 @@ run_exit "ui-ready: unparseable lineage falls back and blocks"       2 "$UI_READ
 # The id is extracted from prose + backticks, because that is how task headers
 # are actually written.
 run_exit "ui-ready: lineage id read through backticks and prose"     0 "$UI_READY" "$(ui_pu T-185 ready-for-deploy "$UI_FIX/.worktrees/fe-dev-T-185")"
+
+# === Handoff-ONLY lineage — the design/FE task split ===
+# A design task owns the confirmed HANDOFF; the FE task that consumes it owns
+# its OWN refs / visual-spec / by-task. Full inheritance resolved all four from
+# the lineage id, so such FE tasks false-blocked with every artifact present
+# and could only be promoted by hand. `handoff ONLY` moves only the handoff lookup; all
+# four stay required.
+mk_own_dev_artifacts() {  # $1 task id — copy T-180's refs/visual-spec/by-task under $1
+  sed "s/T-180/$1/g" "$UI_FIX/docs/uiux/refs/T-180.md" > "$UI_FIX/docs/uiux/refs/$1.md"
+  sed "s/T-180/$1/g" "$UI_FIX/docs/uiux/visual-specs/T-180.md" > "$UI_FIX/docs/uiux/visual-specs/$1.md"
+  mkdir -p "$UI_FIX/docs/test-cases/by-task/$1" && echo "# api" > "$UI_FIX/docs/test-cases/by-task/$1/api.md"
+}
+# T-190 is a DESIGN task: it owns the handoff and nothing else — the real topology.
+printf '%s\n' '# T-190 — design task (handoff only)' '- Phase: phase-22' '- Track: design' '- Status: done' > "$UI_FIX/docs/plan/phase-22/tasks/T-190.md"
+sed "s/T-180/T-190/g" "$UI_FIX/docs/uiux/handoffs/T-180.md" > "$UI_FIX/docs/uiux/handoffs/T-190.md"
+printf '%s\n' '# T-186 — FE consumes T-190 handoff' '- Phase: phase-22' '- Track: fe' '- Status: in-progress' '- Design sub-status: design-confirmed' '- Design lineage: T-190 (handoff ONLY — refs/visual-spec/by-task are this task'"'"'s own)' > "$UI_FIX/docs/plan/phase-22/tasks/T-186.md"
+mk_own_dev_artifacts T-186
+printf '%s\n' '# T-187 — handoff-only, own artifacts absent' '- Phase: phase-22' '- Track: fe' '- Status: in-progress' '- Design sub-status: design-confirmed' '- Design lineage: `T-190` handoff-only' > "$UI_FIX/docs/plan/phase-22/tasks/T-187.md"
+printf '%s\n' '# T-188 — handoff-only, lineage has no handoff' '- Phase: phase-22' '- Track: fe' '- Status: in-progress' '- Design sub-status: design-confirmed' '- Design lineage: T-168 (handoff only)' > "$UI_FIX/docs/plan/phase-22/tasks/T-188.md"
+mk_own_dev_artifacts T-188
+printf '%s\n' '# T-189 — prose, not the marker' '- Phase: phase-22' '- Track: fe' '- Status: in-progress' '- Design sub-status: design-confirmed' '- Design lineage: T-168 (the handoff is the only artifact reused)' > "$UI_FIX/docs/plan/phase-22/tasks/T-189.md"
+mk_own_dev_artifacts T-189
+
+run_exit "ui-ready: handoff-only lineage + own dev artifacts — allows" 0 "$UI_READY" "$(ui_pu T-186 ready-for-deploy "$UI_FIX/.worktrees/fe-dev-T-186")"
+run_exit "ui-ready: handoff-only lineage, own artifacts absent — blocks" 2 "$UI_READY" "$(ui_pu T-187 ready-for-deploy "$UI_FIX/.worktrees/fe-dev-T-187")"
+run_stderr_contains "ui-ready: handoff-only block names the split" "$UI_READY" \
+  "$(ui_pu T-187 ready-for-deploy "$UI_FIX/.worktrees/fe-dev-T-187")" "handoff ONLY"
+run_stderr_contains "ui-ready: handoff-only block asks for the OWN refs" "$UI_READY" \
+  "$(ui_pu T-187 ready-for-deploy "$UI_FIX/.worktrees/fe-dev-T-187")" "docs/uiux/refs/T-187.md"
+run_exit "ui-ready: handoff-only lineage whose handoff is missing — blocks" 2 "$UI_READY" "$(ui_pu T-188 ready-for-deploy "$UI_FIX/.worktrees/fe-dev-T-188")"
+run_stderr_contains "ui-ready: missing handoff is named under the lineage id" "$UI_READY" \
+  "$(ui_pu T-188 ready-for-deploy "$UI_FIX/.worktrees/fe-dev-T-188")" "docs/uiux/handoffs/T-168.md"
+# Prose that merely mentions the handoff keeps FULL inheritance (fails closed on T-168's empty set).
+run_exit "ui-ready: 'the handoff is the only…' prose is not the marker" 2 "$UI_READY" "$(ui_pu T-189 ready-for-deploy "$UI_FIX/.worktrees/fe-dev-T-189")"
 
 # === Allow: BE-only task even without artifacts ===
 run_exit "ui-ready: T-200 (be track) allows without artifacts" 0 "$UI_READY" "$(ui_pu T-200 ready-for-deploy "$UI_FIX/.worktrees/be-dev-T-200" be)"

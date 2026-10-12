@@ -135,7 +135,8 @@ const CLEANUP_REFUSALS = {
     'anything else cannot be resolved before the shell runs, so the target cannot be proven in-scope.',
   'outside-cleanup-roots':
     'a target does not resolve STRICTLY below .worktrees/ or .claude/dispatch-journal/, and is not ' +
-    'the project-root plan-proposal/ tree (or inside it). The first two roots themselves are not removable, ' +
+    'the project-root plan-proposal/ tree (or inside it), and is not a project-root plan-update*.json ' +
+    'straggler (§9 Step 0.5). The first two roots themselves are not removable, ' +
     'and a single command may not mix cleanup targets with other paths.',
   'symlink-or-glob':
     'a target traverses a symlink, uses a brace expansion, or globs above its final path segment — ' +
@@ -172,7 +173,7 @@ function classifyCleanupRemoval(command, cwd) {
   // Only a removal that actually names a cleanup surface is an *attempted* carve-out
   // use. Without this, every ordinary `rm docs/old/` would be re-explained as a
   // malformed cleanup, burying the correct "sub-agent territory" guidance.
-  if (!/\.worktrees(\/|\b)|dispatch-journal|plan-proposal/.test(trimmed)) return null;
+  if (!/\.worktrees(\/|\b)|dispatch-journal|plan-proposal|plan-update/.test(trimmed)) return null;
   if (!words) return { allowed: false, reason: 'composition' };
   if (words.length < 2) return null;
 
@@ -207,6 +208,16 @@ function classifyCleanupRemoval(command, cwd) {
   ];
   // Removable as a whole: the tree is the transient artifact itself.
   const removableTrees = [path.join(projectRoot, 'plan-proposal')];
+  // Removable as individual files: §9 Step 0.5 root stragglers. The kit defines
+  // `plan-update*.json` as a transient signal whose ONLY canonical home is
+  // `.worktrees/<role>-<task-id>/`; a copy directly in the project root is leakage
+  // the rule tells the Orchestrator to delete. Before this, Step 0.5 prescribed an
+  // `rm` that this guard refused in every spelling — a pre-flight step that could
+  // never run. Root only, non-recursive, files only: a glob may
+  // appear in the final segment because the shell expands it inside the root.
+  const STRAGGLER_RE = /^plan-update[^/]*\.json$/;
+  const isRootStraggler = resolved =>
+    path.dirname(resolved) === projectRoot && STRAGGLER_RE.test(path.basename(resolved));
 
   for (const target of targets) {
     if (!target) return { allowed: false, reason: 'no-targets' };
@@ -215,6 +226,11 @@ function classifyCleanupRemoval(command, cwd) {
     const resolved = path.resolve(commandCwd, expanded).replace(/\/+$/, '');
     // For a removable tree the symlink walk starts AT the tree, so the tree
     // itself and everything below it are checked.
+    if (isRootStraggler(resolved)) {
+      if (isRmdir) return { allowed: false, reason: 'outside-cleanup-roots' };
+      if (hasSymlinkComponent(resolved, projectRoot)) return { allowed: false, reason: 'symlink-or-glob' };
+      continue;
+    }
     const inRoot =
       cleanupRoots.find(root => isStrictDescendant(resolved, root)) ||
       removableTrees.find(tree => resolved === tree || isStrictDescendant(resolved, tree));

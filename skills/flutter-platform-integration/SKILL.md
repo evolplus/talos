@@ -44,12 +44,23 @@ Use this for Flutter work that crosses the Dart/native boundary: platform channe
    - run at least one affected platform build/check when native files, plugins, flavors, or permissions change;
    - test deep links, push/open flows, storage migration, channel error handling, or lifecycle paths on the relevant simulator/emulator/device;
    - record any platform that could not be checked.
+7. **When you cannot build — operator-run build handoff.** If your sandbox has no Flutter/Android/Xcode toolchain, a build-config, plugin, SDK-level or native change is *unverified* until someone else builds it. Do not describe a static read as "compatibility confirmed". Instead:
+   - **Read the failing component's own source before proposing a fix.** For a plugin build error, open the plugin's `android/build.gradle` / `ios/*.podspec` in the package cache (`~/.pub-cache/hosted/pub.dev/<pkg>-<ver>/`) or the pub.dev archive. A plugin that hard-codes `compileSdk 34` cannot be fixed from the app's Gradle files, and no amount of root-project override will make it so. Cite the file and line in the task notes.
+   - **Write the build handoff into the deploy report / task notes**, so the operator's build can be checked against it — not just "run `flutter build apk`":
+     - exact command, flavor and `--dart-define-from-file` used;
+     - host prerequisites (`sdkmanager "platforms;android-NN"`, Xcode/CocoaPods version, FVM pin);
+     - **release-signing check** — the release build type must be signed with the registered key, not the debug fallback. Name how signing engages (env vars or `android/key.properties`) and give the verification: `apksigner verify --print-certs build/app/outputs/flutter-apk/app-release.apk | grep SHA-1` must equal the SHA-1 registered for Google Sign-In / Firebase / Play. A debug-signed release builds and launches fine and then fails every Google sign-in with `ApiException: 10`;
+     - the smoke the operator should run on the installed build (sign-in, the changed flow) and what "pass" looks like.
+   - Propose `ready-for-deploy` with the verification explicitly marked operator-owed. A failed operator build is a reopen; the second one routes to diagnosis (`orchestrator-operating-rules.md` §9 Step 7.6), not to another speculative attempt.
+
+   Why: a plugin that hard-codes its own `compileSdk` cannot be fixed from the app's Gradle files, and guessing from the error message costs an operator build per guess. Separately, a rebuild that silently falls back to debug signing installs and launches normally and then fails every Google sign-in — a handoff that names SDK prerequisites but not the signing check lets that ship.
 
 ## Hard rules
 
 - Do not add platform capabilities, permissions, plugins, or native APIs without SRS/architecture coverage.
 - Do not store tokens or secrets in plain local storage.
 - Do not hardcode environment endpoints in Dart, Gradle, Xcode, plist, or manifest files.
+- Do not mark a native/build-config change verified from a static read. If you could not build it, say so and hand off the build with the checks in Procedure step 7.
 - Do not let platform-channel errors disappear into generic UI failure; map them to user-visible or logged failure states per architecture.
 
 ## References

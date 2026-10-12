@@ -115,6 +115,7 @@ When you discover after freezing that the contract must change:
 - Every status code your endpoint can emit is in the contract. Codes that are in the code but not the contract are bugs (one of them is wrong).
 - Errors return a standard error body shape across the service. Per-endpoint snowflake error shapes are a refactor target, not a contract feature.
 - `Frozen` requires a real reviewer (peer BE or SA, not yourself).
+- Every request string field that the service persists carries a `maxLength` that fits its column (from architecture §6's width-boundary row). An unbounded persisted string — or an example longer than the column — ships a production `value too long` that no test with short fixtures catches. Reject over-length with a 4xx in the contract, not a 500 from the database.
 
 ## References
 
