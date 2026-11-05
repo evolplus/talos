@@ -3125,6 +3125,39 @@ run_stderr_contains "ui-ready: missing handoff is named under the lineage id" "$
 run_exit "ui-ready: 'the handoff is the only…' prose is not the marker" 2 "$UI_READY" "$(ui_pu T-189 ready-for-deploy "$UI_FIX/.worktrees/fe-dev-T-189")"
 
 # === Allow: BE-only task even without artifacts ===
+# === Worktree anchored by the plan-update.json path, not the event cwd ===
+# The hook can fire with `cwd` = the MAIN project root (the agent's shell cwd
+# resets there between tool calls) while plan-update.json is written inside the
+# worktree. Artifacts committed in the worktree but not yet promoted to main
+# exist ONLY there. The guard must derive the worktree from the file path, or a
+# complete dispatch is falsely reported as missing every artifact.
+for tid in T-190 T-191; do
+  printf '%s\n' "# $tid — worktree-only artifacts" '- Phase: phase-22' '- Track: fe' '- Status: in-progress' '- Design sub-status: design-confirmed' > "$UI_FIX/docs/plan/phase-22/tasks/$tid.md"
+done
+UI_WT="$UI_FIX/.worktrees/fe-dev-T-190"
+mkdir -p "$UI_WT/docs/uiux/refs" "$UI_WT/docs/uiux/handoffs" "$UI_WT/docs/uiux/visual-specs" "$UI_WT/docs/test-cases/by-task/T-190"
+sed 's/T-180/T-190/g' "$UI_FIX/docs/uiux/handoffs/T-180.md"     > "$UI_WT/docs/uiux/handoffs/T-190.md"
+sed 's/T-180/T-190/g' "$UI_FIX/docs/uiux/refs/T-180.md"         > "$UI_WT/docs/uiux/refs/T-190.md"
+sed 's/T-180/T-190/g' "$UI_FIX/docs/uiux/visual-specs/T-180.md" > "$UI_WT/docs/uiux/visual-specs/T-190.md"
+echo "# api" > "$UI_WT/docs/test-cases/by-task/T-190/api.md"
+mkdir -p "$UI_FIX/.worktrees/fe-dev-T-191"
+# $1 task_id, $2 file_path, $3 cwd
+ui_pu_at() {
+  local tid="$1" fp="$2" cwd="$3"
+  local content='{"task_id":"'"$tid"'","track":"fe","from_status":"in-progress","to_status":"ready-for-deploy","artifacts":["frontend/src/Group.tsx"],"agent":"fe-dev","timestamp":"2026-06-04T00:00:00Z"}'
+  python3 -c "
+import json
+print(json.dumps({'tool_name':'Write','tool_input':{'file_path':'$fp','content':'$content'},'cwd':'$cwd'}))"
+}
+run_exit "ui-ready: cwd=main root, artifacts only in worktree — allows (worktree from file path)" 0 "$UI_READY" \
+  "$(ui_pu_at T-190 "$UI_WT/plan-update.json" "$UI_FIX")"
+run_exit "ui-ready: cwd=main root, relative .worktrees/ file path — allows" 0 "$UI_READY" \
+  "$(ui_pu_at T-190 ".worktrees/fe-dev-T-190/plan-update.json" "$UI_FIX")"
+run_exit "ui-ready: cwd=main root, worktree has no artifacts — still blocks" 2 "$UI_READY" \
+  "$(ui_pu_at T-191 "$UI_FIX/.worktrees/fe-dev-T-191/plan-update.json" "$UI_FIX")"
+run_exit "ui-ready: worktree artifacts do not leak to another task's worktree" 2 "$UI_READY" \
+  "$(ui_pu_at T-190 "$UI_FIX/.worktrees/fe-dev-T-191/plan-update.json" "$UI_FIX")"
+
 run_exit "ui-ready: T-200 (be track) allows without artifacts" 0 "$UI_READY" "$(ui_pu T-200 ready-for-deploy "$UI_FIX/.worktrees/be-dev-T-200" be)"
 
 # === ISSUE-024: Linked Surface "N/A (parenthetical)" is non-UI → allow ===

@@ -486,6 +486,30 @@ async function main() {
       worktreeRoot = path.join(projectRoot, '.worktrees', worktreeName);
     }
   }
+  // The plan-update.json ALWAYS lives at the worktree root
+  // (`<project>/.worktrees/<role>-<task-id>/plan-update.json`). The hook is wired
+  // as `$CLAUDE_PROJECT_DIR/.claude/hooks/...`, so it fires from the MAIN repo
+  // copy with `event.cwd` = the MAIN repo root (the agent's shell cwd resets
+  // there between tool calls). In that case `worktreeRoot` stays null above and
+  // the guard inspects ONLY the main repo — where a committed-but-not-yet-promoted
+  // refs/visual-spec artifact does NOT exist, so a CORRECT dispatch (FE Dev
+  // committed its Frozen refs in the worktree) is falsely reported "missing".
+  // Derive `worktreeRoot` (and `projectRoot`) from the plan-update.json path
+  // itself — the authoritative worktree anchor, present regardless of cwd.
+  if (!worktreeRoot) {
+    // Resolve a relative file_path against the event cwd so `.worktrees/<name>/…`
+    // (no leading slash) is anchored the same way as an absolute path.
+    const absFile = path.isAbsolute(filePath) ? filePath : (cwd ? path.resolve(cwd, filePath) : filePath);
+    const idx = absFile.indexOf('/.worktrees/');
+    if (idx >= 0) {
+      const root = absFile.slice(0, idx);
+      const after = absFile.slice(idx + '/.worktrees/'.length);
+      const slash = after.indexOf('/');
+      const worktreeName = slash >= 0 ? after.slice(0, slash) : after;
+      worktreeRoot = path.join(root, '.worktrees', worktreeName);
+      if (!projectRoot) projectRoot = root;
+    }
+  }
   if (!projectRoot) projectRoot = projectRootFromWorktree(filePath);
   if (!projectRoot) projectRoot = findProjectRoot(path.dirname(filePath)) || findProjectRoot(cwd);
   if (!projectRoot) process.exit(0); // can't locate kit context — pass
