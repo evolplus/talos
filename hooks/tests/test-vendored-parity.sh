@@ -138,8 +138,7 @@ node -e '
 const fs=require("fs"),path=require("path");const r=process.argv[1];
 const a=JSON.parse(fs.readFileSync(path.join(r,".claude-plugin/plugin.json"),"utf8")).version;
 const b=JSON.parse(fs.readFileSync(path.join(r,".claude-plugin/marketplace.json"),"utf8")).plugins[0].version;
-const c=JSON.parse(fs.readFileSync(path.join(r,".codex-plugin/plugin.json"),"utf8")).version;
-if(!(a===b&&b===c)){console.error(`plugin=${JSON.stringify(a)} marketplace=${JSON.stringify(b)} codex=${JSON.stringify(c)}`);process.exit(1);}
+if(a!==b){console.error(`plugin=${JSON.stringify(a)} marketplace=${JSON.stringify(b)}`);process.exit(1);}
 if(!/^\d+\.\d+\.\d+$/.test(a)){console.error("not MAJOR.MINOR.PATCH: "+JSON.stringify(a));process.exit(1);}
 console.log(a);
 ' "$ROOT" >"$S/v.out" 2>"$S/v.err" && ok "all manifests byte-identical at $(cat "$S/v.out")" || bad "version identities disagree" "$(cat "$S/v.err")"

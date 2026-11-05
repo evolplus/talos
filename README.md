@@ -1,6 +1,6 @@
 # evo-talos Devkit Plugin
 
-End-to-end SDLC orchestration kit for Claude Code and Codex. The plugin packages role agents, slash commands, on-demand skills, operating rules, safer settings, runtime hooks, and Codex-compatible skill metadata so a project can move from requirements to architecture, design, implementation, deployment, and QA with explicit artifacts and gates.
+End-to-end SDLC orchestration kit for Claude Code. The plugin packages role agents, slash commands, on-demand skills, operating rules, safer settings, and runtime hooks so a project can move from requirements to architecture, design, implementation, deployment, and QA with explicit artifacts and gates.
 
 For a visual walkthrough, open the static guide:
 
@@ -14,10 +14,10 @@ Use it when the cost of coordination mistakes, missing requirements, weak QA, or
 
 ## What This Plugin Does
 
-evo-talos turns Claude Code or Codex from a single coding assistant into a structured SDLC coordinator. It gives the assistant a project-local operating model with:
+evo-talos turns Claude Code from a single coding assistant into a structured SDLC coordinator. It gives the assistant a project-local operating model with:
 
 - Role-based agents for BA, SA, TL, UI/UX Designer, BE Dev, FE Dev, DevOps, QA-Author, QA-Exec, and support roles.
-- Claude Code slash commands and Codex command-shim skills for project setup and autonomous SDLC progression.
+- Claude Code slash commands for project setup and autonomous SDLC progression.
 - Skills that load detailed instructions only when needed, reducing runtime token overhead.
 - Hooks that guard privacy, plan consistency, SRS sign-off, source-code writes, Docker scope, QA evidence, and dependency safety.
 - Artifact ownership rules so each role writes only the documents it owns.
@@ -37,14 +37,10 @@ Use this kit when you want Claude Code to help run a disciplined software delive
 
 ## Main Workflow
 
-1. Install or enable the plugin in Claude Code or Codex.
-2. Initialize the target project:
-   - Claude Code: run `/sdlc-init`.
-   - Codex: prompt `Run sdlc-init`.
+1. Install or enable the plugin in Claude Code.
+2. Initialize the target project: run `/sdlc-init`.
 3. Provide the starting source: PRD, SRS, requirements folder, external source, Figma URL, or existing codebase.
-4. Start the loop:
-   - Claude Code: run `/sdlc-loop`.
-   - Codex: prompt `Start the SDLC loop` or `Run sdlc-loop`.
+4. Start the loop: run `/sdlc-loop`.
 5. Answer blocking questions only when the kit halts for required human context or approval.
 6. Review generated artifacts, deployment reports, and QA reports before accepting completion.
 
@@ -52,11 +48,9 @@ The high-level flow is:
 
 ```text
 Initialize:
-  Claude Code: /sdlc-init
-  Codex: Run sdlc-init
+  /sdlc-init
 Start or continue:
-  Claude Code: /sdlc-loop
-  Codex: Start the SDLC loop
+  /sdlc-loop
   -> BA requirements ingestion and SRS sign-off
   -> UI/UX design extraction, mapping, creation, import, revision, or incorporation
   -> SA architecture, ADRs, integration adequacy, and instrumentation contracts
@@ -67,19 +61,14 @@ Start or continue:
   -> iteration or done
 ```
 
-## Commands And Codex Skill Entrypoints
+## Commands
 
 Claude Code loads command files from `commands/`, so it exposes `/sdlc-init`
 and `/sdlc-loop` as slash commands.
 
-Codex plugins currently use skills and starter prompts rather than plugin
-slash-command files. For Codex, the plugin provides equivalent command-shim
-skills:
-
-- `sdlc-init` - invoke with `Run sdlc-init`, `Run sdlc-init --dry-run`, or
-  `Initialize this project with Evo Talos`.
-- `sdlc-loop` - invoke with `Run sdlc-loop`, `Start project`, or
-  `Continue the SDLC loop`.
+The kit targets Claude Code only. Codex support was removed in 0.22.0: the kit
+depends on Claude Code hooks, sub-agents, and settings that have no Codex
+equivalent.
 
 ### `/sdlc-init`
 
@@ -97,23 +86,16 @@ Optional flags:
 /sdlc-init --skip-agents
 /sdlc-init --skip-settings
 /sdlc-init --skip-hooks
-/sdlc-init --target codex
-/sdlc-init --target claude
-/sdlc-init --target both
 ```
 
 What it does:
 
-- Detects the active agent tool from environment signals first, then project markers if needed.
-- In Codex, injects the plugin guidance into the project's `AGENTS.md` inside a managed block.
-- In Claude Code, writes `CLAUDE.md`, merges original Claude settings into the project, and mirrors hook scripts into `.claude/hooks`.
+- Writes `CLAUDE.md` (managed block), merges original Claude settings into the project, and mirrors hook scripts into `.claude/hooks`.
 - Warns about overlapping or conflicting headings.
 - With `--force-hooks`, preserves every overwritten hook under
   `.claude/backups/sdlc-init-<timestamp>/hooks/` before replacement.
-- Uses `--target codex`, `--target claude`, or `--target both` only as an explicit override for migration or dual-tool setups.
 
-Run `/sdlc-init` again in Claude Code, or prompt `Run sdlc-init` in Codex,
-after plugin updates when you want the target project to receive updated kit
+Run `/sdlc-init` again after plugin updates when you want the target project to receive updated kit
 guidance.
 
 ### `/sdlc-loop`
@@ -223,7 +205,7 @@ Each role has ownership boundaries for these artifacts. The hooks and rules are 
 
 - `commands/` - Claude Code slash commands, including `/sdlc-loop` and `/sdlc-init`.
 - `agents/` - SDLC role agents, non-SDLC helper agents, and templates.
-- `skills/` - on-demand SDLC skills, Codex command shims (`sdlc-init`, `sdlc-loop`), and the `evo-devkit-contract` skill converted from the original `CLAUDE.md`.
+- `skills/` - on-demand SDLC skills.
 - `hooks/` - runtime guardrails plus `hooks/hooks.json` wired with `${CLAUDE_PLUGIN_ROOT}`.
 - `rules/` - operating rules and the original `CLAUDE.md` preserved as `rules/CLAUDE.md`.
 - `settings/` - original project-local Claude settings used by `/sdlc-init`.
@@ -231,12 +213,10 @@ Each role has ownership boundaries for these artifacts. The hooks and rules are 
 - `docs/` - static plugin documentation, including [the usage guide](docs/usage.html).
 - `.claude-plugin/plugin.json` - Claude Code plugin manifest.
 - `.claude-plugin/marketplace.json` - Claude Code marketplace catalog that makes the plugin discoverable and installable.
-- `.codex-plugin/plugin.json` - Codex plugin manifest.
-- `.agents/plugins/marketplace.json` - Codex marketplace catalog at the repository root.
 
 ## Marketplace Installation
 
-This repository includes both Claude Code and Codex marketplace/plugin manifests.
+This repository includes the Claude Code marketplace and plugin manifests.
 
 ### Claude Code
 
@@ -259,36 +239,6 @@ Then open the target project in Claude Code and run:
 /sdlc-loop
 ```
 
-### Codex
-
-Codex compatibility is provided by:
-
-```text
-.codex-plugin/plugin.json
-.agents/plugins/marketplace.json
-```
-
-To register the GitHub repository as a Codex marketplace:
-
-```sh
-codex plugin marketplace add https://github.com/evolplus/talos --sparse .agents --sparse plugin
-```
-
-Then install the plugin from that marketplace:
-
-```sh
-codex plugin add talos@evo-talos
-```
-
-Start a new Codex thread after installing so Codex loads the plugin skills.
-
-In that new Codex thread, use prompt-based entrypoints:
-
-```text
-Run sdlc-init
-Start the SDLC loop
-```
-
 ## Validate
 
 Run validation before publishing or after changing commands, agents, skills, hooks, or rules:
@@ -299,8 +249,6 @@ bash plugin/hooks/tests/test-hooks.sh
 bash plugin/hooks/tests/test-security-audit.sh
 bash plugin/hooks/tests/test-dependency-verifier.sh
 ```
-
-For Codex compatibility, run the `plugin-creator` validator against `plugin/` from the plugin-creator tooling checkout.
 
 `test-dependency-verifier.sh` starts a local mock HTTP server on port `9472`. In restricted sandboxes, it may need permission to bind that local port.
 

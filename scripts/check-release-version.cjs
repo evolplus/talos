@@ -38,11 +38,11 @@
 // release's shipped changes, then amend or add a follow-up commit for the
 // fingerprint file itself (which is excluded from its own hash).
 //
-// Consistency is also enforced: .claude-plugin/plugin.json,
-// .claude-plugin/marketplace.json and .codex-plugin/plugin.json declare the
-// same release and must carry the byte-identical version string. They had
-// drifted to 0.7 / 0.7 / 0.5.0, and later to 0.7 / 0.7 / 0.7.0 — equal in
-// meaning, unequal as strings, which defeats any exact-match tooling.
+// Consistency is also enforced: .claude-plugin/plugin.json and
+// .claude-plugin/marketplace.json declare the same release and must carry the
+// byte-identical version string. Release manifests have drifted before
+// (0.7 vs 0.7.0 — equal in meaning, unequal as strings), which defeats any
+// exact-match tooling.
 
 'use strict';
 
@@ -63,7 +63,6 @@ const EXCLUDE_FILES = new Set(['release-fingerprint.json']);
 const MANIFESTS = [
   ['.claude-plugin/plugin.json', d => d.version],
   ['.claude-plugin/marketplace.json', d => (d.plugins && d.plugins[0] || {}).version],
-  ['.codex-plugin/plugin.json', d => d.version],
 ];
 
 function readJson(rel) {

@@ -14,11 +14,6 @@ const LINEAGE_TARGET_REL = path.join('.claude', 'kit-lineage.json');
 const INIT_RECEIPT_REL = path.join('.claude', 'hooks', '.state', 'sdlc-init-receipt.json');
 
 const INSTRUCTION_TARGETS = {
-  codex: {
-    fileName: 'AGENTS.md',
-    begin: '<!-- BEGIN EVO-SDLC-DEVKIT AGENTS.md -->',
-    end: '<!-- END EVO-SDLC-DEVKIT AGENTS.md -->',
-  },
   claude: {
     fileName: 'CLAUDE.md',
     begin: '<!-- BEGIN EVO-SDLC-DEVKIT CLAUDE.md -->',
@@ -31,14 +26,13 @@ function usage() {
     'Usage: node scripts/sdlc-init.cjs [options]',
     '',
     'Options:',
-    '  --project <path>     Project root to initialize. Defaults to CODEX_PROJECT_DIR, CLAUDE_PROJECT_DIR, or cwd.',
-    '  --target <name>      Override auto-detected runtime: codex, claude, or both.',
+    '  --project <path>     Project root to initialize. Defaults to CLAUDE_PROJECT_DIR, or cwd.',
     '  --dry-run            Print planned changes without writing files.',
     '  --force-hooks        Back up, then replace conflicting project hook files.',
-    '  --skip-agents        Do not update AGENTS.md / CLAUDE.md instructions.',
+    '  --skip-agents        Do not update CLAUDE.md instructions.',
     '  --skip-claude        Deprecated alias for --skip-agents.',
-    '  --skip-settings      Do not update .claude/settings.json (Claude target only).',
-    '  --skip-hooks         Do not copy hook scripts into .claude/hooks (Claude target only).',
+    '  --skip-settings      Do not update .claude/settings.json.',
+    '  --skip-hooks         Do not copy hook scripts into .claude/hooks.',
     '  --help               Show this help.',
   ].join('\n');
 }
@@ -53,11 +47,6 @@ function firstEnvValue(env, names) {
 }
 
 function defaultProjectRoot(env) {
-  const codexProject = firstEnvValue(env, ['CODEX_PROJECT_DIR']);
-  if (codexProject) {
-    return { path: codexProject.value, source: codexProject.name };
-  }
-
   const claudeProject = firstEnvValue(env, ['CLAUDE_PROJECT_DIR']);
   if (claudeProject) {
     return { path: claudeProject.value, source: claudeProject.name };
@@ -71,8 +60,7 @@ function parseArgs(argv) {
   const options = {
     projectRoot: defaultRoot.path,
     projectRootSource: defaultRoot.source,
-    target: null,
-    targetExplicit: false,
+    target: 'claude',
     dryRun: false,
     forceHooks: false,
     skipAgents: false,
@@ -94,14 +82,14 @@ function parseArgs(argv) {
       i += 1;
     } else if (arg === '--target') {
       const value = argv[i + 1];
-      if (!value) {
-        throw new Error('--target requires codex, claude, or both');
+      // Kept for backward compatibility: `--target claude` is a no-op. The kit
+      // targets Claude Code only; Codex support was removed in 0.22.0.
+      if (value !== 'claude') {
+        throw new Error(
+          `Unsupported --target value: ${value || '(none)'}. ` +
+          'The kit supports Claude Code only (Codex support was removed in 0.22.0); omit --target.'
+        );
       }
-      if (!['codex', 'claude', 'both'].includes(value)) {
-        throw new Error(`Unsupported --target value: ${value}. Expected codex, claude, or both.`);
-      }
-      options.target = value;
-      options.targetExplicit = true;
       i += 1;
     } else if (arg === '--dry-run') {
       options.dryRun = true;
@@ -122,7 +110,6 @@ function parseArgs(argv) {
 
   options.projectRoot = path.resolve(options.projectRoot);
   options.receiptFiles = new Map();
-  resolveTarget(options);
   return options;
 }
 
@@ -130,7 +117,6 @@ function createResult(options) {
   return {
     dryRun: options.dryRun,
     target: options.target,
-    targetDetection: options.targetDetection,
     changes: [],
     unchanged: [],
     warnings: [],
@@ -138,105 +124,6 @@ function createResult(options) {
   };
 }
 
-function hasEnvPrefix(env, prefix) {
-  return Object.keys(env).some((name) => name.startsWith(prefix) && Boolean(env[name]));
-}
-
-function markerExists(projectRoot, rel) {
-  try {
-    return fs.existsSync(path.join(projectRoot, rel));
-  } catch {
-    return false;
-  }
-}
-
-function detectAgentTarget(options, env = process.env) {
-  const claudeEnvSignals = [
-    firstEnvValue(env, ['CLAUDE_PLUGIN_ROOT', 'CLAUDE_PROJECT_DIR', 'CLAUDE_CODE', 'CLAUDECODE']),
-  ].filter(Boolean);
-
-  if (claudeEnvSignals.length > 0) {
-    const signal = claudeEnvSignals[0].name;
-    return {
-      target: 'claude',
-      source: 'environment',
-      reason: `${signal} detected`,
-    };
-  }
-
-  const codexEnvSignals = [
-    firstEnvValue(env, ['CODEX_PROJECT_DIR', 'CODEX_SHELL', 'CODEX_THREAD_ID', 'CODEX_HOME', 'CODEX_SANDBOX']),
-  ].filter(Boolean);
-
-  if (
-    codexEnvSignals.length > 0 ||
-    hasEnvPrefix(env, 'CODEX_') ||
-    env.__CFBundleIdentifier === 'com.openai.codex' ||
-    String(env.PATH || '').includes('/Codex.app/')
-  ) {
-    const signal = codexEnvSignals[0]
-      ? codexEnvSignals[0].name
-      : env.__CFBundleIdentifier === 'com.openai.codex'
-        ? '__CFBundleIdentifier=com.openai.codex'
-        : 'CODEX_*';
-    return {
-      target: 'codex',
-      source: 'environment',
-      reason: `${signal} detected`,
-    };
-  }
-
-  const codexMarkers = ['AGENTS.md', '.codex', '.agents'].filter((rel) => markerExists(options.projectRoot, rel));
-  const claudeMarkers = ['CLAUDE.md', '.claude'].filter((rel) => markerExists(options.projectRoot, rel));
-
-  if (codexMarkers.length > 0 && claudeMarkers.length === 0) {
-    return {
-      target: 'codex',
-      source: 'project-markers',
-      reason: `${codexMarkers.join(', ')} detected`,
-    };
-  }
-
-  if (claudeMarkers.length > 0 && codexMarkers.length === 0) {
-    return {
-      target: 'claude',
-      source: 'project-markers',
-      reason: `${claudeMarkers.join(', ')} detected`,
-    };
-  }
-
-  if (codexMarkers.length > 0 && claudeMarkers.length > 0) {
-    return {
-      target: 'both',
-      source: 'project-markers',
-      reason: `${codexMarkers.join(', ')} and ${claudeMarkers.join(', ')} detected`,
-      warning:
-        'Could not detect an active agent environment, but both Codex and Claude project markers exist; updating both targets. Use --target codex or --target claude to override.',
-    };
-  }
-
-  return {
-    target: 'codex',
-    source: 'fallback',
-    reason: 'no agent environment or project marker detected',
-    warning:
-      'Could not detect the active agent tool from environment or project markers; defaulted to Codex. Use --target claude or --target both to override.',
-  };
-}
-
-function resolveTarget(options) {
-  if (options.targetExplicit) {
-    options.targetDetection = {
-      target: options.target,
-      source: 'argument',
-      reason: `--target ${options.target}`,
-    };
-    return;
-  }
-
-  options.targetDetection = detectAgentTarget(options);
-  options.target = options.targetDetection.target;
-}
 
 function recordChange(result, message) {
   result.changes.push(message);
@@ -365,7 +252,7 @@ function recordCurrentReceiptFile(options, relPath) {
 }
 
 function refreshInstallReceiptFiles(options) {
-  if (options.dryRun || !options.receiptFiles || (options.target !== 'claude' && options.target !== 'both')) {
+  if (options.dryRun || !options.receiptFiles || options.target !== 'claude') {
     return;
   }
 
@@ -584,11 +471,8 @@ function warnForHeadingConflicts(result, targetContent, sourceContent, targetFil
   }
 }
 
-function instructionTargets(options) {
-  if (options.target === 'both') {
-    return ['codex', 'claude'];
-  }
-  return [options.target];
+function instructionTargets() {
+  return ['claude'];
 }
 
 function injectInstructionTarget(options, result, targetName) {
@@ -1106,9 +990,6 @@ function injectHooks(options, result) {
 function printResult(projectRoot, result) {
   const mode = result.dryRun ? 'DRY-RUN' : 'OK';
   console.log(`sdlc-init project: ${projectRoot}`);
-  if (result.targetDetection) {
-    console.log(`sdlc-init target: ${result.target} (${result.targetDetection.source}: ${result.targetDetection.reason})`);
-  }
 
   for (const message of result.changes) {
     console.log(`${mode} ${message}`);
@@ -1148,10 +1029,6 @@ function main() {
   }
 
   const result = createResult(options);
-  if (options.targetDetection && options.targetDetection.warning) {
-    result.warnings.push(options.targetDetection.warning);
-  }
-
   if (!fs.existsSync(options.projectRoot) || !fs.statSync(options.projectRoot).isDirectory()) {
     result.errors.push(`Project root is not a directory: ${options.projectRoot}`);
     printResult(options.projectRoot, result);
@@ -1160,15 +1037,10 @@ function main() {
   }
 
   injectProjectInstructions(options, result);
-  if (options.target === 'claude' || options.target === 'both') {
-    warnIfDoubleRegistration(options, result);
-    injectSettings(options, result);
-    injectHooks(options, result);
-    injectLineageMarker(options, result);
-  } else {
-    recordUnchanged(result, 'Skipped .claude/settings.json injection for Codex target.');
-    recordUnchanged(result, 'Skipped .claude/hooks sync for Codex target.');
-  }
+  warnIfDoubleRegistration(options, result);
+  injectSettings(options, result);
+  injectHooks(options, result);
+  injectLineageMarker(options, result);
   refreshInstallReceiptFiles(options);
   writeInstallReceipt(options);
   resolveTrustedSdlcInitSecurityIssues(options, result);

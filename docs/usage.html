@@ -397,7 +397,7 @@
   <div class="shell">
     <header>
       <div>
-        <div class="eyebrow">Claude Code and Codex SDLC plugin</div>
+        <div class="eyebrow">Claude Code SDLC plugin</div>
         <h1>evo-talos Devkit Usage Guide</h1>
         <p class="summary">
           Use this kit to turn product intent, existing code, or design artifacts into a controlled SDLC flow with role agents, on-demand skills, guarded permissions, and QA evidence before work is marked done.
@@ -408,7 +408,6 @@
         <p><strong>Package:</strong> <code>talos</code></p>
         <p><strong>License:</strong> <code>Apache-2.0</code></p>
         <p><strong>Claude entries:</strong> <code>/sdlc-init</code>, <code>/sdlc-loop</code></p>
-        <p><strong>Codex entries:</strong> <code>Run sdlc-init</code>, <code>Start the SDLC loop</code></p>
       </aside>
     </header>
 
@@ -423,7 +422,7 @@
           <div class="flow-grid">
             <div class="node ba">
               <strong>1. Initialize</strong>
-              <span>Claude: <code>/sdlc-init</code>. Codex: <code>Run sdlc-init</code>.</span>
+              <span>Claude Code: <code>/sdlc-init</code>.</span>
             </div>
             <div class="arrow">-&gt;</div>
             <div class="node ba">
@@ -493,11 +492,11 @@
         <div class="steps">
           <div class="step">
             <h3>Install or enable the plugin</h3>
-            <p>Make the kit available to Claude Code or Codex as a plugin. Claude Code uses slash commands; Codex uses command-shim skills and starter prompts.</p>
+            <p>Make the kit available to Claude Code as a plugin. It exposes slash commands.</p>
           </div>
           <div class="step">
             <h3>Initialize inside the target project</h3>
-            <p>Claude Code: run <code>/sdlc-init</code>. Codex: prompt <code>Run sdlc-init</code>. The initializer detects the active agent tool, writes <code>AGENTS.md</code> for Codex or <code>CLAUDE.md</code> plus Claude settings/hooks for Claude Code, warns about conflicts, and keeps <code>--target codex|claude|both</code> as an explicit override for migration or dual-tool setups.</p>
+            <p>Run <code>/sdlc-init</code>. The initializer writes <code>CLAUDE.md</code> plus Claude settings and hooks into the project and warns about conflicts.</p>
           </div>
           <div class="step">
             <h3>Provide the starting source</h3>
@@ -505,7 +504,7 @@
           </div>
           <div class="step">
             <h3>Start the SDLC loop</h3>
-            <p>Claude Code: run <code>/sdlc-loop</code>. Codex: prompt <code>Start the SDLC loop</code> or <code>Run sdlc-loop</code>. The Orchestrator dispatches the right role agents, checks gates, and moves tasks through planning, implementation, deployment, and QA.</p>
+            <p>Run <code>/sdlc-loop</code>. The Orchestrator dispatches the right role agents, checks gates, and moves tasks through planning, implementation, deployment, and QA.</p>
           </div>
           <div class="step">
             <h3>Review gates and answer only blocking questions</h3>
@@ -525,10 +524,9 @@
             <h3>Greenfield from requirement materials</h3>
             <p>Use this when you are starting a new project from PRDs, feature notes, screenshots, exported docs, spreadsheets, or design links.</p>
             <ol>
-              <li>Open the target project in Codex or Claude Code.</li>
+              <li>Open the target project in Claude Code.</li>
               <li>Run the initializer:
-                <code class="command-block">Claude Code: /sdlc-init
-Codex: Run sdlc-init</code>
+                <code class="command-block">/sdlc-init</code>
               </li>
               <li>Create or use <code>docs/requirements/</code> in the target project.</li>
               <li>Copy all requirement materials into <code>docs/requirements/</code>. Good file names are explicit, for example <code>product-brief.md</code>, <code>payment-flow.md</code>, <code>admin-dashboard-notes.md</code>, or <code>figma-links.md</code>.</li>
@@ -543,7 +541,7 @@ Codex: Run sdlc-init</code>
             <h3>Greenfield with existing Figma</h3>
             <p>Use this when Figma is already part of the product source and should influence the SRS instead of being treated as a later handoff.</p>
             <ol>
-              <li>Initialize with <code>/sdlc-init</code> in Claude Code or <code>Run sdlc-init</code> in Codex.</li>
+              <li>Initialize with <code>/sdlc-init</code>.</li>
               <li>Put the PRD and a Figma URL/page note into <code>docs/requirements/</code>.</li>
               <li>Prompt:
                 <code class="command-block">start project</code>
@@ -558,7 +556,7 @@ Codex: Run sdlc-init</code>
             <h3>Existing SRS migration</h3>
             <p>Use this when the project already has an SRS, user stories, or functional requirement documents and you want the kit to normalize them.</p>
             <ol>
-              <li>Initialize with <code>/sdlc-init</code> in Claude Code or <code>Run sdlc-init</code> in Codex.</li>
+              <li>Initialize with <code>/sdlc-init</code>.</li>
               <li>Place the SRS and related documents under <code>docs/requirements/</code>, or keep existing kit-shaped files under <code>docs/SRS.md</code>, <code>docs/user-stories/</code>, and <code>docs/frs/</code>.</li>
               <li>Prompt:
                 <code class="command-block">continue SDLC from existing SRS</code>
@@ -571,7 +569,7 @@ Codex: Run sdlc-init</code>
             <h3>Brownfield codebase onboarding</h3>
             <p>Use this when source code exists but reliable requirements and architecture documentation are missing or outdated.</p>
             <ol>
-              <li>Initialize with <code>/sdlc-init</code> in Claude Code or <code>Run sdlc-init</code> in Codex.</li>
+              <li>Initialize with <code>/sdlc-init</code>.</li>
               <li>Keep the codebase in place. Add any known product notes to <code>docs/requirements/</code>.</li>
               <li>Prompt:
                 <code class="command-block">start brownfield onboarding</code>
@@ -594,7 +592,7 @@ Codex: Run sdlc-init</code>
 
           <article class="recipe">
             <h3>Resume an interrupted run</h3>
-            <p>Use this when Claude Code or Codex stopped mid-flow, the machine restarted, or a previous run halted on a gate.</p>
+            <p>Use this when Claude Code stopped mid-flow, the machine restarted, or a previous run halted on a gate.</p>
             <ol>
               <li>Open the project again with the plugin enabled.</li>
               <li>Prompt:

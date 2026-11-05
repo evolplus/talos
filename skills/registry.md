@@ -12,8 +12,6 @@ Skills consulted by any agent or human committing or operating in the repo, rega
 
 | Skill | When | Status |
 |---|---|---|
-| [`sdlc-init`](./sdlc-init/SKILL.md) | Codex command shim for `/sdlc-init` — initialize or refresh `AGENTS.md` and optional Claude target files from the plugin | active |
-| [`sdlc-loop`](./sdlc-loop/SKILL.md) | Codex command shim for `/sdlc-loop` / `start project` — run the governed orchestration loop until the next gate or completion | active |
 | [`git-commit`](./git-commit/SKILL.md) | Any commit on a worktree or main branch — identity check, conventional message format, .gitignore baseline, compliance attribution | active |
 
 ### BA — Business Analyst
@@ -143,7 +141,7 @@ Predefined Foundation starting points. Selected by SRS header `Design-Guideline:
 
 | Phase | Skills |
 |---|---|
-| Cross-cutting (all phases) | sdlc-init, sdlc-loop, git-commit |
+| Cross-cutting (all phases) | git-commit |
 | Planning (BA / SA / TL) | user-story-author, security-compliance-checklist, solution-defaults, sa-architecture-design, sa-brownfield-extract, external-integration-adequacy, adr-author, third-party-dependency-evaluation, task-sizing, c4-author, data-lifecycle-contracts, format-boundary-contracts |
 | Design (UI/UX Designer) | ui-ux-page-scoping, figma-requirements-extraction, figma-srs-mapping, figma-design-handoff, figma-canvas-layout, design-system-author |
 | Implementation (BE / FE) | api-contract-author, be-framework-coding-standard, backend-logging-traceability, fe-framework-coding-standard, react-native-implementation, react-native-performance, react-native-platform-integration, flutter-implementation, flutter-performance, flutter-platform-integration |

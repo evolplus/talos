@@ -219,8 +219,8 @@ versions, two validators enforcing incompatible schemas (see § "plan-update.jso
 `sdlc-init` warns when `CLAUDE_PLUGIN_ROOT` is set; pick one mode — disable the plugin for that project, or re-run with
 `--skip-settings --skip-hooks`.
 
-**Version identities must agree.** `.claude-plugin/plugin.json`, `.claude-plugin/marketplace.json` and
-`.codex-plugin/plugin.json` are three separate declarations of the same release and drifted to 0.7 / 0.7 / 0.5.0. A
+**Version identities must agree.** `.claude-plugin/plugin.json` and `.claude-plugin/marketplace.json` are separate
+declarations of the same release; release manifests have drifted before (0.7 / 0.7 / 0.5.0). A
 stale identity means a consumer's cache never invalidates, so a fix cannot propagate no matter how correct it is.
 
 ### Lineage exclusivity
