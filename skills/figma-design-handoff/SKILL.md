@@ -59,7 +59,7 @@ Load these skills when their condition applies:
 2. Run or verify `design-system-author` Foundation before screen work. The Foundation source comes from SRS `Design-Guideline:`: preset slug, `from-figma`, or `none`. Screens must consume Foundation tokens/components rather than hardcoded one-off styling. For any Figma-backed dispatch, extract or refresh design-token evidence from the Figma link first, regardless of whether the file contains a named design guideline.
 3. Read the relevant US/FR files. Build the required surface/state/platform matrix from SRS §3.4.1, user-story Main Flow, Business Rules, Post-conditions, and FR Error Handling.
 4. Perform the mode-specific procedure below.
-5. Run `figma-canvas-layout` lint on the scoped page and fix blocking layout issues when the mode permits Figma writes. Do not mark handoff ready when `create` / `revise` / `incorporate` leaves overlapping top-level screen frames.
+5. Run `figma-canvas-layout` lint on the scoped page and fix blocking layout issues when the mode permits Figma writes. Do not mark handoff ready when `create` / `revise` / `incorporate` leaves overlapping screen frames, a screen outside its parent Section (`out-of-bounds`), or a Section layout outside the page-grid aspect bound.
 6. Produce the handoff with enough detail for BA completeness, QA visual-spec authoring, and FE Dev implementation. This includes the required `## Reference Render`, `## Visual Composition Contract`, `## Asset Export Manifest`, and `## Design Element Manifest` described below.
 7. Update only the SRS fields owned by UI/UX Designer: Design References Node IDs, Figma URL/page metadata, Visual-Critical, and design sub-status.
 8. Commit changes and emit `plan-update.json`.

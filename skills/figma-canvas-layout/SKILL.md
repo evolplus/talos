@@ -1,6 +1,6 @@
 ---
 name: figma-canvas-layout
-description: How to lay out Figma frames so screens don't visually overlap on the canvas, with frame-naming conventions and a pre-handoff overlap lint. Consult when UI/UX Designer is producing Figma content (create / revise / incorporate modes), and ALWAYS as a pre-handoff sanity check.
+description: How to lay out Figma frames and Sections on the canvas — Sections on a computed page grid, every screen fully inside its parent Section (parent-local coordinates), no overlap — with frame-naming conventions and a pre-handoff layout lint. Consult when UI/UX Designer is producing Figma content (create / revise / incorporate modes), and ALWAYS as a pre-handoff sanity check.
 agents: [ui-ux-designer]
 sdlc_phase: design
 owner: Platform Eng
@@ -33,14 +33,14 @@ Use the resolved `Figma-Design-Page-Node-ID` from `ui-ux-page-scoping` as the on
 
 1. Group screens by US-ID or bounded feature flow.
 2. Create one Figma Section per group when the page has more than five frames.
-3. Place each section in a predictable grid:
-   - Start at `CANVAS_ORIGIN_X = 0`, `CANVAS_ORIGIN_Y = 0` unless existing scoped frames already occupy that region.
-   - Use `SECTION_GAP_X = 1200px` and `SECTION_GAP_Y = 1200px` between sections.
-   - Within a section, use `FRAME_GAP_X = max(240px, 0.15 * widest-frame-width-in-row)`.
-   - Within a section, use `FRAME_GAP_Y = max(320px, 0.25 * tallest-frame-height-in-row)`.
+3. Inside each Section, place frames by the reading order of Rule 3 using these gaps:
+   - `FRAME_GAP_X = max(240px, 0.15 * widest-frame-width-in-row)`.
+   - `FRAME_GAP_Y = max(320px, 0.25 * tallest-frame-height-in-row)`.
    - Long-scroll frames define the row height; never let a short neighbor's height determine the vertical step.
-4. Set `x` and `y` explicitly for every newly created or revised top-level screen frame.
-5. After writing frames, re-enumerate bounding boxes and run the overlap lint. If any frame moved because of a collision, record it in the handoff `## Canvas Layout Lint` notes.
+4. **Append each frame to its Section first, then set its `x` / `y` in Section-local coordinates** (Rule 5). Never derive a child's position from the Section's page position.
+5. Fit every Section to its children (Rule 5 step 4).
+6. Place the fitted Sections on the page grid (Rule 4), starting at `CANVAS_ORIGIN_X = 0`, `CANVAS_ORIGIN_Y = 0`. If existing scoped content already occupies that region, start the grid at `y = bottom of existing content + SECTION_GAP_Y` instead of interleaving.
+7. Re-enumerate bounding boxes and run the layout lint. If any frame or Section moved because of a collision, record it in the handoff `## Canvas Layout Lint` notes.
 
 The placement contract intentionally creates gaps larger than the lint minimum. The extra whitespace is cheaper than a canvas the Approver cannot visually scan.
 
@@ -63,11 +63,98 @@ When the file contains screens for more than one SRS User Story or feature flow:
 
 The benefit: the Approver scans Section titles to navigate; QA-Author exports by Section for visual-spec organization; lint runs per-Section, surfacing overlaps within a flow distinctly from overlaps across flows.
 
-### Rule 3 — Page-level grid reading order
+### Rule 3 — Within-section reading order
 
 Within a Section, arrange frames however the flow reads best — horizontal row (one column per state), vertical column (one row per state), or 2D grid (rows by screen, columns by state). Freeform placement is allowed only when it still follows the explicit-coordinate placement contract above and the reading order is documented in the handoff.
 
 For most mobile flows, **horizontal row per screen × vertical column per state** reads naturally — eye moves right through the flow, down through the states of any one screen.
+
+Two bounds apply regardless of arrangement:
+
+- **Wrap long rows.** No more than **8 frames in one row** inside a Section. A longer flow wraps to a new row (left-to-right, then top-to-bottom).
+- **Section aspect ratio ≤ 4:1** in either direction. A Section 30 000px wide and 900px tall is the symptom of an unwrapped row — re-wrap it.
+
+### Rule 4 — Sections sit on a computed page grid
+
+The page is a grid of Sections, not a free canvas. This keeps the scoped page from growing into one very long horizontal strip or vertical column.
+
+**Order.** Sort Sections into reading order: US-ID ascending, or phase/task order when Sections are grouped by phase or task. Placement is row-major in that order.
+
+**Gutter.** `SECTION_GAP_X = SECTION_GAP_Y = 1200px` (the placement-contract value; always ≥ the Rule 1 gap for the neighbouring Sections).
+
+**Column count — compute, don't guess.** Try every column count `C = 1..N` and keep the one whose resulting page bounding box has an aspect ratio (width ÷ height) closest to **1.6** (16:10). Tie → fewer columns.
+
+**Placement (true grid — rows AND columns align):**
+
+```
+colW[j] = max width  of Sections in column j          (j = i mod C)
+rowH[r] = max height of Sections in row r             (r = floor(i / C))
+colX[0] = ORIGIN_X;  colX[j] = colX[j-1] + colW[j-1] + SECTION_GAP_X
+rowY[0] = ORIGIN_Y;  rowY[r] = rowY[r-1] + rowH[r-1] + SECTION_GAP_Y
+Section i → (x, y) = (colX[i mod C], rowY[floor(i / C)])
+```
+
+Every Section in a row shares the same top edge; every Section in a column shares the same left edge. The grid uses **fitted** Section sizes (Rule 5), so fit first, then place.
+
+**Page aspect bound.** The union of all Sections must have aspect ratio between **1:3 and 3:1**. Outside that band with ≥ 4 Sections → lint violation.
+
+**No orphans.** When Sections are mandatory (see Hard rules), every screen frame lives inside a Section. A screen frame sitting loose on the page is a lint violation.
+
+### Rule 5 — Every child is fully inside its parent (parent-local coordinates)
+
+A screen placed at a huge `(x, y)` inside a Section renders outside the Section's bounds and is effectively invisible — the Approver opens the Section and sees nothing. The root cause is almost always a **coordinate-space mistake**, not a layout choice:
+
+- In Figma, a child's `x` / `y` are **relative to its parent** when the parent is a `SECTION`, `FRAME`, or `COMPONENT`. `GROUP` is the exception — it creates no coordinate space; its children use the nearest frame/section/page ancestor.
+- Failure A — **double offset:** compute a page position (`section.x + 500`), append the frame to the Section, then set `frame.x = section.x + 500`. The frame lands at roughly twice the Section's page offset — far outside it.
+- Failure B — **set-then-append:** set `x/y` while the frame is on the page, then `appendChild` into the Section. The numbers are kept but reinterpreted as Section-local, shifting the frame by the Section's page offset.
+- Failure C — **container never grows:** frames are placed correctly in local space, but the Section stays at its creation size, so most frames hang outside it.
+
+**Order for every placement:**
+
+1. Create (or reuse) the Section.
+2. Create the frame and **`appendChild` it into the Section first.**
+3. **Then** set `x` / `y` in **Section-local coordinates**, measured from the Section's top-left. Never read `section.x` / `section.y` when positioning a child.
+4. After all frames of the Section are placed, **fit the Section to its content**: resize it to the children's local bounding box plus padding (top **160px** for the Section title, other sides **120px**). Resize the container to fit the children — never shrink or move children to fit a container.
+5. Only after every Section is fitted, run the Rule 4 grid. Moving a Section moves its children; they need no re-placement.
+
+**Containment invariant** — checked in absolute coordinates, so it is immune to the local/page confusion:
+
+```
+for every child C of a SECTION or FRAME parent P:
+  C.absoluteBoundingBox ⊆ P.absoluteBoundingBox
+```
+
+Never compare a child's local `x` with a parent's page `x`.
+
+**Do not use `GROUP` as a screen container.** Groups auto-size, carry no title, and create no coordinate space — they hide this defect instead of preventing it. Use `SECTION` to group screens and `FRAME` for each screen.
+
+**Reference (Figma Plugin API, as executed through a write-capable Figma MCP):**
+
+```js
+const section = figma.createSection();
+section.name = "US-001 — Checkout Flow";
+page.appendChild(section);
+
+const PAD = { top: 160, right: 120, bottom: 120, left: 120 };
+let x = PAD.left, y = PAD.top, rowH = 0, col = 0;
+for (const spec of screens) {                       // reading order
+  const f = figma.createFrame();
+  section.appendChild(f);                           // 1) parent first
+  f.resize(spec.w, spec.h);
+  if (col === 8) {                                  // Rule 3 wrap
+    x = PAD.left; y += rowH + Math.max(320, 0.25 * rowH); rowH = 0; col = 0;
+  }
+  f.x = x; f.y = y;                                 // 2) LOCAL coords — never section.x + ...
+  x += spec.w + Math.max(240, 0.15 * spec.w);
+  rowH = Math.max(rowH, spec.h); col++;
+}
+const kids = section.children;                      // 3) fit Section to children
+section.resizeWithoutConstraints(
+  Math.max(...kids.map(k => k.x + k.width))  + PAD.right,
+  Math.max(...kids.map(k => k.y + k.height)) + PAD.bottom);
+```
+
+If the MCP exposes higher-level tools (`create_frame(parentId, x, y, ...)`) instead of raw Plugin API, check whether its `x/y` are parent-relative. If unclear, create one probe frame, read back its `absoluteBoundingBox`, and confirm before placing the rest.
 
 ## Naming convention
 
@@ -104,17 +191,32 @@ Every frame name follows a **3-segment path**: `Feature / Screen / State`.
 - **QA-Author selectors.** When generating `docs/uiux/visual-specs/<task-id>.md`, QA-Author selects frames by name via MCP. 3-segment paths give stable, unambiguous selectors.
 - **Approver navigation.** The Approver sees the layers panel with `Spectator / MatchList / Default` rather than `Frame 17` and immediately knows what they're looking at.
 
-## Pre-handoff overlap lint
+## Pre-handoff layout lint
 
 Run this procedure BEFORE flipping the design sub-status to `design-ready-for-review` (i.e., before producing `docs/uiux/handoffs/<task-id>.md`).
 
-### Step 1 — Enumerate all frames
+### Step 1 — Enumerate all Sections and frames
 
-Via Figma MCP, list every top-level frame on every page of the file. For each, capture: name, page, parent section (if any), bounding box `{x, y, width, height}`.
+Via Figma MCP, list every Section and every screen frame on the scoped page. For each, capture: name, node type, parent node (id + type), local `{x, y, width, height}`, and **`absoluteBoundingBox`**. All geometric checks below use `absoluteBoundingBox`.
+
+### Step 1a — Containment check (Rule 5)
+
+For every screen frame whose parent is a `SECTION` or `FRAME`:
+
+```
+contained = C.abs.x >= P.abs.x and C.abs.y >= P.abs.y
+        and C.abs.x + C.abs.width  <= P.abs.x + P.abs.width
+        and C.abs.y + C.abs.height <= P.abs.y + P.abs.height
+```
+
+- `contained == false` → **violation** (`out-of-bounds`). Record how far outside the parent the frame sits. A distance close to the parent's own page offset is the Failure A/B signature — say so in the Detail column.
+- Contained but inside the Section's padding band (closer than 160px to the top edge or 120px to the other edges) → warning (`padding`).
+- Screen frame whose parent is a `GROUP` → warning (`group-container`).
+- Screen frame whose parent is the page while Sections are mandatory → violation (`orphan`).
 
 ### Step 2 — Compute pairwise overlaps
 
-For every pair of frames `(A, B)` on the **same page** (skip cross-page pairs; pages are independent canvases):
+For every pair of frames `(A, B)` on the **same page** (using `absoluteBoundingBox`), and separately for every pair of Sections, (skip cross-page pairs; pages are independent canvases):
 
 ```
 horizontal_gap = max(0, max(A.x, B.x) - min(A.x + A.width, B.x + B.width))
@@ -135,6 +237,15 @@ For each non-overlapping pair, the rule-required gap is:
 
 Compare with actual gap. Below required → warning. Below 50% of required → violation (same severity as overlap).
 
+### Step 3a — Page grid check (Rule 4)
+
+Over the Sections of the scoped page:
+
+- **Alignment:** Sections in the same grid row share the same top `y` (±1px); same grid column → same left `x` (±1px). Misalignment → warning (`grid-misaligned`).
+- **Page aspect:** `union(all Sections).width ÷ height` outside **[1/3, 3]** with ≥ 4 Sections → violation (`page-aspect`). Report the ratio and the column count Rule 4 would choose.
+- **Section aspect:** any Section beyond 4:1 either way → warning (`section-aspect`), usually an unwrapped row.
+- **Reading order:** row-major Section order differs from US-ID / phase order → warning (`grid-order`).
+
 ### Step 4 — Emit lint report
 
 Append a `## Canvas Layout Lint` section to the handoff doc with the following shape:
@@ -144,6 +255,7 @@ Append a `## Canvas Layout Lint` section to the handoff doc with the following s
 
 - **Lint run:** <ISO-8601>
 - **Frames audited:** <N>
+- **Page aspect ratio:** <W:H> (grid columns: <C>)
 - **Pages audited:** <N>
 - **Sections audited:** <N>
 
@@ -152,6 +264,13 @@ Append a `## Canvas Layout Lint` section to the handoff doc with the following s
 | Frame A | Frame B | Page | Type | Detail |
 |---|---|---|---|---|
 | Spectator/MatchList/Default | Spectator/MatchDetail/Default | Spectator Flow | overlap | A bottom edge at y=4200; B top edge at y=4150 — 50px overlap |
+
+### Containment & grid findings
+
+| Node | Parent | Page | Type | Detail |
+|---|---|---|---|---|
+| Checkout/Payment/Default | US-001 — Checkout Flow | Checkout | out-of-bounds | frame abs x=48 120; Section right edge at x=24 300 — 23 820px outside (≈ Section page x: double offset) |
+| (page) | — | Checkout | page-aspect | 9 Sections in one row: 7.8:1; Rule 4 picks C=3 → 1.5:1 |
 
 ### Warnings (below-floor gap)
 
@@ -186,6 +305,7 @@ The skill applies differently per UI/UX Designer dispatch mode (see `.claude/age
 ### `revise` mode (BA Phase 3 returned unqualified)
 
 - Apply rules to new/modified frames. Don't reorganize the entire file — that introduces churn the Approver hasn't asked for.
+- **Exceptions — always fix:** `out-of-bounds` and `orphan` violations (Rule 5) are rendering defects, not style; fix them wherever found and note in `## Revision Notes`. A `page-aspect` violation may be fixed by re-running the Rule 4 grid, which moves whole Sections only — never the frames inside them.
 - Run the lint before handoff. If the file had pre-existing violations not flagged in the original handoff, decide:
   - If the violations would distract the Approver's review of THIS revision → fix them as a side effect; note in handoff `## Revision Notes`.
   - If the violations are unrelated to the revision scope → record in lint report and halt with `NEEDS_CONTEXT` only when they block review of the revised frames. Otherwise, keep the cleanup out of scope.
@@ -194,9 +314,10 @@ The skill applies differently per UI/UX Designer dispatch mode (see `.claude/age
 
 - **Do NOT auto-rearrange silently.** The human owns the canvas; you absorb their edits, you don't reformat them without permission.
 - Run the lint and record results in the handoff doc.
-- If lint surfaces overlap or below-50%-gap violations introduced by human edits, do not mark the design `design-ready-for-review`. Halt with `NEEDS_CONTEXT` and ask for one of:
+- If lint surfaces overlap, below-50%-gap, `out-of-bounds`, or `page-aspect` violations introduced by human edits, do not mark the design `design-ready-for-review`. Halt with `NEEDS_CONTEXT` and ask for one of:
   - permission to normalize the scoped page in a follow-up `revise` pass using the placement contract above, or
   - confirmation that the human will clean up the canvas before re-dispatch.
+- An `out-of-bounds` screen is hidden from the Approver: list it first in `## Human Edit Reconciliation Notes` so it is not missed. Do not move it.
 - If lint surfaces only minor below-floor warnings, flag them in `## Human Edit Reconciliation Notes` and proceed only when the changed frames remain easy to inspect.
 
 ### `import` mode (read existing Figma → produce handoff, never write Figma)
@@ -208,7 +329,9 @@ The skill applies differently per UI/UX Designer dispatch mode (see `.claude/age
 ## Hard rules
 
 - **No frame overlap is allowed at handoff time** in `create` / `revise` / `incorporate` modes. (`import` mode is exempt — flagged but not blocking.)
-- **No newly created or revised top-level screen frame may be left at the default origin or stacked over another frame.** Every touched frame gets explicit `x` / `y` coordinates derived from the placement contract.
+- **No newly created or revised screen frame may be left at the default origin or stacked over another frame.** Every touched frame gets explicit `x` / `y` coordinates derived from the placement contract.
+- **Every screen frame is fully inside its parent Section** (absolute-bounding-box containment). Children are positioned in parent-local coordinates after `appendChild`; Sections are resized to fit their children. `out-of-bounds` blocks handoff in writing modes.
+- **Sections are placed on the Rule 4 grid** with a computed column count (~16:10 page). Page aspect outside 1:3–3:1 with ≥ 4 Sections blocks handoff in writing modes.
 - **Every frame must use the `Feature / Screen / State` 3-segment naming pattern.** Generic names (`Frame 17`, `Group 3`) fail the lint.
 - **Sections required when the file holds more than five frames.** Below that count, sections are optional; above, mandatory.
 - **The lint runs every dispatch, every mode.** Lint output appears in the handoff doc whether or not violations exist (clean lint records the audit trail).
